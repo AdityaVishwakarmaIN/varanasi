@@ -4,6 +4,7 @@
  */
 
 import { Tile, Building, BridgeType, BridgeOrientation } from '@/types/game';
+import { createDefaultFireState } from '@/lib/fireConfig';
 import { TILE_WIDTH, TILE_HEIGHT } from './types';
 
 // ============================================================================
@@ -222,8 +223,7 @@ export function createBridgeBuilding(
     jobs: 0,
     powered: true,
     watered: true,
-    onFire: false,
-    fireProgress: 0,
+    ...createDefaultFireState(),
     age: 0,
     constructionProgress: 100,
     abandoned: false,

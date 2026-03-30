@@ -23,7 +23,20 @@ import {
   TOOL_INFO,
 } from '@/types/game';
 import { generateCityName, generateWaterName } from './names';
+import {
+  FIRE_SIMULATION_CONFIG,
+  countAdjacentBurningTiles,
+  createDefaultFireState,
+  getFireSpreadChance,
+  getFireSuppressionChance,
+  getRandomFireIgnitionChance,
+  hasFireDestroyedBuilding,
+  igniteBuilding,
+  isBuildingFireEligible,
+  resetBuildingFireState,
+} from './fireConfig';
 import { isMobile } from 'react-device-detect';
+import type { CloudWeatherMode } from '@/components/game/types';
 
 // Default grid size for new games
 export const DEFAULT_GRID_SIZE = isMobile ? 50 : 70;
@@ -777,8 +790,7 @@ function createBuilding(type: BuildingType): Building {
     jobs: 0,
     powered: false,
     watered: false,
-    onFire: false,
-    fireProgress: 0,
+    ...createDefaultFireState(),
     age: 0,
     constructionProgress,
     abandoned: false,
@@ -837,8 +849,7 @@ function createBridgeBuilding(
     jobs: 0,
     powered: true,
     watered: true,
-    onFire: false,
-    fireProgress: 0,
+    ...createDefaultFireState(),
     age: 0,
     constructionProgress: 100,
     abandoned: false,
@@ -2217,7 +2228,10 @@ export function recalculateDerivedState(state: GameState): GameState {
 
 
 // Main simulation tick
-export function simulateTick(state: GameState): GameState {
+export function simulateTick(
+  state: GameState,
+  cloudWeatherMode: CloudWeatherMode = 'clear'
+): GameState {
   // Optimized: shallow clone rows, deep clone tiles only when modified
   const size = state.gridSize;
   
@@ -2374,14 +2388,13 @@ export function simulateTick(state: GameState): GameState {
       // Fire simulation
       if (state.disastersEnabled && tile.building.onFire) {
         const fireCoverage = services.fire[y][x];
-        const fightingChance = fireCoverage / 300;
+        const fightingChance = getFireSuppressionChance(fireCoverage);
         
         if (Math.random() < fightingChance) {
-          tile.building.onFire = false;
-          tile.building.fireProgress = 0;
+          resetBuildingFireState(tile.building);
         } else {
-          tile.building.fireProgress += 2/3; // Reduced from 1 to make fires last ~50% longer
-          if (tile.building.fireProgress >= 100) {
+          tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
+          if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
             tile.building = createBuilding('grass');
             tile.zone = 'none';
           }
@@ -2390,49 +2403,30 @@ export function simulateTick(state: GameState): GameState {
 
       // Fire spread to adjacent buildings
       // Check if any neighboring tile is on fire and spread with a chance reduced by fire coverage
-      if (state.disastersEnabled && !tile.building.onFire &&
-          tile.building.type !== 'grass' && tile.building.type !== 'water' &&
-          tile.building.type !== 'road' && tile.building.type !== 'tree' &&
-          tile.building.type !== 'empty' && tile.building.type !== 'bridge' &&
-          tile.building.type !== 'rail') {
-        // Check 4 adjacent tiles for fires
-        const adjacentOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-        let adjacentFireCount = 0;
-        
-        for (const [dx, dy] of adjacentOffsets) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
-            const neighbor = newGrid[ny][nx];
-            if (neighbor.building.onFire) {
-              adjacentFireCount++;
-            }
-          }
-        }
-        
+      if (
+        state.disastersEnabled &&
+        !tile.building.onFire &&
+        isBuildingFireEligible(tile.building.type)
+      ) {
+        const adjacentFireCount = countAdjacentBurningTiles(newGrid, size, x, y);
+
         if (adjacentFireCount > 0) {
-          // Base spread chance per adjacent fire: 0.5% per tick (reduced from 1.5%)
-          // Fire coverage significantly reduces spread chance
           const fireCoverage = services.fire[y][x];
-          const coverageReduction = fireCoverage / 100; // 0-1 based on coverage (100% coverage = 1)
-          const baseSpreadChance = 0.005 * adjacentFireCount;
-          const spreadChance = baseSpreadChance * (1 - coverageReduction * 0.95); // Fire coverage can reduce spread by up to 95%
+          const spreadChance = getFireSpreadChance(adjacentFireCount, fireCoverage, cloudWeatherMode);
           
           if (Math.random() < spreadChance) {
-            tile.building.onFire = true;
-            tile.building.fireProgress = 0;
+            igniteBuilding(tile.building);
           }
         }
       }
 
       // Random fire start
-      if (state.disastersEnabled && !tile.building.onFire && 
-          tile.building.type !== 'grass' && tile.building.type !== 'water' && 
-          tile.building.type !== 'road' && tile.building.type !== 'tree' &&
-          tile.building.type !== 'empty' &&
-          Math.random() < 0.00003) {
-        tile.building.onFire = true;
-        tile.building.fireProgress = 0;
+      if (
+        state.disastersEnabled &&
+        !tile.building.onFire &&
+        Math.random() < getRandomFireIgnitionChance(tile.building.type, cloudWeatherMode)
+      ) {
+        igniteBuilding(tile.building);
       }
     }
   }
@@ -3316,8 +3310,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
       jobs: 0,
       powered: true,
       watered: true,
-      onFire: false,
-      fireProgress: 0,
+      ...createDefaultFireState(),
       age: Math.floor(Math.random() * 100) + 50,
       constructionProgress: 100, // Fully built
       abandoned: false,

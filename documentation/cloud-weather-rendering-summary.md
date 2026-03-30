@@ -5,6 +5,7 @@
 - Cloud rendering and effects only; no UI/UX, header, save-state, or gameplay-state changes.
 - Targeted current weather modes: `clear`, `light_clouds`, `storm`, `severe_storm`.
 - Cloud and weather tuning now lives in one central file: `src/components/game/cloudWeatherConfig.ts`.
+- Cloud/weather timing is now scaled by the active game speed so spawning, drift, weather re-rolls, and lightning stay synchronized with the speed controller.
 
 ## Weather Modes
 
@@ -26,12 +27,12 @@
 - Spawning respects the per-mode density, opacity, and scale rules; storm modes favor cumulonimbus and stratus.
 - Lightning support renders a single short-lived bolt with a global flash and respects the viewport; cooldown logic is internal to the effect system.
 - The day/night SVG and all existing top-bar UI remain unchanged; no weather indicator is rendered outside the cloud system.
-- Scene lighting responds to weather changes by adjusting ambient daylight tints, alpha overlays, and light source intensities (see `day-night-lighting-summary.md`).
+- Scene lighting responds to weather changes by adjusting ambient daylight tints, alpha overlays, and light source intensities (see `day-night-lighting-summary.md`). It is driven by hour and weather mode, not by game speed directly.
 
 ## Files
 
 - `src/components/game/cloudWeatherConfig.ts`
-- `src/components/game/cloudWeatherDimming.ts`
+- `src/components/game/sceneLighting.ts`
 - `src/components/game/types.ts`
 - `src/components/game/constants.ts`
 - `src/components/game/effectsSystems.ts`

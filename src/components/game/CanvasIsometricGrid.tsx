@@ -127,7 +127,17 @@ export interface CanvasIsometricGridProps {
 
 // Canvas-based Isometric Grid - HIGH PERFORMANCE
 export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery }: CanvasIsometricGridProps) {
-  const { state, latestStateRef, placeAtTile, finishTrackDrag, connectToCity, checkAndDiscoverCities, currentSpritePack, visualHour } = useGame();
+  const {
+    state,
+    latestStateRef,
+    placeAtTile,
+    finishTrackDrag,
+    connectToCity,
+    checkAndDiscoverCities,
+    currentSpritePack,
+    visualHour,
+    setCloudWeatherMode,
+  } = useGame();
   const { grid, gridSize, selectedTool, speed, adjacentCities, waterBodies, gameVersion } = state;
   
   // PERF: Use latestStateRef for real-time grid access in animation loops
@@ -600,10 +610,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     weatherChangeTimerRef.current = 0;
     weatherInitializedRef.current = false;
     worldStateRef.current.cloudWeatherMode = DEFAULT_CLOUD_WEATHER_MODE;
+    setCloudWeatherMode(DEFAULT_CLOUD_WEATHER_MODE);
     
     // Reset traffic light timer
     trafficLightTimerRef.current = 0;
-  }, [gameVersion]);
+  }, [gameVersion, setCloudWeatherMode]);
 
   // Sync isPanning state to ref for animation loop access
   useEffect(() => {
@@ -2453,6 +2464,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         updateFireworks(delta, visualHour); // Update fireworks (nighttime only)
         updateSmog(delta); // Update factory smog particles
         updateClouds(delta, visualHour); // Update atmospheric clouds
+        setCloudWeatherMode(worldStateRef.current.cloudWeatherMode);
         navLightFlashTimerRef.current += delta * 3; // Update nav light flash timer
         trafficLightTimerRef.current += delta; // Update traffic light cycle timer
         crossingFlashTimerRef.current += delta; // Update crossing flash timer
@@ -2533,7 +2545,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, visualHour, isMobile]);
+  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, visualHour, isMobile, setCloudWeatherMode]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({

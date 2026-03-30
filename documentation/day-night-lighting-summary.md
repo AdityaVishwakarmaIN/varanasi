@@ -3,7 +3,7 @@
 ## Implementation Scope
 
 - Controls environmental dimming, sky color tints, and artificial light intensity across different times of day and weather conditions.
-- Logic is centralized in `src/components/game/cloudWeatherDimming.ts`.
+- Logic is centralized in `src/components/game/sceneLighting.ts`.
 - Complex multi-stage dawn/dusk timeline interpolation has been removed in favor of a clean, strict Day vs. Night binary state.
 
 ## Time Boundaries
@@ -27,7 +27,8 @@ Increasing the storm overlay alphas ensures that poor weather genuinely turns da
 
 - Night always uses a static, universal ambient color of `20, 30, 60` (deep navy) and a heavy `0.6` darkness overlay regardless of weather.
 - Artificial light intensity (streetlamps, window glows) during the night will still respect the weather's built-in scalar (e.g., `0.7` for severe storm, `1.0` for clear) to match atmospheric absorption.
+- Game speed does not change the lighting formula directly; it only affects cloud/weather progression elsewhere in the simulation.
 
 ## Files
-- `src/components/game/cloudWeatherDimming.ts`
-- `src/components/game/lightingSystem.ts` 
+- `src/components/game/sceneLighting.ts`
+- `src/components/game/lightingSystem.ts`

@@ -5,6 +5,11 @@ import { isRoadTile, getDirectionOptions, pickNextDirection, findPathOnRoads, ge
 import { findBusStops, findResidentialBuildings, findPedestrianDestinations, findStations, findFires, findRecreationAreas, findEnterableBuildings, SPORTS_TYPES, ACTIVE_RECREATION_TYPES } from './gridFinders';
 import { drawPedestrians as drawPedestriansUtil } from './drawPedestrians';
 import { BuildingType, Tile } from '@/types/game';
+import {
+  FIRE_RESPONSE_CONFIG,
+  findNearestFireStation,
+  getFireIncidentKey,
+} from '@/lib/fireConfig';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
@@ -630,7 +635,7 @@ export function useVehicleSystems(
       tileY: startTile.y,
       direction,
       progress: 0,
-      speed: type === 'fire_truck' ? 0.8 : 0.9,
+      speed: type === 'fire_truck' ? FIRE_RESPONSE_CONFIG.fireTruckSpeed : 0.9,
       state: 'dispatching',
       stationX,
       stationY,
@@ -654,20 +659,10 @@ export function useVehicleSystems(
     const fireStations = findStationsCallback('fire_station');
     
     for (const fire of fires) {
-      const fireKey = `${fire.x},${fire.y}`;
+      const fireKey = getFireIncidentKey(fire.x, fire.y);
       if (activeFiresRef.current.has(fireKey)) continue;
-      
-      let nearestStation: { x: number; y: number } | null = null;
-      let nearestDist = Infinity;
-      
-      for (const station of fireStations) {
-        const dist = Math.abs(station.x - fire.x) + Math.abs(station.y - fire.y);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestStation = station;
-        }
-      }
-      
+
+      const nearestStation = findNearestFireStation(fire, fireStations);
       if (nearestStation) {
         if (dispatchEmergencyVehicle('fire_truck', nearestStation.x, nearestStation.y, fire.x, fire.y)) {
           activeFiresRef.current.add(fireKey);
@@ -739,7 +734,10 @@ export function useVehicleSystems(
         }
         
         vehicle.respondTime += delta * speedMultiplier;
-        const respondDuration = vehicle.type === 'fire_truck' ? 8 : 5;
+        const respondDuration =
+          vehicle.type === 'fire_truck'
+            ? FIRE_RESPONSE_CONFIG.fireTruckResponseDuration
+            : 5;
         
         if (vehicle.respondTime >= respondDuration) {
           const targetKey = `${vehicle.targetX},${vehicle.targetY}`;

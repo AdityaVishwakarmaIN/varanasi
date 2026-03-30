@@ -1,6 +1,7 @@
 // Share state utility - compress game state for URL sharing
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { GameState, Tile, Building, ZoneType, BuildingType } from '@/types/game';
+import { createDefaultFireState } from './fireConfig';
 
 // Short key mappings for maximum compression
 const ZONE_MAP: Record<ZoneType, number> = { 'none': 0, 'residential': 1, 'commercial': 2, 'industrial': 3 };
@@ -78,8 +79,7 @@ function expandTile(min: MinTile, x: number, y: number): Tile {
     jobs: min[4],
     powered: min[5] === 1,
     watered: min[6] === 1,
-    onFire: false,
-    fireProgress: 0,
+    ...createDefaultFireState(),
     age: 0,
     constructionProgress: min[9] ?? 100,
     abandoned: min[10] === 1,

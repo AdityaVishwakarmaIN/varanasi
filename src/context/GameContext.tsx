@@ -45,6 +45,7 @@ import {
   ISOCITY_SPRITE_PACK_STORAGE_KEY,
   ISOCITY_STORAGE_KEY,
 } from '@/lib/isocityStorage';
+import type { CloudWeatherMode } from '@/components/game/types';
 
 export type DayNightMode = 'auto' | 'day' | 'night';
 
@@ -75,6 +76,7 @@ type GameContextValue = {
   discoverCity: (cityId: string) => void;
   checkAndDiscoverCities: (onDiscover?: (city: { id: string; direction: 'north' | 'south' | 'east' | 'west'; name: string }) => void) => void;
   setDisastersEnabled: (enabled: boolean) => void;
+  setCloudWeatherMode: (mode: CloudWeatherMode) => void;
   newGame: (name?: string, size?: number) => void;
   loadState: (stateString: string) => boolean;
   exportState: () => string;
@@ -714,7 +716,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
-  latestStateRef.current = state;
+  const cloudWeatherModeRef = useRef<CloudWeatherMode>('clear');
+
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
   
   useEffect(() => {
     if (!hasLoadedRef.current) {
@@ -818,7 +824,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         const now = performance.now();
         
         // PERF: Run simulation and update ref immediately (for canvas)
-        const newState = simulateTick(latestStateRef.current);
+        const newState = simulateTick(latestStateRef.current, cloudWeatherModeRef.current);
         latestStateRef.current = newState;
         stateChangedRef.current = true;
         
@@ -1098,6 +1104,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
   const setDisastersEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, disastersEnabled: enabled }));
   }, []);
+
+  const setCloudWeatherMode = useCallback((mode: CloudWeatherMode) => {
+    if (cloudWeatherModeRef.current === mode) return;
+    cloudWeatherModeRef.current = mode;
+  }, []);
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
     placeCallbackRef.current = callback;
@@ -1129,6 +1140,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
   const newGame = useCallback((name?: string, size?: number) => {
     clearGameState(); // Clear saved state when starting fresh
+    cloudWeatherModeRef.current = 'clear';
     const fresh = createInitialGameState(size ?? DEFAULT_GRID_SIZE, name || 'IsoCity');
     // Increment gameVersion from current state to ensure vehicles/entities are cleared
     setState((prev) => ({
@@ -1204,6 +1216,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
           }
         }
         // Increment gameVersion to clear vehicles/entities when loading a new state
+        cloudWeatherModeRef.current = 'clear';
         setState((prev) => ({
           ...(parsed as GameState),
           gameVersion: (prev.gameVersion ?? 0) + 1,
@@ -1222,6 +1235,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
   const generateRandomCity = useCallback(() => {
     clearGameState(); // Clear saved state when generating a new city
+    cloudWeatherModeRef.current = 'clear';
     const randomCity = generateRandomAdvancedCity(DEFAULT_GRID_SIZE);
     // Increment gameVersion to ensure vehicles/entities are cleared
     setState((prev) => ({
@@ -1463,6 +1477,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
     const savedState = loadSavedCityState();
     if (savedState) {
       skipNextSaveRef.current = true;
+      cloudWeatherModeRef.current = 'clear';
       setState(savedState);
       clearSavedCityStorage();
       return true;
@@ -1582,6 +1597,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
     }
     
     skipNextSaveRef.current = true;
+    cloudWeatherModeRef.current = 'clear';
     setState((prev) => ({
       ...cityState,
       gameVersion: (prev.gameVersion ?? 0) + 1,
@@ -1647,6 +1663,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
     discoverCity,
     checkAndDiscoverCities,
     setDisastersEnabled,
+    setCloudWeatherMode,
     newGame,
     loadState,
     exportState,
