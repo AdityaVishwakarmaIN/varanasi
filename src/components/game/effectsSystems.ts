@@ -646,7 +646,16 @@ export function useEffectsSystems(
 
   const pickWeatherMode = useCallback(() => {
     const roll = Math.random();
-    return CLOUD_WEATHER_PROBABILITY_SPLIT.find((entry) => roll <= entry.cumulativeProbability)?.mode ?? 'severe_storm';
+    let threshold = 0;
+
+    for (const entry of CLOUD_WEATHER_PROBABILITY_SPLIT) {
+      threshold += entry.probability;
+      if (roll < threshold) {
+        return entry.mode;
+      }
+    }
+
+    return CLOUD_WEATHER_PROBABILITY_SPLIT[CLOUD_WEATHER_PROBABILITY_SPLIT.length - 1]?.mode ?? 'severe_storm';
   }, []);
 
   // Pick cloud type based on time-of-day weights and the active weather mode.

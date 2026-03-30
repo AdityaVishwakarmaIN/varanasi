@@ -28,12 +28,12 @@ export const CLOUD_NIGHT_OPACITY_MULT = 0.6; // How much clouds dim at night.
 
 // Base cloud sizing and spawn tuning.
 // These remain grouped here so the renderer's main "volume" knobs are easy to find.
-export const CLOUD_MAX_COUNT = 18; // Maximum number of clouds on desktop.
-export const CLOUD_MAX_COUNT_MOBILE = 10; // Maximum number of clouds on mobile.
-export const CLOUD_SPAWN_INTERVAL = 2.5; // Seconds between cloud spawn attempts.
-export const CLOUD_SPAWN_INTERVAL_MOBILE = 4.5; // Slower spawn pacing on mobile.
-export const CLOUD_SPEED_MIN = 8; // Slowest cloud drift speed.
-export const CLOUD_SPEED_MAX = 24; // Fastest cloud drift speed.
+export const CLOUD_MAX_COUNT = 36; // Maximum number of clouds on desktop.
+export const CLOUD_MAX_COUNT_MOBILE = 20; // Maximum number of clouds on mobile.
+export const CLOUD_SPAWN_INTERVAL = 1.0; // Seconds between cloud spawn attempts.
+export const CLOUD_SPAWN_INTERVAL_MOBILE = 1.8; // Slower spawn pacing on mobile.
+export const CLOUD_SPEED_MIN = 20; // Slowest cloud drift speed.
+export const CLOUD_SPEED_MAX = 60; // Fastest cloud drift speed.
 export const CLOUD_SCALE_MIN = 0.5; // Smallest base cloud scale.
 export const CLOUD_SCALE_MAX = 1.8; // Largest base cloud scale.
 export const CLOUD_PUFF_COUNT_MIN = 4; // Fewest puffs used to build a cloud.
@@ -44,15 +44,15 @@ export const CLOUD_PUFF_SIZE_MAX = 55; // Largest puff radius.
 export const DEFAULT_CLOUD_WEATHER_MODE: CloudWeatherMode = 'clear'; // Weather used when the game starts or resets.
 export const CLOUD_WEATHER_CHANGE_INTERVAL = 15; // Seconds between automatic weather rolls.
 
-export const CLOUD_WEATHER_PROBABILITY_SPLIT: Array<{ mode: CloudWeatherMode; cumulativeProbability: number }> = [
+export const CLOUD_WEATHER_PROBABILITY_SPLIT: Array<{ mode: CloudWeatherMode; probability: number }> = [
   // Clear: most common state.
-  { mode: 'clear', cumulativeProbability: 0.4 },
+  { mode: 'clear', probability: 0.4 },
   // Light clouds: common, but not dominant.
-  { mode: 'light_clouds', cumulativeProbability: 0.7 },
+  { mode: 'light_clouds', probability: 0.3 },
   // Storm: less common than calm weather.
-  { mode: 'storm', cumulativeProbability: 0.9 },
+  { mode: 'storm', probability: 0.2 },
   // Severe storm: the rarest roll.
-  { mode: 'severe_storm', cumulativeProbability: 1.0 },
+  { mode: 'severe_storm', probability: 0.1 },
 ];
 
 // Weather profiles are grouped here so density, opacity, scale, and lightning stay in sync.
@@ -111,7 +111,7 @@ export const CLOUD_WEATHER_CONFIG: Record<CloudWeatherMode, CloudWeatherConfig> 
   // Severe storm: strongest coverage, darkest palette, and rapid lightning.
   severe_storm: {
     showClouds: true, // Keep the sky fully active.
-    cloudCountMultiplier: 0.82, // Push cloud coverage close to the cap.
+    cloudCountMultiplier: 2.46, // Push cloud coverage close to the cap.
     spawnIntervalMultiplier: 1.0, // Use the base spawn pacing.
     opacityMultiplier: 1.75, // Make the storm clouds much darker.
     scaleMultiplier: 1.2, // Make the storm clouds feel larger and heavier.
@@ -155,8 +155,8 @@ export const CLOUD_LIGHTNING_CONFIG: Record<LightningProfile, {
   },
   // Fast, frequent lightning.
   rapid: {
-    minInterval: 3.2,
-    maxInterval: 6.4,
+    minInterval: 0.32,
+    maxInterval: 0.64,
     durationMin: 0.12,
     durationMax: 0.22,
     flashOpacityMin: 0.35,
