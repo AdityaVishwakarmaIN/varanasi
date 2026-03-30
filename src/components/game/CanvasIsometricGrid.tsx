@@ -42,8 +42,8 @@ import {
   WATER_ASSET_PATH,
   AIRPLANE_SPRITE_SRC,
   TRAIN_MIN_ZOOM,
-  DEFAULT_CLOUD_WEATHER_MODE,
 } from '@/components/game/constants';
+import { DEFAULT_CLOUD_WEATHER_MODE } from '@/components/game/cloudWeatherConfig';
 import {
   gridToScreen,
   screenToGrid,

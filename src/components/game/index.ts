@@ -1,6 +1,7 @@
 // Re-export all game-related types, constants, and utilities
 export * from './types';
 export * from './constants';
+export * from './cloudWeatherConfig';
 export * from './utils';
 export * from './drawing';
 export * from './overlays';

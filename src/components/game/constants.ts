@@ -1,6 +1,6 @@
-import { BuildingType } from '@/games/isocity/types';
+﻿import { BuildingType } from '@/games/isocity/types';
 import { DirectionMeta } from '@/core/types';
-import { CarDirection, CloudType, CloudWeatherMode, TILE_WIDTH, TILE_HEIGHT } from './types';
+import { CarDirection, TILE_WIDTH, TILE_HEIGHT } from './types';
 
 // Vehicle colors (duller/muted versions)
 export const CAR_COLORS = ['#d97777', '#d4a01f', '#2ba67a', '#4d84c8', '#9a6ac9'];
@@ -108,22 +108,22 @@ export const PLANE_TYPES: Array<'737' | '777' | '747' | 'a380' | 'g650'> = ['737
 // Column mapping for each direction
 // Col 0: SW (South West), Col 1: NE (North East), Col 2: W (West), Col 3: N (North top-down), Col 4: unused
 // For opposite directions, mirror the sprite appropriately:
-// - W→E: horizontal flip (mirrorX)
-// - N→S: vertical flip (mirrorY)
+// - Wâ†’E: horizontal flip (mirrorX)
+// - Nâ†’S: vertical flip (mirrorY)
 // - SE: use NE sprite (col 1) with vertical flip
 // - NW: use SW sprite (col 0) with vertical flip
 // baseAngle = the angle the sprite visually faces; rotationOffset = planeAngle - baseAngle
 export const PLANE_DIRECTION_COLS: Record<string, { col: number; mirrorX: boolean; mirrorY: boolean; baseAngle: number }> = {
   // Original sprites - baseAngle is what direction the sprite is drawn facing
-  'sw': { col: 0, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 4 + 0.26 },  // ~150° - South West (col 0)
-  'ne': { col: 1, mirrorX: false, mirrorY: false, baseAngle: -Math.PI / 4 + 0.17 },        // ~-35° - North East (col 1)
-  'w': { col: 2, mirrorX: false, mirrorY: false, baseAngle: Math.PI },                    // 180° - West (col 2)
-  'n': { col: 3, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 2 },          // 270° - North top-down (col 3)
+  'sw': { col: 0, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 4 + 0.26 },  // ~150Â° - South West (col 0)
+  'ne': { col: 1, mirrorX: false, mirrorY: false, baseAngle: -Math.PI / 4 + 0.17 },        // ~-35Â° - North East (col 1)
+  'w': { col: 2, mirrorX: false, mirrorY: false, baseAngle: Math.PI },                    // 180Â° - West (col 2)
+  'n': { col: 3, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 2 },          // 270Â° - North top-down (col 3)
   // Derived directions through mirroring
   'se': { col: 0, mirrorX: true, mirrorY: false, baseAngle: Math.PI / 4 - 0.26 },         // SW mirrored horizontally = SE
-  'nw': { col: 1, mirrorX: false, mirrorY: true, baseAngle: Math.PI / 4 - 0.26 },         // NE mirrored vertically then rotated = NW (~30°)
-  'e': { col: 2, mirrorX: true, mirrorY: false, baseAngle: 0 },                           // 0° - East (W mirrored horizontally)
-  's': { col: 3, mirrorX: false, mirrorY: true, baseAngle: Math.PI / 2 },                 // 90° - South (N mirrored vertically)
+  'nw': { col: 1, mirrorX: false, mirrorY: true, baseAngle: Math.PI / 4 - 0.26 },         // NE mirrored vertically then rotated = NW (~30Â°)
+  'e': { col: 2, mirrorX: true, mirrorY: false, baseAngle: 0 },                           // 0Â° - East (W mirrored horizontally)
+  's': { col: 3, mirrorX: false, mirrorY: true, baseAngle: Math.PI / 2 },                 // 90Â° - South (N mirrored vertically)
 };
 
 // Direction overrides for planes that cannot use col 1 (NE): seaplane and g650
@@ -131,8 +131,8 @@ export const PLANE_DIRECTION_COLS: Record<string, { col: number; mirrorX: boolea
 export const COL1_OVERRIDE_PLANE_TYPES = ['seaplane', 'g650'];
 export const COL1_DIRECTION_OVERRIDES: Record<string, { col: number; mirrorX: boolean; mirrorY: boolean; baseAngle: number }> = {
   'ne': { col: 3, mirrorX: true, mirrorY: false, baseAngle: -Math.PI / 4 - 0.69 },        // Use N sprite rotated for NE
-  'se': { col: 3, mirrorX: true, mirrorY: true, baseAngle: (3 * Math.PI) / 4 - 0.78 },    // Use N sprite rotated for SE (30° clockwise)
-  'nw': { col: 3, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 2 },         // Use N sprite (facing 270°) without mirroring, rotation handles NW
+  'se': { col: 3, mirrorX: true, mirrorY: true, baseAngle: (3 * Math.PI) / 4 - 0.78 },    // Use N sprite rotated for SE (30Â° clockwise)
+  'nw': { col: 3, mirrorX: false, mirrorY: false, baseAngle: (3 * Math.PI) / 2 },         // Use N sprite (facing 270Â°) without mirroring, rotation handles NW
 };
 // Plane scale factors by type (larger planes are bigger)
 // Scaled down 20% from previous values
@@ -303,193 +303,3 @@ export const NON_LIT_BUILDING_TYPES = new Set(['grass', 'empty', 'water', 'road'
 export const RESIDENTIAL_BUILDING_TYPES = new Set(['house_small', 'house_medium', 'mansion', 'apartment_low', 'apartment_high']);
 export const COMMERCIAL_BUILDING_TYPES = new Set(['shop_small', 'shop_medium', 'office_low', 'office_high', 'mall']);
 
-// Cloud system constants
-export const CLOUD_MIN_ZOOM = 0.2;                    // Minimum zoom to show clouds (always visible when not super zoomed out)
-export const CLOUD_MAX_ZOOM = 1.0;                    // Zoom level above which clouds start to fade when zoomed in (focus on city)
-export const CLOUD_FADE_ZOOM = 1.6;                   // Zoom level at which clouds are fully invisible when zoomed in
-export const CLOUD_MAX_COVERAGE = 0.35;               // Viewport fraction (0–1) above which clouds start to fade (e.g. 35% covered)
-export const CLOUD_COVERAGE_FADE_END = 0.7;           // At this coverage fraction, clouds are fully faded (e.g. 70% covered)
-export const CLOUD_MAX_COUNT = 18;                    // Maximum clouds on screen (increased for diversity)
-export const CLOUD_MAX_COUNT_MOBILE = 10;             // Fewer clouds on mobile for performance
-export const CLOUD_SPAWN_INTERVAL = 2.5;              // Seconds between cloud spawn attempts
-export const CLOUD_SPAWN_INTERVAL_MOBILE = 4.5;       // Slower spawning on mobile
-export const CLOUD_SPEED_MIN = 8;                     // Minimum cloud drift speed (pixels/second)
-export const CLOUD_SPEED_MAX = 24;                    // Maximum cloud drift speed (cirrus moves faster)
-export const CLOUD_SCALE_MIN = 0.5;                   // Minimum cloud scale
-export const CLOUD_SCALE_MAX = 1.8;                   // Maximum cloud scale
-export const CLOUD_PUFF_COUNT_MIN = 4;                // Minimum puffs per cloud (cumulus)
-export const CLOUD_PUFF_COUNT_MAX = 10;               // Maximum puffs per cloud
-export const CLOUD_PUFF_SIZE_MIN = 20;                // Minimum puff radius
-export const CLOUD_PUFF_SIZE_MAX = 55;                // Maximum puff radius
-export const CLOUD_WIDTH = 150;                       // Approximate cloud width for spawn offset
-export const CLOUD_DESPAWN_MARGIN = 300;              // Distance past viewport to despawn clouds
-// Wind direction: clouds drift from southwest to northeast (isometric perspective)
-export const CLOUD_WIND_ANGLE = -Math.PI / 4;         // ~-45 degrees (southwest to northeast)
-// Parallax effect: higher clouds move faster
-export const CLOUD_LAYER_SPEEDS = [0.7, 1.0, 1.4];    // Speed multipliers for low/mid/high layers
-export const CLOUD_LAYER_OPACITY = [0.85, 1.0, 0.9];  // Opacity multipliers for layers
-// Night darkening - clouds get slightly darker at night
-export const CLOUD_NIGHT_OPACITY_MULT = 0.6;          // Clouds are less visible at night
-export const DEFAULT_CLOUD_WEATHER_MODE: CloudWeatherMode = 'clear';
-export const CLOUD_WEATHER_CHANGE_INTERVAL = 15; // seconds between weather rolls while simulation is running
-
-type LightningProfile = 'none' | 'rare' | 'rapid';
-
-export const CLOUD_WEATHER_CONFIG: Record<CloudWeatherMode, {
-  showClouds: boolean;
-  cloudCountMultiplier: number;
-  spawnIntervalMultiplier: number;
-  opacityMultiplier: number;
-  scaleMultiplier: number;
-  typeWeightMultiplier: Record<CloudType, number>;
-  palette: 'light' | 'storm' | 'severe';
-  lightningProfile: LightningProfile;
-}> = {
-  clear: {
-    showClouds: false,
-    cloudCountMultiplier: 0,
-    spawnIntervalMultiplier: 1,
-    opacityMultiplier: 0,
-    scaleMultiplier: 1,
-    typeWeightMultiplier: {
-      cumulus: 0,
-      stratus: 0,
-      cirrus: 0,
-      cumulonimbus: 0,
-      altocumulus: 0,
-    },
-    palette: 'light',
-    lightningProfile: 'none',
-  },
-  light_clouds: {
-    showClouds: true,
-    cloudCountMultiplier: 0.45,
-    spawnIntervalMultiplier: 1.6,
-    opacityMultiplier: 0.35,
-    scaleMultiplier: 0.95,
-    typeWeightMultiplier: {
-      cumulus: 1.0,
-      stratus: 0.35,
-      cirrus: 1.25,
-      cumulonimbus: 0,
-      altocumulus: 1.0,
-    },
-    palette: 'light',
-    lightningProfile: 'none',
-  },
-  storm: {
-    showClouds: true,
-    cloudCountMultiplier: 0.72,
-    spawnIntervalMultiplier: 1.15,
-    opacityMultiplier: 1.3,
-    scaleMultiplier: 1.1,
-    typeWeightMultiplier: {
-      cumulus: 0,
-      stratus: 1.5,
-      cirrus: 0,
-      cumulonimbus: 1.9,
-      altocumulus: 0.6,
-    },
-    palette: 'storm',
-    lightningProfile: 'rare',
-  },
-  severe_storm: {
-    showClouds: true,
-    cloudCountMultiplier: 0.82,
-    spawnIntervalMultiplier: 1.0,
-    opacityMultiplier: 1.75,
-    scaleMultiplier: 1.2,
-    typeWeightMultiplier: {
-      cumulus: 0,
-      stratus: 1.2,
-      cirrus: 0,
-      cumulonimbus: 2.3,
-      altocumulus: 0.25,
-    },
-    palette: 'severe',
-    lightningProfile: 'rapid',
-  },
-};
-
-export const CLOUD_LIGHTNING_CONFIG: Record<LightningProfile, {
-  minInterval: number;
-  maxInterval: number;
-  durationMin: number;
-  durationMax: number;
-  flashOpacityMin: number;
-  flashOpacityMax: number;
-}> = {
-  none: {
-    minInterval: 0,
-    maxInterval: 0,
-    durationMin: 0,
-    durationMax: 0,
-    flashOpacityMin: 0,
-    flashOpacityMax: 0,
-  },
-  rare: {
-    minInterval: 11,
-    maxInterval: 19,
-    durationMin: 0.16,
-    durationMax: 0.28,
-    flashOpacityMin: 0.22,
-    flashOpacityMax: 0.38,
-  },
-  rapid: {
-    minInterval: 3.2,
-    maxInterval: 6.4,
-    durationMin: 0.12,
-    durationMax: 0.22,
-    flashOpacityMin: 0.35,
-    flashOpacityMax: 0.58,
-  },
-};
-
-export const CLOUD_WEATHER_PROBABILITY_SPLIT: Array<{ mode: CloudWeatherMode; cumulativeProbability: number }> = [
-  { mode: 'clear', cumulativeProbability: 0.4 },
-  { mode: 'light_clouds', cumulativeProbability: 0.7 },
-  { mode: 'storm', cumulativeProbability: 0.9 },
-  { mode: 'severe_storm', cumulativeProbability: 1.0 },
-];
-
-// =============================================================================
-// CLOUD TYPE CONFIGURATION - climate diversity and meteorological variety
-// =============================================================================
-// Spawn weights by time of day (hour 0-23): [cumulus, stratus, cirrus, cumulonimbus, altocumulus]
-// Morning (6-9): More stratus/fog lifting, some altocumulus
-// Midday (10-16): Cumulus dominant (fair weather), occasional cumulonimbus (afternoon storms)
-// Evening (17-20): More altocumulus, stratus building, dramatic cumulonimbus at sunset
-// Night (21-5): Cirrus and stratus more common (harder to see but add atmosphere)
-export const CLOUD_TYPE_WEIGHTS_BY_HOUR: Record<number, [number, number, number, number, number]> = {
-  0: [2, 4, 5, 0, 3],  1: [2, 4, 5, 0, 3],  2: [2, 4, 5, 0, 3],  3: [2, 4, 5, 0, 3],
-  4: [2, 4, 5, 0, 3],  5: [3, 5, 4, 0, 4],  // Pre-dawn: stratus, cirrus
-  6: [4, 6, 3, 0, 5],  7: [5, 5, 3, 0, 5],  8: [6, 4, 3, 0, 5],  9: [7, 3, 3, 0, 4],  // Morning: stratus burns off, cumulus builds
-  10: [8, 2, 4, 1, 4], 11: [9, 2, 4, 1, 3], 12: [9, 2, 4, 2, 3], 13: [8, 2, 4, 3, 3],  // Midday: cumulus dominant, afternoon storm chance
-  14: [8, 2, 4, 3, 3], 15: [7, 2, 4, 3, 4], 16: [6, 3, 4, 2, 4],  // Late afternoon: cumulonimbus
-  17: [5, 4, 4, 2, 5], 18: [4, 5, 4, 1, 6], 19: [3, 5, 5, 1, 5],  // Evening: altocumulus, stratus
-  20: [2, 5, 5, 0, 4], 21: [2, 4, 5, 0, 3], 22: [2, 4, 5, 0, 3], 23: [2, 4, 5, 0, 3],  // Night: cirrus, stratus
-};
-
-// Fallback weights when hour not in map
-export const CLOUD_TYPE_WEIGHTS_DEFAULT: [number, number, number, number, number] = [6, 3, 4, 1, 4];
-
-// Cloud types in order for the weights array
-export const CLOUD_TYPES_ORDERED = ['cumulus', 'stratus', 'cirrus', 'cumulonimbus', 'altocumulus'] as const;
-
-// Per-type visual configuration: opacity range, layer restrictions, speed modifier, scale range
-// layer 0=low only, 1=mid only, 2=high only, or -1=any
-export const CLOUD_TYPE_CONFIG: Record<string, {
-  opacityMin: number; opacityMax: number;
-  layerRestriction: number;  // -1 = any layer, 0/1/2 = only that layer
-  speedMult: number;        // 0.8 = slower, 1.2 = faster (cirrus moves fast)
-  scaleMin: number; scaleMax: number;
-  puffCountMin: number; puffCountMax: number;
-  // Puff shape: stretchX, stretchY (1=round, >1=elongated in that axis)
-  puffStretchX: [number, number]; puffStretchY: [number, number];
-}> = {
-  cumulus:    { opacityMin: 0.2,  opacityMax: 0.4,  layerRestriction: -1, speedMult: 1.0,  scaleMin: 0.7, scaleMax: 1.5, puffCountMin: 5, puffCountMax: 9,  puffStretchX: [1, 1],   puffStretchY: [1, 1] },
-  stratus:    { opacityMin: 0.25, opacityMax: 0.45, layerRestriction: 0,  speedMult: 0.85, scaleMin: 1.0, scaleMax: 1.6, puffCountMin: 8, puffCountMax: 14, puffStretchX: [2, 3],   puffStretchY: [0.4, 0.6] },  // Flat, wide, layered
-  cirrus:     { opacityMin: 0.06, opacityMax: 0.18, layerRestriction: 2,  speedMult: 1.5,  scaleMin: 0.8, scaleMax: 1.4, puffCountMin: 2, puffCountMax: 5,  puffStretchX: [2, 4],   puffStretchY: [0.3, 0.5] },  // Wispy, high, faint
-  cumulonimbus: { opacityMin: 0.3, opacityMax: 0.5, layerRestriction: 0,  speedMult: 0.7,  scaleMin: 1.2, scaleMax: 1.9, puffCountMin: 6, puffCountMax: 10, puffStretchX: [1, 1.2], puffStretchY: [1, 1.3] },  // Towering, low, dramatic
-  altocumulus: { opacityMin: 0.15, opacityMax: 0.35, layerRestriction: 1,  speedMult: 1.1,  scaleMin: 0.6, scaleMax: 1.2, puffCountMin: 4, puffCountMax: 8,  puffStretchX: [1, 1.5], puffStretchY: [0.7, 1] },  // Patchy, mid-level
-};

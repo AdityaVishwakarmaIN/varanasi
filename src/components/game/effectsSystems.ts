@@ -29,6 +29,8 @@ import {
   SMOG_MAX_PARTICLES_PER_FACTORY_MOBILE,
   SMOG_MIN_ZOOM,
   FIREWORK_MIN_ZOOM,
+} from './constants';
+import {
   CLOUD_MIN_ZOOM,
   CLOUD_MAX_ZOOM,
   CLOUD_FADE_ZOOM,
@@ -40,12 +42,6 @@ import {
   CLOUD_SPAWN_INTERVAL_MOBILE,
   CLOUD_SPEED_MIN,
   CLOUD_SPEED_MAX,
-  CLOUD_SCALE_MIN,
-  CLOUD_SCALE_MAX,
-  CLOUD_PUFF_COUNT_MIN,
-  CLOUD_PUFF_COUNT_MAX,
-  CLOUD_PUFF_SIZE_MIN,
-  CLOUD_PUFF_SIZE_MAX,
   CLOUD_WIDTH,
   CLOUD_DESPAWN_MARGIN,
   CLOUD_WIND_ANGLE,
@@ -60,7 +56,7 @@ import {
   CLOUD_TYPE_WEIGHTS_DEFAULT,
   CLOUD_TYPES_ORDERED,
   CLOUD_TYPE_CONFIG,
-} from './constants';
+} from './cloudWeatherConfig';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
 
