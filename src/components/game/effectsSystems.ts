@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Firework, FactorySmog, Cloud, CloudPuff, CloudType, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
+import { Firework, FactorySmog, Cloud, CloudPuff, CloudType, LightningStrike, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { BuildingType } from '@/types/game';
 import {
   FIREWORK_BUILDINGS,
@@ -52,6 +52,10 @@ import {
   CLOUD_LAYER_SPEEDS,
   CLOUD_LAYER_OPACITY,
   CLOUD_NIGHT_OPACITY_MULT,
+  CLOUD_WEATHER_CHANGE_INTERVAL,
+  CLOUD_WEATHER_CONFIG,
+  CLOUD_LIGHTNING_CONFIG,
+  CLOUD_WEATHER_PROBABILITY_SPLIT,
   CLOUD_TYPE_WEIGHTS_BY_HOUR,
   CLOUD_TYPE_WEIGHTS_DEFAULT,
   CLOUD_TYPES_ORDERED,
@@ -72,6 +76,11 @@ export interface EffectsSystemRefs {
   cloudsRef: React.MutableRefObject<Cloud[]>;
   cloudIdRef: React.MutableRefObject<number>;
   cloudSpawnTimerRef: React.MutableRefObject<number>;
+  lightningStrikeRef: React.MutableRefObject<LightningStrike | null>;
+  lightningCooldownRef: React.MutableRefObject<number>;
+  lightningIdRef: React.MutableRefObject<number>;
+  weatherChangeTimerRef: React.MutableRefObject<number>;
+  weatherInitializedRef: React.MutableRefObject<boolean>;
 }
 
 export interface EffectsSystemState {
@@ -96,6 +105,11 @@ export function useEffectsSystems(
     cloudsRef,
     cloudIdRef,
     cloudSpawnTimerRef,
+    lightningStrikeRef,
+    lightningCooldownRef,
+    lightningIdRef,
+    weatherChangeTimerRef,
+    weatherInitializedRef,
   } = refs;
 
   const { worldStateRef, gridVersionRef, isMobile } = systemState;
@@ -634,18 +648,32 @@ export function useEffectsSystems(
     ctx.restore();
   }, [worldStateRef, factorySmogRef]);
 
-  // Pick cloud type based on time-of-day weights (climate diversity)
+  const pickWeatherMode = useCallback(() => {
+    const roll = Math.random();
+    return CLOUD_WEATHER_PROBABILITY_SPLIT.find((entry) => roll <= entry.cumulativeProbability)?.mode ?? 'severe_storm';
+  }, []);
+
+  // Pick cloud type based on time-of-day weights and the active weather mode.
   const pickCloudType = useCallback((currentHour: number): CloudType => {
     const hour = Math.floor(currentHour) % 24;
-    const weights = CLOUD_TYPE_WEIGHTS_BY_HOUR[hour] ?? CLOUD_TYPE_WEIGHTS_DEFAULT;
-    const total = weights.reduce((a, b) => a + b, 0);
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+    const baseWeights = CLOUD_TYPE_WEIGHTS_BY_HOUR[hour] ?? CLOUD_TYPE_WEIGHTS_DEFAULT;
+    const weights = baseWeights.map((weight, index) => (
+      weight * weatherConfig.typeWeightMultiplier[CLOUD_TYPES_ORDERED[index]]
+    ));
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+
+    if (total <= 0) {
+      return 'cumulus';
+    }
+
     let r = Math.random() * total;
     for (let i = 0; i < CLOUD_TYPES_ORDERED.length; i++) {
       r -= weights[i];
       if (r <= 0) return CLOUD_TYPES_ORDERED[i];
     }
     return CLOUD_TYPES_ORDERED[0];
-  }, []);
+  }, [worldStateRef]);
 
   // Small jitter helper - keeps patterns coherent while adding natural variation
   const jitter = (base: number, range: number) => base + (Math.random() - 0.5) * range;
@@ -781,23 +809,41 @@ export function useEffectsSystems(
     return puffs;
   }, []);
 
+  const getRandomLightningInterval = useCallback((profile: 'none' | 'rare' | 'rapid'): number => {
+    if (profile === 'none') return Number.POSITIVE_INFINITY;
+
+    const cfg = CLOUD_LIGHTNING_CONFIG[profile];
+    return cfg.minInterval + Math.random() * (cfg.maxInterval - cfg.minInterval);
+  }, []);
+
+  const getWeatherAdjustedOpacity = useCallback((cloudType: CloudType, baseOpacity: number) => {
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+    const stormBoost = (cloudType === 'stratus' || cloudType === 'cumulonimbus') ? 0.08 : 0;
+    return Math.min(0.9, baseOpacity * weatherConfig.opacityMultiplier + stormBoost);
+  }, [worldStateRef]);
+
   // Spawn a new cloud - at random upwind edge, or at overridePosition (for cloud groups).
   // overrideCloudType: when spawning a companion in a group, use same type as lead for coherent banks.
   const spawnCloud = useCallback((currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }) => {
     const { canvasSize, zoom, offset } = worldStateRef.current;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+
+    if (!weatherConfig.showClouds) {
+      return null;
+    }
+
     const cloudType = opts?.cloudType ?? pickCloudType(currentHour);
     const cfg = CLOUD_TYPE_CONFIG[cloudType];
-    
+
     const viewWidth = canvasSize.width / (dpr * zoom);
     const viewHeight = canvasSize.height / (dpr * zoom);
     const viewLeft = -offset.x / zoom;
     const viewTop = -offset.y / zoom;
-    
+
     const windX = Math.cos(CLOUD_WIND_ANGLE);
     const windY = Math.sin(CLOUD_WIND_ANGLE);
-    
+
     // Use override (for group companion) or compute from edge
     let spawnX: number;
     let spawnY: number;
@@ -811,12 +857,15 @@ export function useEffectsSystems(
       spawnX = viewLeft + Math.random() * viewWidth * 0.5;
       spawnY = viewTop + viewHeight + CLOUD_WIDTH * 0.5;
     }
-    
+
     const layer = cfg.layerRestriction >= 0 ? cfg.layerRestriction : Math.floor(Math.random() * 3);
     const speed = (CLOUD_SPEED_MIN + Math.random() * (CLOUD_SPEED_MAX - CLOUD_SPEED_MIN)) * cfg.speedMult;
-    const scale = cfg.scaleMin + Math.random() * (cfg.scaleMax - cfg.scaleMin);
-    const opacity = cfg.opacityMin + Math.random() * (cfg.opacityMax - cfg.opacityMin);
-    
+    const scale = (cfg.scaleMin + Math.random() * (cfg.scaleMax - cfg.scaleMin)) * weatherConfig.scaleMultiplier;
+    const opacity = getWeatherAdjustedOpacity(
+      cloudType,
+      cfg.opacityMin + Math.random() * (cfg.opacityMax - cfg.opacityMin)
+    );
+
     const cloud: Cloud = {
       id: cloudIdRef.current++,
       x: spawnX,
@@ -829,36 +878,118 @@ export function useEffectsSystems(
       layer,
       cloudType,
     };
-    
+
     cloudsRef.current.push(cloud);
-    return { x: spawnX, y: spawnY, cloudType }; // For potential group companion (same type)
-  }, [worldStateRef, cloudIdRef, cloudsRef, generateCloudPuffs, pickCloudType]);
+    return { x: spawnX, y: spawnY, cloudType };
+  }, [worldStateRef, cloudIdRef, cloudsRef, generateCloudPuffs, getWeatherAdjustedOpacity, pickCloudType]);
+
+  const createLightningPath = useCallback((anchorX: number, anchorY: number, currentZoom: number): { x: number; y: number }[] => {
+    const segmentCount = isMobile ? 5 : 7;
+    const maxReach = (isMobile ? 150 : 220) / Math.max(currentZoom, 0.35);
+    const stepY = maxReach / segmentCount;
+    const path = [{ x: anchorX, y: anchorY }];
+
+    let currentX = anchorX;
+    let currentY = anchorY;
+
+    for (let i = 0; i < segmentCount; i++) {
+      currentX += (Math.random() - 0.5) * (isMobile ? 18 : 28);
+      currentY += stepY + Math.random() * 10;
+      path.push({ x: currentX, y: currentY });
+    }
+
+    return path;
+  }, [isMobile]);
+
+  const maybeSpawnLightning = useCallback(() => {
+    const { canvasSize, zoom, offset } = worldStateRef.current;
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+    const lightningProfile = weatherConfig.lightningProfile;
+
+    if (lightningProfile === 'none' || cloudsRef.current.length === 0) {
+      return;
+    }
+
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const viewWidth = canvasSize.width / (dpr * zoom);
+    const viewHeight = canvasSize.height / (dpr * zoom);
+    const viewLeft = -offset.x / zoom;
+    const viewTop = -offset.y / zoom;
+    const viewRight = viewLeft + viewWidth;
+    const viewBottom = viewTop + viewHeight;
+
+    const candidateClouds = cloudsRef.current.filter((cloud) => (
+      cloud.x >= viewLeft &&
+      cloud.x <= viewRight &&
+      cloud.y >= viewTop &&
+      cloud.y <= viewBottom &&
+      (cloud.cloudType === 'cumulonimbus' || cloud.cloudType === 'stratus')
+    ));
+
+    if (candidateClouds.length === 0) {
+      return;
+    }
+
+    const cloud = candidateClouds[Math.floor(Math.random() * candidateClouds.length)];
+    const lightningConfig = CLOUD_LIGHTNING_CONFIG[lightningProfile];
+    const duration = lightningConfig.durationMin + Math.random() * (lightningConfig.durationMax - lightningConfig.durationMin);
+    const flashOpacity = lightningConfig.flashOpacityMin + Math.random() * (lightningConfig.flashOpacityMax - lightningConfig.flashOpacityMin);
+    const anchorX = cloud.x + (Math.random() - 0.5) * 20 * cloud.scale;
+    const anchorY = cloud.y + 18 * cloud.scale;
+
+    lightningStrikeRef.current = {
+      id: lightningIdRef.current++,
+      age: 0,
+      duration,
+      flashOpacity,
+      lineOpacity: Math.min(1, flashOpacity + 0.2),
+      lineWidth: isMobile ? 1.8 : 2.4,
+      path: createLightningPath(anchorX, anchorY, zoom),
+    };
+
+    lightningCooldownRef.current = getRandomLightningInterval(lightningProfile);
+  }, [createLightningPath, getRandomLightningInterval, isMobile, lightningCooldownRef, lightningIdRef, lightningStrikeRef, cloudsRef, worldStateRef]);
 
   // Update clouds - spawn new ones and move existing
   const updateClouds = useCallback((delta: number, currentHour: number) => {
     const { canvasSize, zoom, offset, speed: gameSpeed } = worldStateRef.current;
-    
+
     // Don't update when game is paused
     if (gameSpeed === 0) {
       return;
     }
-    
-    // Skip clouds when very zoomed out
-    if (zoom < CLOUD_MIN_ZOOM) {
+
+    if (!weatherInitializedRef.current) {
+      worldStateRef.current.cloudWeatherMode = pickWeatherMode();
+      weatherInitializedRef.current = true;
+      weatherChangeTimerRef.current = 0;
+    } else {
+      weatherChangeTimerRef.current += delta;
+      if (weatherChangeTimerRef.current >= CLOUD_WEATHER_CHANGE_INTERVAL) {
+        worldStateRef.current.cloudWeatherMode = pickWeatherMode();
+        weatherChangeTimerRef.current = 0;
+      }
+    }
+
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+
+    if (!weatherConfig.showClouds || zoom < CLOUD_MIN_ZOOM) {
       cloudsRef.current = [];
+      lightningStrikeRef.current = null;
+      lightningCooldownRef.current = 0;
       return;
     }
-    
-    const maxClouds = isMobile ? CLOUD_MAX_COUNT_MOBILE : CLOUD_MAX_COUNT;
-    const spawnInterval = isMobile ? CLOUD_SPAWN_INTERVAL_MOBILE : CLOUD_SPAWN_INTERVAL;
-    
+
+    const maxClouds = Math.max(1, Math.floor((isMobile ? CLOUD_MAX_COUNT_MOBILE : CLOUD_MAX_COUNT) * weatherConfig.cloudCountMultiplier));
+    const spawnInterval = (isMobile ? CLOUD_SPAWN_INTERVAL_MOBILE : CLOUD_SPAWN_INTERVAL) * weatherConfig.spawnIntervalMultiplier;
+
     // Spawn new clouds (type varies by time of day). Sometimes spawn in pairs for natural cloud banks/groups.
     cloudSpawnTimerRef.current += delta;
     if (cloudSpawnTimerRef.current >= spawnInterval && cloudsRef.current.length < maxClouds) {
       cloudSpawnTimerRef.current = 0;
       const pos = spawnCloud(currentHour);
       // 28% chance to spawn a companion cloud nearby for natural cloud banks (same type implied by same hour/weights)
-      if (cloudsRef.current.length < maxClouds && Math.random() < 0.28) {
+      if (pos && cloudsRef.current.length < maxClouds && Math.random() < 0.28) {
         // Companion upwind and slightly offset (so they drift as a loose group)
         // Wind is NE: offset backwards (SW) = negative in wind direction
         const windX = Math.cos(CLOUD_WIND_ANGLE);
@@ -872,7 +1003,7 @@ export function useEffectsSystems(
         cloudSpawnTimerRef.current = -spawnInterval * 0.4;
       }
     }
-    
+
     // Update existing clouds
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const viewWidth = canvasSize.width / (dpr * zoom);
@@ -892,13 +1023,76 @@ export function useEffectsSystems(
           cloud.y < viewTop - CLOUD_DESPAWN_MARGIN) {
         return false;
       }
-      
+
       return true;
     });
-  }, [worldStateRef, cloudsRef, cloudSpawnTimerRef, isMobile, spawnCloud]);
+
+    const lightningProfile = weatherConfig.lightningProfile;
+    if (lightningProfile === 'none') {
+      lightningStrikeRef.current = null;
+      lightningCooldownRef.current = 0;
+      return;
+    }
+
+    if (lightningStrikeRef.current) {
+      lightningStrikeRef.current.age += delta;
+      if (lightningStrikeRef.current.age >= lightningStrikeRef.current.duration) {
+        lightningStrikeRef.current = null;
+      }
+    }
+
+    if (!lightningStrikeRef.current) {
+      if (lightningCooldownRef.current <= 0) {
+        lightningCooldownRef.current = getRandomLightningInterval(lightningProfile);
+      }
+
+      lightningCooldownRef.current -= delta;
+      if (lightningCooldownRef.current <= 0) {
+        maybeSpawnLightning();
+      }
+    }
+  }, [worldStateRef, cloudsRef, cloudSpawnTimerRef, getRandomLightningInterval, isMobile, lightningCooldownRef, lightningStrikeRef, maybeSpawnLightning, pickWeatherMode, spawnCloud, weatherChangeTimerRef, weatherInitializedRef]);
 
   // Get gradient color stops for a cloud type and portion (for cumulonimbus base/top)
   const getCloudGradientStops = (cloudType: CloudType, portion: 'base' | 'top' | undefined, puffOpacity: number): [number, string][] => {
+    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
+
+    if (weatherConfig.palette === 'storm') {
+      if (portion === 'top') {
+        return [
+          [0, `rgba(168, 174, 188, ${puffOpacity})`],
+          [0.45, `rgba(132, 138, 152, ${puffOpacity * 0.8})`],
+          [0.75, `rgba(95, 101, 114, ${puffOpacity * 0.35})`],
+          [1, `rgba(72, 78, 90, 0)`],
+        ];
+      }
+
+      return [
+        [0, `rgba(72, 78, 92, ${puffOpacity})`],
+        [0.4, `rgba(58, 63, 76, ${puffOpacity * 0.88})`],
+        [0.7, `rgba(42, 46, 58, ${puffOpacity * 0.45})`],
+        [1, `rgba(28, 31, 40, 0)`],
+      ];
+    }
+
+    if (weatherConfig.palette === 'severe') {
+      if (portion === 'top') {
+        return [
+          [0, `rgba(138, 144, 158, ${puffOpacity})`],
+          [0.4, `rgba(104, 110, 124, ${puffOpacity * 0.8})`],
+          [0.7, `rgba(70, 75, 88, ${puffOpacity * 0.35})`],
+          [1, `rgba(42, 46, 56, 0)`],
+        ];
+      }
+
+      return [
+        [0, `rgba(34, 37, 46, ${puffOpacity})`],
+        [0.4, `rgba(24, 27, 34, ${puffOpacity * 0.92})`],
+        [0.7, `rgba(15, 17, 22, ${puffOpacity * 0.5})`],
+        [1, `rgba(8, 10, 14, 0)`],
+      ];
+    }
+
     switch (cloudType) {
       case 'cumulus':
         // Bright white, fair-weather
@@ -970,12 +1164,13 @@ export function useEffectsSystems(
 
   // Draw clouds - distinct rendering per cloud type for climate diversity
   const drawClouds = useCallback((ctx: CanvasRenderingContext2D, currentHour: number) => {
-    const { offset: currentOffset, zoom: currentZoom, canvasSize } = worldStateRef.current;
+    const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    
+    const weatherConfig = CLOUD_WEATHER_CONFIG[cloudWeatherMode];
+
     // Skip if no clouds or zoomed out too far
-    if (cloudsRef.current.length === 0 || currentZoom < CLOUD_MIN_ZOOM) {
+    if (!weatherConfig.showClouds || cloudsRef.current.length === 0 || currentZoom < CLOUD_MIN_ZOOM) {
       return;
     }
     
@@ -1058,7 +1253,8 @@ export function useEffectsSystems(
       }
       
       // Shadow/depth (skip for cirrus - too wispy; reduce for stratus)
-      const shadowMult = cloud.cloudType === 'cirrus' ? 0 : cloud.cloudType === 'stratus' ? 0.1 : 0.15;
+      const baseShadowMult = weatherConfig.palette === 'light' ? 0.15 : 0.08;
+      const shadowMult = cloud.cloudType === 'cirrus' ? 0 : cloud.cloudType === 'stratus' ? baseShadowMult * 0.7 : baseShadowMult;
       if (shadowMult > 0) {
         const shadowY = cloud.y + 8 * cloud.scale;
         for (const puff of cloud.puffs) {
@@ -1071,16 +1267,48 @@ export function useEffectsSystems(
           if (shadowOpacity <= 0.01) continue;
           
           const grad = ctx.createRadialGradient(puffX, puffY, 0, puffX, puffY, puffSize * Math.max(stretchX, stretchY));
-          grad.addColorStop(0, `rgba(160, 168, 185, ${shadowOpacity})`);
-          grad.addColorStop(0.5, `rgba(175, 182, 198, ${shadowOpacity * 0.5})`);
-          grad.addColorStop(1, `rgba(190, 195, 208, 0)`);
+          if (weatherConfig.palette === 'light') {
+            grad.addColorStop(0, `rgba(160, 168, 185, ${shadowOpacity})`);
+            grad.addColorStop(0.5, `rgba(175, 182, 198, ${shadowOpacity * 0.5})`);
+            grad.addColorStop(1, `rgba(190, 195, 208, 0)`);
+          } else {
+            grad.addColorStop(0, `rgba(18, 20, 28, ${shadowOpacity})`);
+            grad.addColorStop(0.5, `rgba(30, 34, 44, ${shadowOpacity * 0.5})`);
+            grad.addColorStop(1, `rgba(48, 54, 66, 0)`);
+          }
           drawPuff(ctx, puffX, puffY, puffSize, stretchX, stretchY, grad);
         }
       }
     }
-    
+
+    if (lightningStrikeRef.current) {
+      const strike = lightningStrikeRef.current;
+      const pulse = Math.max(0, 1 - strike.age / Math.max(strike.duration, 0.001));
+
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${strike.lineOpacity * pulse})`;
+      ctx.shadowColor = `rgba(255, 255, 255, ${0.6 * pulse})`;
+      ctx.shadowBlur = isMobile ? 10 : 16;
+      ctx.lineWidth = strike.lineWidth;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(strike.path[0].x, strike.path[0].y);
+      for (let i = 1; i < strike.path.length; i++) {
+        ctx.lineTo(strike.path[i].x, strike.path[i].y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = `rgba(255, 255, 255, ${strike.flashOpacity * pulse})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
     ctx.restore();
-  }, [worldStateRef, cloudsRef]);
+  }, [worldStateRef, cloudsRef, isMobile, lightningStrikeRef]);
 
   return {
     updateFireworks,

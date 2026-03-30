@@ -32,6 +32,7 @@ import {
   Pedestrian,
   Firework,
   Cloud,
+  LightningStrike,
   WorldRenderState,
 } from '@/components/game/types';
 import {
@@ -41,6 +42,7 @@ import {
   WATER_ASSET_PATH,
   AIRPLANE_SPRITE_SRC,
   TRAIN_MIN_ZOOM,
+  DEFAULT_CLOUD_WEATHER_MODE,
 } from '@/components/game/constants';
 import {
   gridToScreen,
@@ -241,6 +243,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const cloudsRef = useRef<Cloud[]>([]);
   const cloudIdRef = useRef(0);
   const cloudSpawnTimerRef = useRef(0);
+  const lightningStrikeRef = useRef<LightningStrike | null>(null);
+  const lightningCooldownRef = useRef(0);
+  const lightningIdRef = useRef(0);
+  const weatherChangeTimerRef = useRef(0);
+  const weatherInitializedRef = useRef(false);
 
   // Traffic light system timer (cumulative time for cycling through states)
   const trafficLightTimerRef = useRef(0);
@@ -282,6 +289,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     zoom,
     speed,
     canvasSize: { width: 1200, height: 800 },
+    cloudWeatherMode: DEFAULT_CLOUD_WEATHER_MODE,
   });
   const [roadDrawDirection, setRoadDrawDirection] = useState<'h' | 'v' | null>(null);
   const placedRoadTilesRef = useRef<Set<string>>(new Set());
@@ -451,6 +459,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     cloudsRef,
     cloudIdRef,
     cloudSpawnTimerRef,
+    lightningStrikeRef,
+    lightningCooldownRef,
+    lightningIdRef,
+    weatherChangeTimerRef,
+    weatherInitializedRef,
   };
 
   const effectsSystemState: EffectsSystemState = {
@@ -581,6 +594,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     cloudsRef.current = [];
     cloudIdRef.current = 0;
     cloudSpawnTimerRef.current = 0;
+    lightningStrikeRef.current = null;
+    lightningCooldownRef.current = 0;
+    lightningIdRef.current = 0;
+    weatherChangeTimerRef.current = 0;
+    weatherInitializedRef.current = false;
+    worldStateRef.current.cloudWeatherMode = DEFAULT_CLOUD_WEATHER_MODE;
     
     // Reset traffic light timer
     trafficLightTimerRef.current = 0;

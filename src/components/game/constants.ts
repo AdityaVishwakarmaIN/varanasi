@@ -1,6 +1,6 @@
 import { BuildingType } from '@/games/isocity/types';
 import { DirectionMeta } from '@/core/types';
-import { CarDirection, TILE_WIDTH, TILE_HEIGHT } from './types';
+import { CarDirection, CloudType, CloudWeatherMode, TILE_WIDTH, TILE_HEIGHT } from './types';
 
 // Vehicle colors (duller/muted versions)
 export const CAR_COLORS = ['#d97777', '#d4a01f', '#2ba67a', '#4d84c8', '#9a6ac9'];
@@ -330,6 +330,127 @@ export const CLOUD_LAYER_SPEEDS = [0.7, 1.0, 1.4];    // Speed multipliers for l
 export const CLOUD_LAYER_OPACITY = [0.85, 1.0, 0.9];  // Opacity multipliers for layers
 // Night darkening - clouds get slightly darker at night
 export const CLOUD_NIGHT_OPACITY_MULT = 0.6;          // Clouds are less visible at night
+export const DEFAULT_CLOUD_WEATHER_MODE: CloudWeatherMode = 'clear';
+export const CLOUD_WEATHER_CHANGE_INTERVAL = 15; // seconds between weather rolls while simulation is running
+
+type LightningProfile = 'none' | 'rare' | 'rapid';
+
+export const CLOUD_WEATHER_CONFIG: Record<CloudWeatherMode, {
+  showClouds: boolean;
+  cloudCountMultiplier: number;
+  spawnIntervalMultiplier: number;
+  opacityMultiplier: number;
+  scaleMultiplier: number;
+  typeWeightMultiplier: Record<CloudType, number>;
+  palette: 'light' | 'storm' | 'severe';
+  lightningProfile: LightningProfile;
+}> = {
+  clear: {
+    showClouds: false,
+    cloudCountMultiplier: 0,
+    spawnIntervalMultiplier: 1,
+    opacityMultiplier: 0,
+    scaleMultiplier: 1,
+    typeWeightMultiplier: {
+      cumulus: 0,
+      stratus: 0,
+      cirrus: 0,
+      cumulonimbus: 0,
+      altocumulus: 0,
+    },
+    palette: 'light',
+    lightningProfile: 'none',
+  },
+  light_clouds: {
+    showClouds: true,
+    cloudCountMultiplier: 0.45,
+    spawnIntervalMultiplier: 1.6,
+    opacityMultiplier: 0.35,
+    scaleMultiplier: 0.95,
+    typeWeightMultiplier: {
+      cumulus: 1.0,
+      stratus: 0.35,
+      cirrus: 1.25,
+      cumulonimbus: 0,
+      altocumulus: 1.0,
+    },
+    palette: 'light',
+    lightningProfile: 'none',
+  },
+  storm: {
+    showClouds: true,
+    cloudCountMultiplier: 0.72,
+    spawnIntervalMultiplier: 1.15,
+    opacityMultiplier: 1.3,
+    scaleMultiplier: 1.1,
+    typeWeightMultiplier: {
+      cumulus: 0,
+      stratus: 1.5,
+      cirrus: 0,
+      cumulonimbus: 1.9,
+      altocumulus: 0.6,
+    },
+    palette: 'storm',
+    lightningProfile: 'rare',
+  },
+  severe_storm: {
+    showClouds: true,
+    cloudCountMultiplier: 0.82,
+    spawnIntervalMultiplier: 1.0,
+    opacityMultiplier: 1.75,
+    scaleMultiplier: 1.2,
+    typeWeightMultiplier: {
+      cumulus: 0,
+      stratus: 1.2,
+      cirrus: 0,
+      cumulonimbus: 2.3,
+      altocumulus: 0.25,
+    },
+    palette: 'severe',
+    lightningProfile: 'rapid',
+  },
+};
+
+export const CLOUD_LIGHTNING_CONFIG: Record<LightningProfile, {
+  minInterval: number;
+  maxInterval: number;
+  durationMin: number;
+  durationMax: number;
+  flashOpacityMin: number;
+  flashOpacityMax: number;
+}> = {
+  none: {
+    minInterval: 0,
+    maxInterval: 0,
+    durationMin: 0,
+    durationMax: 0,
+    flashOpacityMin: 0,
+    flashOpacityMax: 0,
+  },
+  rare: {
+    minInterval: 11,
+    maxInterval: 19,
+    durationMin: 0.16,
+    durationMax: 0.28,
+    flashOpacityMin: 0.22,
+    flashOpacityMax: 0.38,
+  },
+  rapid: {
+    minInterval: 3.2,
+    maxInterval: 6.4,
+    durationMin: 0.12,
+    durationMax: 0.22,
+    flashOpacityMin: 0.35,
+    flashOpacityMax: 0.58,
+  },
+};
+
+export const CLOUD_WEATHER_PROBABILITY_SPLIT: Array<{ mode: CloudWeatherMode; cumulativeProbability: number }> = [
+  { mode: 'clear', cumulativeProbability: 0.4 },
+  { mode: 'light_clouds', cumulativeProbability: 0.7 },
+  { mode: 'storm', cumulativeProbability: 0.9 },
+  { mode: 'severe_storm', cumulativeProbability: 1.0 },
+];
 
 // =============================================================================
 // CLOUD TYPE CONFIGURATION - climate diversity and meteorological variety

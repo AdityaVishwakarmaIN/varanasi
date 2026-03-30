@@ -478,6 +478,12 @@ export type CloudType =
   | 'cumulonimbus'  // Towering storm clouds (dark base, white top)
   | 'altocumulus';  // Mid-level patchy mackerel sky
 
+export type CloudWeatherMode =
+  | 'clear'
+  | 'light_clouds'
+  | 'storm'
+  | 'severe_storm';
+
 export type CloudPuff = {
   // Offset from cloud center (for multi-puff clouds)
   offsetX: number;
@@ -513,6 +519,16 @@ export type Cloud = {
   cloudType: CloudType;
 };
 
+export type LightningStrike = {
+  id: number;
+  age: number;
+  duration: number;
+  flashOpacity: number;
+  lineOpacity: number;
+  lineWidth: number;
+  path: { x: number; y: number }[];
+};
+
 // Direction metadata - re-export from core
 export type { DirectionMeta } from '@/core/types/grid';
 
@@ -524,6 +540,7 @@ export type WorldRenderState = {
   zoom: number;
   speed: number;
   canvasSize: { width: number; height: number };
+  cloudWeatherMode: CloudWeatherMode;
 };
 
 // Overlay modes for visualization

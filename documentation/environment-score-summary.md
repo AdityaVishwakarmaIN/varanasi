@@ -1,43 +1,69 @@
-# Environment Score Change Summary
+# Environment Scoring Summary
 
-## What changed
+## Commit
 
-- Reworked the environment score so there is no baseline value at startup.
-- Changed the base tree-coverage target for `100%` environment from `35%` to `25%`.
-- Kept parks as a positive influence and pollution as a negative influence.
-- Clamped the final environment score to the integer range `0..100`.
+- `80237c9` - `Adjust environment scoring and document changes`
 
-## Base environment mapping
+## Scope
 
-The tree-only mapping now uses playable tiles as the denominator.
+This summary only covers the environment scoring changes introduced in this commit.
 
-- `0%` tree coverage => `0` environment
-- `25%` tree coverage => `100` environment
-- Values in between are linearly interpolated and floored to an integer
-- Values above the target are capped at `100`
+## Main scoring changes
 
-## Playable tile denominator
+- Removed the old built-in environment baseline. New cities no longer start with an automatic positive score.
+- Replaced the previous formula with a dedicated `calculateEnvironmentScore()` helper in `src/lib/simulation.ts`.
+- Lowered the target green coverage for a max score from an effective `35%` tree-equivalent baseline to `25%`.
+- Water no longer contributes direct positive environment value.
+- Parks still help, but at half the weight of trees.
+- Pollution is now applied as a direct per-tile penalty.
+- Final environment is clamped to the integer range `0..100`.
 
-The score is based on playable map tiles in the simulation grid.
+## New formula
 
-- Water tiles are included
-- Ground tiles are included
-- Multi-tile placeholder `empty` cells are excluded
-- The black background outside the rendered map is not part of the grid and is not counted
+The score is now computed from four values:
 
-## Runtime behavior fix
+- `treeCount`
+- `parkCount`
+- `totalPollution`
+- `playableTileCount`
 
-Environment and other derived stats are now recalculated immediately after:
+Implementation summary:
 
-- placing buildings
-- bulldozing
-- terraforming land or water
-- upgrading service buildings
-- creating bridges after road or rail drags
+- Trees contribute `100` coverage units each.
+- Parks contribute `50` coverage units each.
+- Target coverage is `25` units per playable tile.
+- Green score = `floor((treeCount * 100 + parkCount * 50) * 100 / (playableTileCount * 25))`
+- Pollution penalty = `floor(totalPollution / playableTileCount)`
+- Final score = `clamp(greenScore - pollutionPenalty, 0, 100)`
 
-This prevents the top bar from showing stale environment values until a later simulation tick.
+## Tile counting rules
 
-## Key files touched
+Environment uses `playableTileCount`, not raw map area.
+
+- Tiles whose building type is `empty` are excluded.
+- Water tiles are included in the denominator.
+- Grass, trees, zoned tiles, service buildings, and other non-`empty` tiles are included.
+
+Practical effect:
+
+- Water makes it harder to reach a high environment score because it counts toward the map area target, but does not add green value by itself.
+
+## What no longer applies
+
+The old score effectively included:
+
+- a built-in `+50` baseline
+- direct positive contribution from water
+- a green ratio based on `(treeCount + waterCount + parkCount) / (size * size)`
+
+That model is gone. The new score is based on tree and park coverage over playable tiles, minus pollution.
+
+## Initialization changes
+
+- `createInitialStats()` now defaults environment to `0` instead of `75`.
+- `createInitialGameState()` immediately recalculates the starting environment from the generated terrain, so a new map starts with a real score based on its trees and playable area.
+- `generateRandomAdvancedCity()` now also uses the same environment formula instead of assigning a random environment number.
+
+## Key file touched
 
 - `src/lib/simulation.ts`
-- `src/context/GameContext.tsx`
