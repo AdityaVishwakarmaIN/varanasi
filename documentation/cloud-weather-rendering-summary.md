@@ -26,10 +26,12 @@
 - Spawning respects the per-mode density, opacity, and scale rules; storm modes favor cumulonimbus and stratus.
 - Lightning support renders a single short-lived bolt with a global flash and respects the viewport; cooldown logic is internal to the effect system.
 - The day/night SVG and all existing top-bar UI remain unchanged; no weather indicator is rendered outside the cloud system.
+- Scene lighting responds to weather changes by adjusting ambient daylight tints, alpha overlays, and light source intensities (see `day-night-lighting-summary.md`).
 
 ## Files
 
 - `src/components/game/cloudWeatherConfig.ts`
+- `src/components/game/cloudWeatherDimming.ts`
 - `src/components/game/types.ts`
 - `src/components/game/constants.ts`
 - `src/components/game/effectsSystems.ts`

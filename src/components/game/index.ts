@@ -2,6 +2,7 @@
 export * from './types';
 export * from './constants';
 export * from './cloudWeatherConfig';
+export * from './cloudWeatherDimming';
 export * from './utils';
 export * from './drawing';
 export * from './overlays';

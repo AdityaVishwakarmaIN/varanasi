@@ -6,48 +6,8 @@ import {
   RESIDENTIAL_BUILDING_TYPES,
   COMMERCIAL_BUILDING_TYPES,
 } from './constants';
+import { getSceneLighting } from './cloudWeatherDimming';
 import { gridToScreen } from './utils';
-
-// ============================================================================
-// LIGHTING UTILITY FUNCTIONS
-// ============================================================================
-
-/**
- * Calculate darkness level based on hour of day (0-23)
- * Dawn: 5-7, Day: 7-18, Dusk: 18-20, Night: 20-5
- * @returns Value from 0 (full daylight) to 1 (full night)
- */
-export function getDarkness(hour: number): number {
-  if (hour >= 7 && hour < 18) return 0; // Full daylight
-  if (hour >= 5 && hour < 7) return 1 - (hour - 5) / 2; // Dawn transition
-  if (hour >= 18 && hour < 20) return (hour - 18) / 2; // Dusk transition
-  return 1; // Night
-}
-
-/**
- * Get ambient color based on time of day
- * Returns RGB values for the ambient lighting overlay
- */
-export function getAmbientColor(hour: number): { r: number; g: number; b: number } {
-  if (hour >= 7 && hour < 18) return { r: 255, g: 255, b: 255 };
-  if (hour >= 5 && hour < 7) {
-    const t = (hour - 5) / 2;
-    return { 
-      r: Math.round(60 + 40 * t), 
-      g: Math.round(40 + 30 * t), 
-      b: Math.round(70 + 20 * t) 
-    };
-  }
-  if (hour >= 18 && hour < 20) {
-    const t = (hour - 18) / 2;
-    return { 
-      r: Math.round(100 - 40 * t), 
-      g: Math.round(70 - 30 * t), 
-      b: Math.round(90 - 20 * t) 
-    };
-  }
-  return { r: 20, g: 30, b: 60 }; // Night
-}
 
 /**
  * Deterministic pseudo-random function for consistent window lighting patterns
@@ -342,20 +302,18 @@ export function useLightingSystem(config: LightingSystemConfig): void {
     }
     
     const dpr = window.devicePixelRatio || 1;
-    const darkness = getDarkness(visualHour);
+    const weatherMode = worldStateRef.current.cloudWeatherMode;
+    const { overlayAlpha, ambientColor, lightIntensity } = getSceneLighting(visualHour, weatherMode);
     
     // Clear canvas first
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // If it's full daylight, just clear and return (early exit)
-    if (darkness <= 0.01) return;
-    
-    const ambient = getAmbientColor(visualHour);
+    if (overlayAlpha <= 0.01) return;
     
     // Apply darkness overlay
-    const alpha = darkness * 0.6;
-    ctx.fillStyle = `rgba(${ambient.r}, ${ambient.g}, ${ambient.b}, ${alpha})`;
+    ctx.fillStyle = `rgba(${ambientColor.r}, ${ambientColor.g}, ${ambientColor.b}, ${overlayAlpha})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Calculate viewport bounds once
@@ -372,8 +330,6 @@ export function useLightingSystem(config: LightingSystemConfig): void {
     const currentGridSize = worldStateRef.current.gridSize;
     const visibleMinSum = Math.max(0, Math.floor((viewTop - TILE_HEIGHT * 6) * 2 / TILE_HEIGHT));
     const visibleMaxSum = Math.min(currentGridSize * 2 - 2, Math.ceil((viewBottom + TILE_HEIGHT) * 2 / TILE_HEIGHT));
-    
-    const lightIntensity = Math.min(1, darkness * 1.3);
     
     // Collect light sources in a single pass through visible tiles
     const { lightCutouts, coloredGlows } = collectLightSources(

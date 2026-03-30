@@ -34,20 +34,16 @@ import {
   CLOUD_MIN_ZOOM,
   CLOUD_MAX_ZOOM,
   CLOUD_FADE_ZOOM,
-  CLOUD_MAX_COVERAGE,
-  CLOUD_COVERAGE_FADE_END,
   CLOUD_MAX_COUNT,
   CLOUD_MAX_COUNT_MOBILE,
   CLOUD_SPAWN_INTERVAL,
   CLOUD_SPAWN_INTERVAL_MOBILE,
-  CLOUD_SPEED_MIN,
-  CLOUD_SPEED_MAX,
   CLOUD_WIDTH,
   CLOUD_DESPAWN_MARGIN,
-  CLOUD_WIND_ANGLE,
   CLOUD_LAYER_SPEEDS,
   CLOUD_LAYER_OPACITY,
-  CLOUD_NIGHT_OPACITY_MULT,
+  CLOUD_WIND_ANGLE,
+  CLOUD_SPEED_BASE,
   CLOUD_WEATHER_CHANGE_INTERVAL,
   CLOUD_WEATHER_CONFIG,
   CLOUD_LIGHTNING_CONFIG,
@@ -829,7 +825,7 @@ export function useEffectsSystems(
 
   // Spawn a new cloud - at random upwind edge, or at overridePosition (for cloud groups).
   // overrideCloudType: when spawning a companion in a group, use same type as lead for coherent banks.
-  const spawnCloud = useCallback((currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }) => {
+  const spawnCloud = useCallback((currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }): { x: number; y: number; cloudType: CloudType } | null => {
     const { canvasSize, zoom, offset } = worldStateRef.current;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
@@ -864,7 +860,7 @@ export function useEffectsSystems(
     }
 
     const layer = cfg.layerRestriction >= 0 ? cfg.layerRestriction : Math.floor(Math.random() * 3);
-    const speed = (CLOUD_SPEED_MIN + Math.random() * (CLOUD_SPEED_MAX - CLOUD_SPEED_MIN)) * cfg.speedMult;
+    const speed = CLOUD_SPEED_BASE * cfg.speedMult;
     const scale = (cfg.scaleMin + Math.random() * (cfg.scaleMax - cfg.scaleMin)) * weatherConfig.scaleMultiplier;
     const opacity = getWeatherAdjustedOpacity(
       cloudType,
@@ -1188,15 +1184,6 @@ export function useEffectsSystems(
       zoomOpacity = 1 - (currentZoom - CLOUD_MAX_ZOOM) / (CLOUD_FADE_ZOOM - CLOUD_MAX_ZOOM);
     }
     
-    // Night opacity modifier
-    const isNight = currentHour >= 20 || currentHour < 6;
-    const isDusk = currentHour >= 18 && currentHour < 20;
-    const isDawn = currentHour >= 6 && currentHour < 8;
-    let nightMult = 1.0;
-    if (isNight) nightMult = CLOUD_NIGHT_OPACITY_MULT;
-    else if (isDusk) nightMult = 1.0 - (1.0 - CLOUD_NIGHT_OPACITY_MULT) * ((currentHour - 18) / 2);
-    else if (isDawn) nightMult = CLOUD_NIGHT_OPACITY_MULT + (1.0 - CLOUD_NIGHT_OPACITY_MULT) * ((currentHour - 6) / 2);
-    
     ctx.save();
     ctx.scale(dpr * currentZoom, dpr * currentZoom);
     ctx.translate(currentOffset.x / currentZoom, currentOffset.y / currentZoom);
@@ -1227,16 +1214,16 @@ export function useEffectsSystems(
       totalCloudArea += Math.PI * maxExtent * maxExtent; // circular footprint
     }
     const coverage = viewportArea > 0 ? totalCloudArea / viewportArea : 0;
-    let coverageOpacity = 1;
-    if (coverage > CLOUD_MAX_COVERAGE) {
-      const fadeRange = CLOUD_COVERAGE_FADE_END - CLOUD_MAX_COVERAGE;
-      coverageOpacity = Math.max(0, 1 - (coverage - CLOUD_MAX_COVERAGE) / fadeRange);
-    }
+    // let coverageOpacity = 1;
+    // if (coverage > CLOUD_MAX_COVERAGE) {
+    //   const fadeRange = CLOUD_COVERAGE_FADE_END - CLOUD_MAX_COVERAGE;
+    //   coverageOpacity = Math.max(0, 1 - (coverage - CLOUD_MAX_COVERAGE) / fadeRange);
+    // }
     
     for (const cloud of sortedClouds) {
       if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
       
-      const finalOpacity = cloud.opacity * nightMult * zoomOpacity * coverageOpacity;
+      const finalOpacity = cloud.opacity * zoomOpacity; // coverageOpacity intentionally disabled
       
       // Draw each puff with type-specific colors and shape
       for (const puff of cloud.puffs) {
