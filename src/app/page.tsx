@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { GameProvider } from '@/context/GameContext';
 import { MultiplayerContextProvider } from '@/context/MultiplayerContext';
 import Game from '@/components/Game';
@@ -9,13 +17,18 @@ import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { useMobile } from '@/hooks/useMobile';
 import { getSpritePack, getSpriteCoords, DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 import { SavedCityMeta, GameState } from '@/types/game';
-import { decompressFromUTF16, compressToUTF16 } from 'lz-string';
+import { compressToUTF16 } from 'lz-string';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { T } from 'gt-next';
 import { Users, X } from 'lucide-react';
-
-const STORAGE_KEY = 'isocity-game-state';
-const SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index';
+import {
+  clearIsoCityStoredGameData,
+  hasIsoCityAutosave,
+  ISOCITY_SAVED_CITIES_INDEX_KEY,
+  ISOCITY_SAVED_CITY_PREFIX,
+  ISOCITY_STORAGE_KEY,
+  loadIsoCitySavedCities,
+} from '@/lib/isocityStorage';
 
 // Background color to filter from sprite sheets (red)
 const BACKGROUND_COLOR = { r: 255, g: 0, b: 0 };
@@ -64,59 +77,11 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-// Check if there's a saved game in localStorage
-// Supports both compressed (lz-string) and uncompressed (legacy) formats
-function hasSavedGame(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      // Try to decompress first (new format)
-      // lz-string can return garbage when given invalid input, so check for valid JSON start
-      let jsonString = decompressFromUTF16(saved);
-      
-      // Check if decompression returned valid-looking JSON
-      if (!jsonString || !jsonString.startsWith('{')) {
-        // Check if saved string itself is JSON (legacy uncompressed format)
-        if (saved.startsWith('{')) {
-          jsonString = saved;
-        } else {
-          // Data is corrupted
-          return false;
-        }
-      }
-      
-      const parsed = JSON.parse(jsonString);
-      return parsed.grid && parsed.gridSize && parsed.stats;
-    }
-  } catch {
-    return false;
-  }
-  return false;
-}
-
-// Load saved cities index from localStorage
-function loadSavedCities(): SavedCityMeta[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const saved = localStorage.getItem(SAVED_CITIES_INDEX_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        return parsed as SavedCityMeta[];
-      }
-    }
-  } catch {
-    return [];
-  }
-  return [];
-}
-
 // Save a city to the saved cities index (for multiplayer cities)
 function saveCityToIndex(state: GameState, roomCode?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    const cities = loadSavedCities();
+    const cities = loadIsoCitySavedCities();
     
     // Create city meta
     const cityMeta: SavedCityMeta = {
@@ -147,7 +112,7 @@ function saveCityToIndex(state: GameState, roomCode?: string): void {
     // Keep only the last 20 cities
     const trimmed = cities.slice(0, 20);
     
-    localStorage.setItem(SAVED_CITIES_INDEX_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(trimmed));
   } catch (e) {
     console.error('Failed to save city to index:', e);
   }
@@ -314,7 +279,57 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
   );
 }
 
-const SAVED_CITY_PREFIX = 'isocity-city-';
+function NewGameResetButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
+    >
+      <T>New Game</T>
+    </button>
+  );
+}
+
+function ResetGameDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            <T>Start New Game</T>
+          </DialogTitle>
+          <DialogDescription>
+            <T>This will clear your current saved city and start fresh. Continue?</T>
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="w-full sm:w-auto"
+          >
+            <T>Cancel</T>
+          </Button>
+          <Button
+            onClick={onConfirm}
+            className="w-full sm:w-auto"
+          >
+            <T>Start New Game</T>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function HomePage() {
   const [showGame, setShowGame] = useState(false);
@@ -322,18 +337,20 @@ export default function HomePage() {
   const [savedCities, setSavedCities] = useState<SavedCityMeta[]>([]);
   const [hasSaved, setHasSaved] = useState(false);
   const [showCoopModal, setShowCoopModal] = useState(false);
-  const [isMultiplayer, setIsMultiplayer] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [, setIsMultiplayer] = useState(false);
   const [startFreshGame, setStartFreshGame] = useState(false);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
+  const hasResettableProgress = hasSaved;
 
   // Check for saved game and room code in URL after mount
   useEffect(() => {
     const checkSavedGame = () => {
       setIsChecking(false);
-      setSavedCities(loadSavedCities());
-      setHasSaved(hasSavedGame());
+      setSavedCities(loadIsoCitySavedCities());
+      setHasSaved(hasIsoCityAutosave());
       
       // Check for room code in URL (legacy format) - redirect to new format
       const params = new URLSearchParams(window.location.search);
@@ -355,10 +372,23 @@ export default function HomePage() {
     setShowGame(false);
     setIsMultiplayer(false);
     setStartFreshGame(false);
-    setSavedCities(loadSavedCities());
-    setHasSaved(hasSavedGame());
+    setSavedCities(loadIsoCitySavedCities());
+    setHasSaved(hasIsoCityAutosave());
     // Clear room code from URL
     window.history.replaceState({}, '', '/');
+  };
+
+  const handleStartFreshGame = () => {
+    clearIsoCityStoredGameData();
+    setShowResetDialog(false);
+    setShowCoopModal(false);
+    setPendingRoomCode(null);
+    setSavedCities([]);
+    setHasSaved(false);
+    setIsMultiplayer(false);
+    setStartFreshGame(true);
+    window.history.replaceState({}, '', '/');
+    setShowGame(true);
   };
 
   // Load a saved city
@@ -373,9 +403,10 @@ export default function HomePage() {
     
     // Otherwise load from local storage
     try {
-      const saved = localStorage.getItem(SAVED_CITY_PREFIX + city.id);
+      const saved = localStorage.getItem(ISOCITY_SAVED_CITY_PREFIX + city.id);
       if (saved) {
-        localStorage.setItem(STORAGE_KEY, saved);
+        localStorage.setItem(ISOCITY_STORAGE_KEY, saved);
+        setStartFreshGame(false);
         setShowGame(true);
       }
     } catch {
@@ -388,12 +419,12 @@ export default function HomePage() {
     try {
       // Remove from saved cities index
       const updatedCities = savedCities.filter(c => c.id !== city.id);
-      localStorage.setItem(SAVED_CITIES_INDEX_KEY, JSON.stringify(updatedCities));
+      localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(updatedCities));
       setSavedCities(updatedCities);
       
       // Also remove the city state data if it exists
       if (!city.roomCode) {
-        localStorage.removeItem(SAVED_CITY_PREFIX + city.id);
+        localStorage.removeItem(ISOCITY_SAVED_CITY_PREFIX + city.id);
       }
     } catch {
       console.error('Failed to delete saved city');
@@ -408,7 +439,7 @@ export default function HomePage() {
       // Host starts with the state they created - save it so GameProvider loads it
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(STORAGE_KEY, compressed);
+        localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
         
         // Also save to saved cities index so it appears on homepage
         if (roomCode) {
@@ -425,7 +456,7 @@ export default function HomePage() {
       // Guest received state from host - save it so GameProvider loads it
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(STORAGE_KEY, compressed);
+        localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
         
         // Also save to saved cities index so it appears on homepage
         if (roomCode) {
@@ -489,7 +520,10 @@ export default function HomePage() {
           {/* Buttons - more compact */}
           <div className="flex flex-col gap-2 sm:gap-3 w-full max-w-xs flex-shrink-0">
             <Button 
-              onClick={() => setShowGame(true)}
+              onClick={() => {
+                setStartFreshGame(false);
+                setShowGame(true);
+              }}
               className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none transition-all duration-300"
             >
               {hasSaved ? <T>Continue</T> : <T>New Game</T>}
@@ -514,10 +548,11 @@ export default function HomePage() {
                 const exampleState = await response.json();
                 try {
                   const compressed = compressToUTF16(JSON.stringify(exampleState));
-                  localStorage.setItem(STORAGE_KEY, compressed);
+                  localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
                 } catch (e) {
                   console.error('Failed to save example state:', e);
                 }
+                setStartFreshGame(false);
                 setShowGame(true);
               }}
               variant="outline"
@@ -525,7 +560,7 @@ export default function HomePage() {
             >
               <T>Load Example</T>
             </Button>
-            <div className="flex items-start justify-between w-full">
+            <div className="grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
               <div className="flex flex-col">
                 <a
                   href="https://cursor.com"
@@ -544,7 +579,12 @@ export default function HomePage() {
                   <T>Open GitHub</T>
                 </a>
               </div>
-              <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
+              <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
+                <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
+                {hasResettableProgress && (
+                  <NewGameResetButton onClick={() => setShowResetDialog(true)} />
+                )}
+              </div>
             </div>
           </div>
           
@@ -580,6 +620,11 @@ export default function HomePage() {
             onStartGame={handleCoopStart}
             pendingRoomCode={pendingRoomCode}
           />
+          <ResetGameDialog
+            open={showResetDialog}
+            onOpenChange={setShowResetDialog}
+            onConfirm={handleStartFreshGame}
+          />
         </main>
       </MultiplayerContextProvider>
     );
@@ -598,7 +643,10 @@ export default function HomePage() {
             </h1>
             <div className="flex flex-col gap-3">
               <Button 
-                onClick={() => setShowGame(true)}
+                onClick={() => {
+                  setStartFreshGame(false);
+                  setShowGame(true);
+                }}
                 className="w-64 py-8 text-2xl font-light tracking-wide bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none transition-all duration-300"
               >
                 {hasSaved ? <T>Continue</T> : <T>New Game</T>}
@@ -621,10 +669,11 @@ export default function HomePage() {
                   const exampleState = await response.json();
                   try {
                     const compressed = compressToUTF16(JSON.stringify(exampleState));
-                    localStorage.setItem(STORAGE_KEY, compressed);
+                    localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
                   } catch (e) {
                     console.error('Failed to save example state:', e);
                   }
+                  setStartFreshGame(false);
                   setShowGame(true);
                 }}
                 variant="outline"
@@ -632,7 +681,7 @@ export default function HomePage() {
               >
                 <T>Load Example</T>
               </Button>
-              <div className="flex items-start justify-between w-64">
+              <div className="grid w-64 grid-cols-[1fr_auto] items-start gap-x-4">
                 <div className="flex flex-col">
                   <a
                     href="https://cursor.com"
@@ -651,7 +700,12 @@ export default function HomePage() {
                     <T>Open GitHub</T>
                   </a>
                 </div>
-                <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
+                <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
+                  <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
+                  {hasResettableProgress && (
+                    <NewGameResetButton onClick={() => setShowResetDialog(true)} />
+                  )}
+                </div>
               </div>
             </div>
             
@@ -690,6 +744,11 @@ export default function HomePage() {
           onOpenChange={setShowCoopModal}
           onStartGame={handleCoopStart}
           pendingRoomCode={pendingRoomCode}
+        />
+        <ResetGameDialog
+          open={showResetDialog}
+          onOpenChange={setShowResetDialog}
+          onConfirm={handleStartFreshGame}
         />
       </main>
     </MultiplayerContextProvider>

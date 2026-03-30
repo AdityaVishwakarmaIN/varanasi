@@ -36,13 +36,14 @@ import {
   setActiveSpritePack,
   SpritePack,
 } from '@/lib/renderConfig';
-
-const STORAGE_KEY = 'isocity-game-state';
-const SAVED_CITY_STORAGE_KEY = 'isocity-saved-city'; // For restoring after viewing shared city
-const SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index'; // Index of all saved cities
-const SAVED_CITY_PREFIX = 'isocity-city-'; // Prefix for individual saved city states
-const SPRITE_PACK_STORAGE_KEY = 'isocity-sprite-pack';
-const DAY_NIGHT_MODE_STORAGE_KEY = 'isocity-day-night-mode';
+import {
+  ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY,
+  ISOCITY_SAVED_CITIES_INDEX_KEY,
+  ISOCITY_SAVED_CITY_PREFIX,
+  ISOCITY_SAVED_CITY_STORAGE_KEY,
+  ISOCITY_SPRITE_PACK_STORAGE_KEY,
+  ISOCITY_STORAGE_KEY,
+} from '@/lib/isocityStorage';
 
 export type DayNightMode = 'auto' | 'day' | 'night';
 
@@ -175,7 +176,7 @@ const toolZoneMap: Partial<Record<Tool, ZoneType>> = {
 function loadGameState(): GameState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(ISOCITY_STORAGE_KEY);
     if (saved) {
       // Try to decompress first (new format)
       // If it fails or returns null/garbage, fall back to parsing as plain JSON (legacy format)
@@ -190,7 +191,7 @@ function loadGameState(): GameState | null {
         } else {
           // Data is corrupted - clear it and return null
           console.error('Corrupted save data detected, clearing...');
-          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(ISOCITY_STORAGE_KEY);
           return null;
         }
       }
@@ -288,14 +289,14 @@ function loadGameState(): GameState | null {
         }
         return parsed as GameState;
       } else {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(ISOCITY_STORAGE_KEY);
       }
     }
   } catch (e) {
     console.error('Failed to load game state:', e);
     // Clear corrupted data
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ISOCITY_STORAGE_KEY);
     } catch (clearError) {
       console.error('Failed to clear corrupted game state:', clearError);
     }
@@ -326,7 +327,7 @@ function optimizeStateForSave(state: GameState): GameState {
 function tryFreeLocalStorageSpace(): void {
   try {
     // Clear any old saved city restore data
-    localStorage.removeItem(SAVED_CITY_STORAGE_KEY);
+    localStorage.removeItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
     
     // Clear sprite test data if any
     localStorage.removeItem('isocity_sprite_test');
@@ -372,13 +373,13 @@ async function saveGameStateAsync(state: GameState): Promise<void> {
     
     // Step 3: Write to localStorage (fast)
     try {
-      localStorage.setItem(STORAGE_KEY, compressed);
+      localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
     } catch (quotaError) {
       if (quotaError instanceof DOMException && (quotaError.code === 22 || quotaError.code === 1014)) {
         console.warn('localStorage quota exceeded, trying to free space...');
         tryFreeLocalStorageSpace();
         try {
-          localStorage.setItem(STORAGE_KEY, compressed);
+          localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
         } catch {
           console.error('localStorage still full after cleanup');
         }
@@ -400,7 +401,7 @@ function saveGameState(state: GameState, callback?: () => void): void {
 function clearGameState(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ISOCITY_STORAGE_KEY);
   } catch (e) {
     console.error('Failed to clear game state:', e);
   }
@@ -410,7 +411,7 @@ function clearGameState(): void {
 function loadSpritePackId(): string {
   if (typeof window === 'undefined') return DEFAULT_SPRITE_PACK_ID;
   try {
-    const saved = localStorage.getItem(SPRITE_PACK_STORAGE_KEY);
+    const saved = localStorage.getItem(ISOCITY_SPRITE_PACK_STORAGE_KEY);
     if (saved && SPRITE_PACKS.some(p => p.id === saved)) {
       return saved;
     }
@@ -424,7 +425,7 @@ function loadSpritePackId(): string {
 function saveSpritePackId(packId: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SPRITE_PACK_STORAGE_KEY, packId);
+    localStorage.setItem(ISOCITY_SPRITE_PACK_STORAGE_KEY, packId);
   } catch (e) {
     console.error('Failed to save sprite pack preference:', e);
   }
@@ -434,7 +435,7 @@ function saveSpritePackId(packId: string): void {
 function loadDayNightMode(): DayNightMode {
   if (typeof window === 'undefined') return 'auto';
   try {
-    const saved = localStorage.getItem(DAY_NIGHT_MODE_STORAGE_KEY);
+    const saved = localStorage.getItem(ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY);
     if (saved === 'auto' || saved === 'day' || saved === 'night') {
       return saved;
     }
@@ -448,7 +449,7 @@ function loadDayNightMode(): DayNightMode {
 function saveDayNightMode(mode: DayNightMode): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(DAY_NIGHT_MODE_STORAGE_KEY, mode);
+    localStorage.setItem(ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY, mode);
   } catch (e) {
     console.error('Failed to save day/night mode preference:', e);
   }
@@ -468,7 +469,7 @@ function saveCityForRestore(state: GameState): void {
       },
     };
     const compressed = compressToUTF16(JSON.stringify(savedData));
-    localStorage.setItem(SAVED_CITY_STORAGE_KEY, compressed);
+    localStorage.setItem(ISOCITY_SAVED_CITY_STORAGE_KEY, compressed);
   } catch (e) {
     console.error('Failed to save city for restore:', e);
   }
@@ -493,7 +494,7 @@ function decompressSavedCity(saved: string): { state?: GameState; info?: SavedCi
 function loadSavedCityInfo(): SavedCityInfo {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(SAVED_CITY_STORAGE_KEY);
+    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
     if (saved) {
       const parsed = decompressSavedCity(saved);
       if (parsed?.info) {
@@ -510,7 +511,7 @@ function loadSavedCityInfo(): SavedCityInfo {
 function loadSavedCityState(): GameState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(SAVED_CITY_STORAGE_KEY);
+    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
     if (saved) {
       const parsed = decompressSavedCity(saved);
       if (parsed?.state && parsed.state.grid && parsed.state.gridSize && parsed.state.stats) {
@@ -527,7 +528,7 @@ function loadSavedCityState(): GameState | null {
 function clearSavedCityStorage(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(SAVED_CITY_STORAGE_KEY);
+    localStorage.removeItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
   } catch (e) {
     console.error('Failed to clear saved city:', e);
   }
@@ -550,7 +551,7 @@ function generateUUID(): string {
 function loadSavedCitiesIndex(): SavedCityMeta[] {
   if (typeof window === 'undefined') return [];
   try {
-    const saved = localStorage.getItem(SAVED_CITIES_INDEX_KEY);
+    const saved = localStorage.getItem(ISOCITY_SAVED_CITIES_INDEX_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
@@ -567,7 +568,7 @@ function loadSavedCitiesIndex(): SavedCityMeta[] {
 function saveSavedCitiesIndex(cities: SavedCityMeta[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SAVED_CITIES_INDEX_KEY, JSON.stringify(cities));
+    localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(cities));
   } catch (e) {
     console.error('Failed to save cities index:', e);
   }
@@ -587,7 +588,7 @@ async function saveCityStateAsync(cityId: string, state: GameState): Promise<voi
       return;
     }
     
-    localStorage.setItem(SAVED_CITY_PREFIX + cityId, compressed);
+    localStorage.setItem(ISOCITY_SAVED_CITY_PREFIX + cityId, compressed);
   } catch (e) {
     if (e instanceof DOMException && (e.code === 22 || e.code === 1014)) {
       console.error('localStorage quota exceeded');
@@ -606,7 +607,7 @@ function saveCityState(cityId: string, state: GameState): void {
 function loadCityState(cityId: string): GameState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(SAVED_CITY_PREFIX + cityId);
+    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_PREFIX + cityId);
     if (saved) {
       // Try to decompress first (new format)
       // lz-string can return garbage when given invalid input, so check for valid JSON start
@@ -639,7 +640,7 @@ function loadCityState(cityId: string): GameState | null {
 function deleteCityState(cityId: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(SAVED_CITY_PREFIX + cityId);
+    localStorage.removeItem(ISOCITY_SAVED_CITY_PREFIX + cityId);
   } catch (e) {
     console.error('Failed to delete city state:', e);
   }
