@@ -960,12 +960,18 @@ export function useEffectsSystems(
       return;
     }
 
+    // Scale all time-based cloud/weather updates by game speed so that
+    // cloud movement, spawning, weather re-rolls, and lightning all
+    // advance in sync with the speed controller (1x / 2x / 3x).
+    const speedMultiplier = gameSpeed === 1 ? 1 : gameSpeed === 2 ? 2 : 3;
+    const scaledDelta = delta * speedMultiplier;
+
     if (!weatherInitializedRef.current) {
       worldStateRef.current.cloudWeatherMode = pickWeatherMode();
       weatherInitializedRef.current = true;
       weatherChangeTimerRef.current = 0;
     } else {
-      weatherChangeTimerRef.current += delta;
+      weatherChangeTimerRef.current += scaledDelta;
       if (weatherChangeTimerRef.current >= CLOUD_WEATHER_CHANGE_INTERVAL) {
         worldStateRef.current.cloudWeatherMode = pickWeatherMode();
         weatherChangeTimerRef.current = 0;
@@ -985,7 +991,7 @@ export function useEffectsSystems(
     const spawnInterval = (isMobile ? CLOUD_SPAWN_INTERVAL_MOBILE : CLOUD_SPAWN_INTERVAL) * weatherConfig.spawnIntervalMultiplier;
 
     // Spawn new clouds (type varies by time of day). Sometimes spawn in pairs for natural cloud banks/groups.
-    cloudSpawnTimerRef.current += delta;
+    cloudSpawnTimerRef.current += scaledDelta;
     if (cloudSpawnTimerRef.current >= spawnInterval && cloudsRef.current.length < maxClouds) {
       cloudSpawnTimerRef.current = 0;
       const pos = spawnCloud(currentHour);
@@ -1016,8 +1022,8 @@ export function useEffectsSystems(
     
     cloudsRef.current = cloudsRef.current.filter(cloud => {
       // Move cloud
-      cloud.x += cloud.vx * delta;
-      cloud.y += cloud.vy * delta;
+      cloud.x += cloud.vx * scaledDelta;
+      cloud.y += cloud.vy * scaledDelta;
       
       // Remove if too far past viewport
       if (cloud.x > viewRight + CLOUD_DESPAWN_MARGIN ||
@@ -1036,7 +1042,7 @@ export function useEffectsSystems(
     }
 
     if (lightningStrikeRef.current) {
-      lightningStrikeRef.current.age += delta;
+      lightningStrikeRef.current.age += scaledDelta;
       if (lightningStrikeRef.current.age >= lightningStrikeRef.current.duration) {
         lightningStrikeRef.current = null;
       }
@@ -1047,7 +1053,7 @@ export function useEffectsSystems(
         lightningCooldownRef.current = getRandomLightningInterval(lightningProfile);
       }
 
-      lightningCooldownRef.current -= delta;
+      lightningCooldownRef.current -= scaledDelta;
       if (lightningCooldownRef.current <= 0) {
         maybeSpawnLightning();
       }

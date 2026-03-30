@@ -6,7 +6,7 @@ import {
   RESIDENTIAL_BUILDING_TYPES,
   COMMERCIAL_BUILDING_TYPES,
 } from './constants';
-import { getSceneLighting } from './cloudWeatherDimming';
+import { getSceneLighting } from './sceneLighting';
 import { gridToScreen } from './utils';
 
 /**
