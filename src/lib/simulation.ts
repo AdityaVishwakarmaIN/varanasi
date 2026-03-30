@@ -1112,13 +1112,42 @@ function createInitialStats(): Stats {
     health: 50,
     education: 50,
     safety: 50,
-    environment: 75,
+    environment: 0,
     demand: {
       residential: 50,
       commercial: 30,
       industrial: 40,
     },
   };
+}
+
+const ENVIRONMENT_TARGET_TREE_PERCENT = 25;
+const ENVIRONMENT_SCORE_MAX = 100;
+const ENVIRONMENT_PARK_WEIGHT_PERCENT = 50;
+
+function isEnvironmentPlayableBuildingType(buildingType: BuildingType): boolean {
+  return buildingType !== 'empty';
+}
+
+function calculateEnvironmentScore(
+  treeCount: number,
+  parkCount: number,
+  totalPollution: number,
+  totalTiles: number
+): number {
+  if (totalTiles <= 0) return 0;
+
+  // Tree coverage is the base metric and is measured against the full map area,
+  // including water tiles. Parks act as a partial bonus on top of that base.
+  const scaledTreeCoverage = (treeCount * 100) + (parkCount * ENVIRONMENT_PARK_WEIGHT_PERCENT);
+  const scaledTargetCoverage = totalTiles * ENVIRONMENT_TARGET_TREE_PERCENT;
+  const greenScore = Math.floor((scaledTreeCoverage * ENVIRONMENT_SCORE_MAX) / scaledTargetCoverage);
+  const pollutionPenalty = Math.floor(totalPollution / totalTiles);
+
+  return Math.min(
+    ENVIRONMENT_SCORE_MAX,
+    Math.max(0, greenScore - pollutionPenalty)
+  );
 }
 
 // PERF: Optimized service coverage grid creation
@@ -1168,6 +1197,23 @@ function generateUUID(): string {
 export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityName: string = 'New City'): GameState {
   const { grid, waterBodies } = generateTerrain(size);
   const adjacentCities = generateAdjacentCities();
+  let totalTiles = 0;
+  let treeCount = 0;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const buildingType = grid[y][x].building.type;
+      if (isEnvironmentPlayableBuildingType(buildingType)) {
+        totalTiles++;
+      }
+      if (buildingType === 'tree') {
+        treeCount++;
+      }
+    }
+  }
+
+  const initialStats = createInitialStats();
+  initialStats.environment = calculateEnvironmentScore(treeCount, 0, 0, totalTiles);
   
   // Create a default city covering the entire map
   const defaultCity: import('@/types/game').City = {
@@ -1204,7 +1250,7 @@ export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityNam
     selectedTool: 'select',
     taxRate: 9,
     effectiveTaxRate: 9, // Start matching taxRate
-    stats: createInitialStats(),
+    stats: initialStats,
     budget: createInitialBudget(),
     services: createServiceCoverage(size),
     notifications: [],
@@ -1765,8 +1811,8 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   let developedCommercial = 0;
   let developedIndustrial = 0;
   let totalLandValue = 0;
+  let playableTileCount = 0;
   let treeCount = 0;
-  let waterCount = 0;
   let parkCount = 0;
   let subwayTiles = 0;
   let subwayStations = 0;
@@ -1798,6 +1844,10 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
       totalPollution += tile.pollution;
       totalLandValue += tile.landValue;
 
+      if (isEnvironmentPlayableBuildingType(building.type)) {
+        playableTileCount++;
+      }
+
       if (tile.zone === 'residential') {
         residentialZones++;
         if (building.type !== 'grass' && building.type !== 'empty') developedResidential++;
@@ -1810,7 +1860,6 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
       }
 
       if (building.type === 'tree') treeCount++;
-      if (building.type === 'water') waterCount++;
       if (building.type === 'park' || building.type === 'park_large') parkCount++;
       if (building.type === 'tennis') parkCount++; // Tennis courts count as parks
       if (tile.hasSubway) subwayTiles++;
@@ -1915,10 +1964,7 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   const safety = Math.min(100, avgPoliceCoverage * 0.7 + avgFireCoverage * 0.3);
   const health = Math.min(100, avgHealthCoverage * 0.8 + (100 - totalPollution / (size * size)) * 0.2);
   const education = Math.min(100, avgEducationCoverage);
-  
-  const greenRatio = (treeCount + waterCount + parkCount) / (size * size);
-  const pollutionRatio = totalPollution / (size * size * 100);
-  const environment = Math.min(100, Math.max(0, greenRatio * 200 - pollutionRatio * 100 + 50));
+  const environment = calculateEnvironmentScore(treeCount, parkCount, totalPollution, playableTileCount);
 
   const jobSatisfaction = jobs >= population ? 100 : (jobs / (population || 1)) * 100;
   const happiness = Math.min(100, (
@@ -2145,6 +2191,28 @@ function generateAdvisorMessages(stats: Stats, services: ServiceCoverage, grid: 
   }
 
   return messages;
+}
+
+export function recalculateDerivedState(state: GameState): GameState {
+  const services = calculateServiceCoverage(state.grid, state.gridSize);
+  const budget = updateBudgetCosts(state.grid, state.budget);
+  const stats = calculateStats(
+    state.grid,
+    state.gridSize,
+    budget,
+    state.taxRate,
+    state.effectiveTaxRate,
+    services
+  );
+  stats.money = state.stats.money;
+
+  return {
+    ...state,
+    services,
+    budget,
+    stats,
+    advisorMessages: generateAdvisorMessages(stats, services, state.grid),
+  };
 }
 
 
@@ -3526,12 +3594,27 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   // Calculate initial stats
   let totalPopulation = 0;
   let totalJobs = 0;
+  let totalTiles = 0;
+  let treeCount = 0;
+  let parkCount = 0;
+  let totalPollution = 0;
   
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const building = grid[y][x].building;
+      const tile = grid[y][x];
+      const building = tile.building;
       totalPopulation += building.population;
       totalJobs += building.jobs;
+      totalPollution += tile.pollution;
+      if (isEnvironmentPlayableBuildingType(building.type)) {
+        totalTiles++;
+      }
+      if (building.type === 'tree') {
+        treeCount++;
+      }
+      if (building.type === 'park' || building.type === 'park_large' || building.type === 'tennis') {
+        parkCount++;
+      }
     }
   }
   
@@ -3559,7 +3642,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
       health: 60 + Math.floor(Math.random() * 25),
       education: 55 + Math.floor(Math.random() * 30),
       safety: 60 + Math.floor(Math.random() * 25),
-      environment: 50 + Math.floor(Math.random() * 30),
+      environment: calculateEnvironmentScore(treeCount, parkCount, totalPollution, totalTiles),
       demand: {
         residential: 20 + Math.floor(Math.random() * 40),
         commercial: 15 + Math.floor(Math.random() * 35),

@@ -27,6 +27,7 @@ import {
   checkForDiscoverableCities,
   generateRandomAdvancedCity,
   createBridgesOnPath,
+  recalculateDerivedState,
   upgradeServiceBuilding,
 } from '@/lib/simulation';
 import {
@@ -907,11 +908,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
         
         const nextState = placeSubway(prev, x, y);
         if (nextState === prev) return prev;
-        
-        return {
+
+        return recalculateDerivedState({
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        };
+        });
       }
       
       // Handle water terraform tool separately
@@ -923,11 +924,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
         
         const nextState = placeWaterTerraform(prev, x, y);
         if (nextState === prev) return prev;
-        
-        return {
+
+        return recalculateDerivedState({
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        };
+        });
       }
       
       // Handle land terraform tool separately
@@ -937,11 +938,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
         
         const nextState = placeLandTerraform(prev, x, y);
         if (nextState === prev) return prev;
-        
-        return {
+
+        return recalculateDerivedState({
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        };
+        });
       }
 
       let nextState: GameState;
@@ -965,7 +966,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         };
       }
 
-      return nextState;
+      return recalculateDerivedState(nextState);
     });
     
     // Broadcast to multiplayer if this is a local action (not remote)
@@ -981,7 +982,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
       const upgradedState = upgradeServiceBuilding(prev, x, y);
       if (upgradedState) {
         upgradeSucceeded = true;
-        return upgradedState;
+        return recalculateDerivedState(upgradedState);
       }
       return prev;
     });
@@ -990,7 +991,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
-    setState((prev) => createBridgesOnPath(prev, pathTiles, trackType));
+    setState((prev) => recalculateDerivedState(createBridgesOnPath(prev, pathTiles, trackType)));
     
     // Broadcast to multiplayer if this is a local action (not remote)
     if (!isRemote && bridgeCallbackRef.current) {

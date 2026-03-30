@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI Pattern Adherence"
+  short_description: "Match existing UI patterns from code."
+  default_prompt: "Use $ui-pattern-adherence to make this UI change match the existing codebase patterns exactly."
