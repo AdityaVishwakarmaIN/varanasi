@@ -28,12 +28,10 @@ import {
   countAdjacentBurningTiles,
   createDefaultFireState,
   getFireSpreadChance,
-  getFireSuppressionChance,
   getRandomFireIgnitionChance,
   hasFireDestroyedBuilding,
   igniteBuilding,
   isBuildingFireEligible,
-  resetBuildingFireState,
 } from './fireConfig';
 import { isMobile } from 'react-device-detect';
 import type { CloudWeatherMode } from '@/components/game/types';
@@ -2385,19 +2383,12 @@ export function simulateTick(
       const buildingStats = BUILDING_STATS[tile.building.type];
       tile.pollution = Math.max(0, tile.pollution * 0.95 + (buildingStats?.pollution || 0));
 
-      // Fire simulation
+      // Fire simulation -- only trucks can extinguish fires; coverage only slows spread
       if (state.disastersEnabled && tile.building.onFire) {
-        const fireCoverage = services.fire[y][x];
-        const fightingChance = getFireSuppressionChance(fireCoverage);
-        
-        if (Math.random() < fightingChance) {
-          resetBuildingFireState(tile.building);
-        } else {
-          tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
-          if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
-            tile.building = createBuilding('grass');
-            tile.zone = 'none';
-          }
+        tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
+        if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
+          tile.building = createBuilding('grass');
+          tile.zone = 'none';
         }
       }
 

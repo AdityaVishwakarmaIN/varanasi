@@ -17,9 +17,9 @@
 ## Weather Multipliers
 
 - `clear` = `1x`
-- `light_clouds` = `10x`
-- `storm` = `50x`
-- `severe_storm` = `200x`
+- `light_clouds` = `3x`
+- `storm` = `10x`
+- `severe_storm` = `50x`
 - The multiplier applies to random fire start chance.
 - The multiplier applies to adjacent fire spread chance.
 

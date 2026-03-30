@@ -10,6 +10,7 @@ import {
   findNearestFireStation,
   getFireIncidentKey,
 } from '@/lib/fireConfig';
+import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
@@ -646,6 +647,7 @@ export function useVehicleSystems(
       respondTime: 0,
       laneOffset: 0,
       flashTimer: 0,
+      pathLength: path.length,
     });
 
     return true;
@@ -664,6 +666,24 @@ export function useVehicleSystems(
 
       const nearestStation = findNearestFireStation(fire, fireStations);
       if (nearestStation) {
+        // Per-station cap: at most maxTrucksPerStation active fire trucks per station
+        const trucksFromStation = emergencyVehiclesRef.current.filter(
+          v => v.type === 'fire_truck' &&
+               v.stationX === nearestStation.x &&
+               v.stationY === nearestStation.y
+        ).length;
+        if (trucksFromStation >= FIRE_RESPONSE_CONFIG.maxTrucksPerStation) continue;
+
+        // Radius cap: match the visual overlay exactly
+        // Effective range = base range scaled by station level (same formula as simulation coverage)
+        const stationTile = currentGrid[nearestStation.y]?.[nearestStation.x];
+        const stationLevel = stationTile?.building?.level ?? 1;
+        const baseRange = SERVICE_CONFIG.fire_station.range;
+        const effectiveRange = baseRange * (1 + (stationLevel - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
+        const rdx = nearestStation.x - fire.x;
+        const rdy = nearestStation.y - fire.y;
+        if (rdx * rdx + rdy * rdy > effectiveRange * effectiveRange) continue;
+
         if (dispatchEmergencyVehicle('fire_truck', nearestStation.x, nearestStation.y, fire.x, fire.y)) {
           activeFiresRef.current.add(fireKey);
         }
@@ -710,13 +730,14 @@ export function useVehicleSystems(
 
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
-    emergencyDispatchTimerRef.current -= delta;
+    emergencyDispatchTimerRef.current -= delta * speedMultiplier;
     if (emergencyDispatchTimerRef.current <= 0) {
       updateEmergencyDispatch();
       emergencyDispatchTimerRef.current = 1.5;
     }
 
     const updatedVehicles: EmergencyVehicle[] = [];
+    
     
     for (const vehicle of [...emergencyVehiclesRef.current]) {
       vehicle.flashTimer += delta * 8;
@@ -734,46 +755,65 @@ export function useVehicleSystems(
         }
         
         vehicle.respondTime += delta * speedMultiplier;
-        const respondDuration =
-          vehicle.type === 'fire_truck'
-            ? FIRE_RESPONSE_CONFIG.fireTruckResponseDuration
-            : 5;
+        // On-scene duration = clamp(euclideanDist, 1, effectiveRange) / 2
+        // effectiveRange is the same level-scaled value used at dispatch, so
+        // respondDuration is always bounded by effectiveRange / 2 (same as max dispatch radius)
+        const respondDuration = vehicle.type === 'fire_truck'
+          ? (() => {
+              const stationTile = currentGrid[vehicle.stationY]?.[vehicle.stationX];
+              const stationLevel = stationTile?.building?.level ?? 1;
+              const effectiveRange = SERVICE_CONFIG.fire_station.range *
+                (1 + (stationLevel - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
+              const euclidean = Math.max(1, Math.min(
+                Math.sqrt(
+                  (vehicle.targetX - vehicle.stationX) ** 2 +
+                  (vehicle.targetY - vehicle.stationY) ** 2
+                ),
+                effectiveRange
+              ));
+              return euclidean / 2;
+            })()
+          : 5;
         
         if (vehicle.respondTime >= respondDuration) {
           const targetKey = `${vehicle.targetX},${vehicle.targetY}`;
-          
+
           if (vehicle.type === 'police_car') {
             activeCrimeIncidentsRef.current.delete(targetKey);
           }
-          
+
+          // Fire truck arrives: extinguish the fire at the target tile
+          if (vehicle.type === 'fire_truck') {
+            const targetTile = currentGrid[vehicle.targetY]?.[vehicle.targetX];
+            if (targetTile?.building?.onFire) {
+              targetTile.building.onFire = false;
+              targetTile.building.fireProgress = 0;
+            }
+            activeFiresRef.current.delete(targetKey);
+          }
+
           const returnPath = findPathOnRoads(
             currentGrid, currentGridSize,
             vehicle.tileX, vehicle.tileY,
             vehicle.stationX, vehicle.stationY
           );
-          
+
           if (returnPath && returnPath.length >= 2) {
             vehicle.path = returnPath;
             vehicle.pathIndex = 0;
             vehicle.state = 'returning';
             vehicle.progress = 0;
-            
+
             const nextTile = returnPath[1];
             const dir = getDirectionToTile(vehicle.tileX, vehicle.tileY, nextTile.x, nextTile.y);
             if (dir) vehicle.direction = dir;
           } else if (returnPath && returnPath.length === 1) {
-            const targetKey = `${vehicle.targetX},${vehicle.targetY}`;
-            if (vehicle.type === 'fire_truck') {
-              activeFiresRef.current.delete(targetKey);
-            } else {
+            if (vehicle.type !== 'fire_truck') {
               activeCrimesRef.current.delete(targetKey);
             }
             continue;
           } else {
-            const targetKey = `${vehicle.targetX},${vehicle.targetY}`;
-            if (vehicle.type === 'fire_truck') {
-              activeFiresRef.current.delete(targetKey);
-            } else {
+            if (vehicle.type !== 'fire_truck') {
               activeCrimesRef.current.delete(targetKey);
             }
             continue;

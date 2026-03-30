@@ -208,6 +208,8 @@ export type EmergencyVehicle = {
   respondTime: number; // Time spent at the scene
   laneOffset: number;
   flashTimer: number; // For emergency light animation
+  /** Tile count of the dispatch path — used to scale on-scene duration with distance */
+  pathLength: number;
 };
 
 // Pedestrian types, destinations, and behaviors

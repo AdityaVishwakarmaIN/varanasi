@@ -12,8 +12,7 @@ export const DEFAULT_FIRE_STATE: Pick<Building, 'onFire' | 'fireProgress'> = {
 };
 
 export const FIRE_SIMULATION_CONFIG = {
-  suppressionCoverageDivisor: 300,
-  fireProgressPerTick: 2 / 3,
+  fireProgressPerTick: 1,
   destructionThreshold: 100,
   spreadChancePerAdjacentFire: 0.005,
   maxCoverageSpreadReduction: 0.95,
@@ -22,14 +21,15 @@ export const FIRE_SIMULATION_CONFIG = {
 
 export const FIRE_RESPONSE_CONFIG = {
   fireTruckSpeed: 0.8,
-  fireTruckResponseDuration: 8,
+  /** Per-station cap on simultaneously active fire trucks */
+  maxTrucksPerStation: 5,
 } as const;
 
 export const FIRE_WEATHER_MULTIPLIERS: Record<CloudWeatherMode, number> = {
   clear: 1,
-  light_clouds: 10,
-  storm: 50,
-  severe_storm: 200,
+  light_clouds: 3,
+  storm: 10,
+  severe_storm: 50,
 };
 
 export const FIRE_ADJACENT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -67,9 +67,6 @@ export function isBuildingFireEligible(type: BuildingType): boolean {
   return !FIRE_IMMUNE_BUILDING_TYPES.has(type);
 }
 
-export function getFireSuppressionChance(fireCoverage: number): number {
-  return fireCoverage / FIRE_SIMULATION_CONFIG.suppressionCoverageDivisor;
-}
 
 export function getFireSpreadChance(
   adjacentFireCount: number,
