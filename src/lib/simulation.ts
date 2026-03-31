@@ -33,6 +33,7 @@ import {
   igniteBuilding,
   isBuildingFireEligible,
 } from './fireConfig';
+import { tryGrowTree, TREE_GROWTH_CONFIG } from './treeGrowth';
 import { isMobile } from 'react-device-detect';
 import type { CloudWeatherMode } from '@/components/game/types';
 
@@ -2418,6 +2419,25 @@ export function simulateTick(
         Math.random() < getRandomFireIgnitionChance(tile.building.type, cloudWeatherMode)
       ) {
         igniteBuilding(tile.building);
+      }
+    }
+  }
+
+  // Tree auto-growth on grass tiles based on weather conditions
+  // Early exit: skip entire pass for clear weather (0% growth chance)
+  const treeGrowthChance = TREE_GROWTH_CONFIG[cloudWeatherMode];
+  if (treeGrowthChance > 0) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const tile = newGrid[y][x];
+        if (tile.building.type === 'grass') {
+          // Only clone row AFTER tree actually grows (optimization: avoids cloning ~99.96% of rows)
+          const grew = tryGrowTree(tile, treeGrowthChance);
+          if (grew && !modifiedRows.has(y)) {
+            newGrid[y] = state.grid[y].map(t => ({ ...t, building: { ...t.building } }));
+            modifiedRows.add(y);
+          }
+        }
       }
     }
   }
