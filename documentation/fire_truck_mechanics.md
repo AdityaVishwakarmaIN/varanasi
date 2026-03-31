@@ -35,6 +35,7 @@ Called every ~1.5 **game-speed-scaled** seconds (`emergencyDispatchTimerRef -= d
 3. **Radius cap**: compute `effectiveRange = SERVICE_CONFIG.fire_station.range × (1 + (level-1) × 0.2)`.
    Skip if `euclideanDist² > effectiveRange²`. Matches the visual overlay ring exactly.
 4. Dispatch truck → store in `activeFiresRef` to prevent duplicate dispatch.
+5. Pathfinding looks for the nearest road tile to both the station and the fire, but only within a 5-tile search radius around each building.
 
 ---
 
@@ -46,16 +47,10 @@ dispatching → (reaches target tile) → responding → (respondTime >= respond
 
 ### On-Scene Duration
 ```ts
-const effectiveRange = SERVICE_CONFIG.fire_station.range * (1 + (level-1) * 0.2);
-const euclidean = clamp(dist(station, fire), 1, effectiveRange);
-respondDuration = euclidean / 2;  // seconds (game-speed scaled)
+respondDuration = 2;  // game ticks (game-speed scaled)
 ```
 
-| Station lv | Max range | Max on-scene |
-|---|---|---|
-| 1 | 18 tiles | 9s |
-| 3 | ~25 tiles | ~12.5s |
-| 5 | ~32 tiles | ~16s |
+The truck stays on scene for a fixed 2 ticks, regardless of distance.
 
 ### Extinguishment (on `respondTime >= respondDuration`)
 ```ts
@@ -88,9 +83,9 @@ activeFiresRef.delete(targetKey);
 | Weather | Multiplier |
 |---|---|
 | `clear` | 1× |
-| `light_clouds` | 3× |
-| `storm` | 10× |
-| `severe_storm` | 50× |
+| `light_clouds` | 2× |
+| `storm` | 5× |
+| `severe_storm` | 12× |
 
 ---
 
@@ -98,4 +93,4 @@ activeFiresRef.delete(targetKey);
 
 - **Passive suppression** (`getFireSuppressionChance`): fires previously self-extinguished every tick based on coverage. Deleted entirely.
 - **Station cooldown**: post-return dispatch gate was prototyped then removed.
-- **Staged extinguishment**: not implemented — extinguishment is instant on truck arrival.
+- **Distance-based on-scene timer**: replaced with a fixed 2-tick response window.

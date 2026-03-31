@@ -27,9 +27,9 @@ export const FIRE_RESPONSE_CONFIG = {
 
 export const FIRE_WEATHER_MULTIPLIERS: Record<CloudWeatherMode, number> = {
   clear: 1,
-  light_clouds: 3,
-  storm: 10,
-  severe_storm: 50,
+  light_clouds: 2,
+  storm: 5,
+  severe_storm: 12,
 };
 
 export const FIRE_ADJACENT_OFFSETS: ReadonlyArray<readonly [number, number]> = [

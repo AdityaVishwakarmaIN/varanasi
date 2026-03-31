@@ -165,7 +165,7 @@ export function findNearestRoadToBuilding(
     const dist = ROAD_BFS_QUEUE_DIST[queueHead];
     queueHead++;
     
-    if (dist > 20) break; // Max search distance
+    if (dist > 5) break; // Max search distance
     
     for (let d = 0; d < 8; d++) {
       const nx = cx + ADJ_DX[d];
@@ -204,7 +204,7 @@ function findNearestRoadLegacy(
   
   while (queue.length > 0) {
     const current = queue.shift()!;
-    if (current.dist > 20) break;
+    if (current.dist > 5) break;
     
     for (let d = 0; d < 8; d++) {
       const nx = current.x + ADJ_DX[d];

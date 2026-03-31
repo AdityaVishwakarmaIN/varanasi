@@ -755,24 +755,8 @@ export function useVehicleSystems(
         }
         
         vehicle.respondTime += delta * speedMultiplier;
-        // On-scene duration = clamp(euclideanDist, 1, effectiveRange) / 2
-        // effectiveRange is the same level-scaled value used at dispatch, so
-        // respondDuration is always bounded by effectiveRange / 2 (same as max dispatch radius)
         const respondDuration = vehicle.type === 'fire_truck'
-          ? (() => {
-              const stationTile = currentGrid[vehicle.stationY]?.[vehicle.stationX];
-              const stationLevel = stationTile?.building?.level ?? 1;
-              const effectiveRange = SERVICE_CONFIG.fire_station.range *
-                (1 + (stationLevel - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
-              const euclidean = Math.max(1, Math.min(
-                Math.sqrt(
-                  (vehicle.targetX - vehicle.stationX) ** 2 +
-                  (vehicle.targetY - vehicle.stationY) ** 2
-                ),
-                effectiveRange
-              ));
-              return euclidean / 2;
-            })()
+          ? 2
           : 5;
         
         if (vehicle.respondTime >= respondDuration) {

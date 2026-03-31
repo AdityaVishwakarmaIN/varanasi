@@ -30,6 +30,7 @@
 - [src/components/game/CanvasIsometricGrid.tsx](C:/Users/aditya/Desktop/Playground/varanasi/src/components/game/CanvasIsometricGrid.tsx) syncs the current cloud weather mode back into game context.
 - [src/components/game/effectsSystems.ts](C:/Users/aditya/Desktop/Playground/varanasi/src/components/game/effectsSystems.ts) remains the source of cloud/weather selection.
 - [src/components/game/vehicleSystems.ts](C:/Users/aditya/Desktop/Playground/varanasi/src/components/game/vehicleSystems.ts) now uses the shared fire response config for truck speed and response duration.
+- [src/components/game/utils.ts](C:/Users/aditya/Desktop/Playground/varanasi/src/components/game/utils.ts) now limits fire dispatch road searching to 5 tiles around each building.
 
 ## Consolidation Completed
 

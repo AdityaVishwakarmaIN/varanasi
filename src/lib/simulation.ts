@@ -2917,7 +2917,10 @@ export function placeBuilding(
       if (!allowedTypesForZoning.includes(tile.building.type)) {
         return state; // Can't zone over existing building or part of multi-tile building
       }
-      // Setting zone
+      // Setting zone - clear trees to grass first for consistent replacement
+      if (tile.building.type === 'tree') {
+        newGrid[y][x].building = createBuilding('grass');
+      }
       newGrid[y][x].zone = zone;
     }
   } else if (buildingType) {
