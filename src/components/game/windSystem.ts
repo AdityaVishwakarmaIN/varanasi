@@ -8,7 +8,6 @@ import { CloudWeatherMode, WorldRenderState } from './types';
 const WIND_DIRECTION_ANGLE = -0.28;
 const WIND_DIRECTION_X = Math.cos(WIND_DIRECTION_ANGLE);
 const WIND_DIRECTION_Y = Math.sin(WIND_DIRECTION_ANGLE);
-const TREE_SWAY_MIN_ZOOM = 0.45;
 const DUST_MIN_ZOOM = 0.65;
 const DUST_DESPAWN_MARGIN = 120;
 const DUST_MIN_LIFETIME = 1.6;
@@ -42,7 +41,6 @@ export interface WindTreeRenderItem {
   shouldFlip: boolean;
   pivotX: number;
   pivotY: number;
-  swaySeed: number;
 }
 
 export interface WindVisualState {
@@ -109,8 +107,6 @@ export function buildWindTreeRenderItem(
     return null;
   }
 
-  const seed = ((tileX * 92821 + tileY * 68917) % 1000) / 1000;
-
   return {
     image: spriteSheet,
     coords: spriteInfo.coords,
@@ -121,7 +117,6 @@ export function buildWindTreeRenderItem(
     shouldFlip: spriteInfo.shouldFlip,
     pivotX: spriteInfo.positioning.drawX + spriteInfo.positioning.destWidth * 0.5,
     pivotY: spriteInfo.positioning.drawY + spriteInfo.positioning.destHeight * 0.9,
-    swaySeed: seed,
   };
 }
 
@@ -213,9 +208,10 @@ export function useWindSystem(
     }
 
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const enableSway = zoom >= TREE_SWAY_MIN_ZOOM;
-    const baseLean = 0.003 + wind.strength * 0.014;
-    const gustLean = (0.004 + wind.strength * 0.026) * wind.gust;
+    const swayAngle =
+      (0.003 + wind.strength * 0.014)
+      + ((0.004 + wind.strength * 0.026) * wind.gust)
+      * (0.5 + 0.5 * Math.sin(wind.time * 1.8));
 
     ctx.save();
     ctx.scale(dpr * zoom, dpr * zoom);
@@ -225,13 +221,9 @@ export function useWindSystem(
     for (const tree of visibleTreesRef.current) {
       ctx.save();
 
-      if (enableSway) {
-        const pulse = 0.5 + 0.5 * Math.sin(wind.time * (1.8 + tree.swaySeed * 0.35) + tree.swaySeed * 6);
-        const swayAngle = baseLean + gustLean * pulse;
-        ctx.translate(tree.pivotX, tree.pivotY);
-        ctx.rotate(swayAngle);
-        ctx.translate(-tree.pivotX, -tree.pivotY);
-      }
+      ctx.translate(tree.pivotX, tree.pivotY);
+      ctx.rotate(swayAngle);
+      ctx.translate(-tree.pivotX, -tree.pivotY);
 
       if (tree.shouldFlip) {
         const centerX = tree.drawX + tree.destWidth * 0.5;
