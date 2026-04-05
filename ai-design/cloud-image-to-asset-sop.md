@@ -1,0 +1,55 @@
+# Cloud Image To Asset SOP
+
+- Start by locating the design prompt file that defines the intended image content and constraints. For cloud assets in this repo, read [cloud-grid-prompt.md](C:/Users/aditya/Desktop/Playground/varanasi/ai-design/cloud-grid-prompt.md) first.
+- Read any companion notes that define mandatory prompt terms or style constraints. For this workflow, also read [terms.md](C:/Users/aditya/Desktop/Playground/varanasi/ai-design/terms.md).
+- Check whether any repo skill or local documentation defines image or asset standards. In this repo, the relevant skill check was the `imagegen` skill, but it did not define a stricter in-repo sprite standard than the existing asset pipeline.
+- Inspect the actual image, not just the prompt. Confirm the sheet layout, progression order, background color, visible artifacts, empty margins, and whether the cells are evenly spaced.
+- Verify the image dimensions on disk. Do not assume the sheet is mathematically clean just because it is described as `3x3`; confirm the actual pixel size and infer whether cell boundaries need explicit crops.
+- Treat the image in `ai-design/` as raw source material. Do not overwrite it, resize it in place, or use it as the production runtime file.
+- Find the current code path that generates or renders the visual effect being replaced. For clouds, this meant identifying procedural spawn logic, type selection, and draw code in the game renderer.
+- Separate logic from rendering before changing anything. Identify which parts should stay the same, such as spawn frequency, movement, weather weighting, opacity, zoom fade, and lightning behavior, and which part should change, namely the final draw path.
+- Find the existing image loading pipeline and confirm whether it already supports the target background-removal strategy. In this repo, red `#FF0000` backgrounds are removed through the shared chroma-key loader.
+- Check where runtime assets must live to be browser-accessible. For this repo, project-bound assets belong under `public/assets`.
+- Copy the raw source into the public asset path with a stable descriptive filename and do all runtime optimization work on that copied asset only. Do not leave production-referenced assets only in `ai-design`.
+- Export runtime assets in exactly two formats: PNG and WebP.
+- Both runtime asset files must be exactly `960x960` pixels in all cases before handoff.
+- If the raw source is not already `960x960`, resize or pad the runtime export copy to `960x960`; do not modify the raw file to achieve this.
+- Both runtime asset files must be compressed before handoff.
+- Lossless compression is mandatory for both runtime asset files. Do not ship lossy PNG or lossy WebP in this workflow.
+- Treat PNG and WebP as a paired runtime deliverable, not a choose-one decision.
+- Define a dedicated config file for the new asset if the sheet needs mapping metadata. For cloud sheets, create a config that stores the asset path, per-cell crop rectangles, and preferred base draw widths.
+- Use explicit crop rectangles instead of naive full-cell crops when the source image has uneven margins or artifacts. This is where you surgically trim stray marks, excess red border, or off-center composition.
+- Encode any content-specific mapping rules in that config. For example, map cirrus to the faint top-row cells, cumulus to the soft white cell, stratus to the layered or overcast cells, and severe storm clouds to the darkest bottom-right cell.
+- Extend the runtime types only as much as needed. Add a sprite key or frame identifier to the runtime object if the system still needs to preserve higher-level semantic cloud types.
+- Keep the existing semantic type system if gameplay logic depends on it. The renderer can use the sprite key while weather logic continues to use cloud categories like `cirrus`, `stratus`, and `cumulonimbus`.
+- Update spawn code so each spawned visual instance selects a sprite key at creation time based on the semantic type and current weather mode.
+- Preserve movement and lifecycle logic. Swapping to sprites should not rewrite spawn cadence, drift direction, layer speed, or despawn thresholds unless the asset itself forces that change.
+- Replace the draw function only after the sprite config and preload path exist. Draw from the filtered sprite sheet, compute destination size from the configured crop aspect ratio, and position the sprite around the cloud center.
+- Keep canvas opacity behavior aligned with the old system. Reuse cloud opacity, layer opacity, and zoom fade so the new sprites behave like the old procedural effect.
+- Preserve any weather-linked secondary effects that still make sense. In the cloud system, lightning remained intact even though the visible cloud rendering changed.
+- Preload the new asset through the shared image loader so it benefits from the same background filtering and caching as other sprite assets.
+- Make sure the new asset path is imported from a shared config, not duplicated as a string literal in multiple files.
+- If the asset is chroma-keyed, inspect the image loader before finalizing compression output. In this repo, the loader both prefers WebP when available and removes red with a threshold-based filter, so both lossless asset variants must be checked against the filter behavior.
+- If the chroma-key edges look clipped after integration, debug in this order:
+- Check whether runtime loaded WebP instead of PNG.
+- Check whether either runtime asset was exported with accidental lossy compression.
+- Compare PNG pixels and runtime-compressed pixels around the red threshold.
+- Only after that, reconsider crop rectangles or sprite placement math.
+- Review the image again after the crop rules are written. The planning pass should explicitly check for any remaining artifact risk, especially in the darkest or rainiest cells.
+- Run a local type check after the code change. In this repo, `npx tsc --noEmit` is the fastest signal for whether the new asset integration compiles cleanly.
+- Run the project build if possible, but distinguish asset-related failures from unrelated environment failures. In this repo, `next build` can fail on external Google Fonts fetches even when the asset work is correct.
+- Run lint if useful, but do not misattribute pre-existing lint noise to the new asset change. Use it only as a secondary signal if the repo already has unrelated rule violations.
+- Check git status before closing so you know exactly which files were changed, created, or auto-generated.
+- In the final verification pass, confirm all of the following:
+- The raw source image in `ai-design/` is unchanged.
+- The asset exists under `public/assets`.
+- Both runtime asset files exist: PNG and WebP.
+- Both runtime asset files are exactly `960x960`.
+- Both runtime asset files are losslessly compressed.
+- The paired PNG and WebP outputs have been validated against the chroma-key requirements instead of assumed safe.
+- The new config file maps every intended visual variant.
+- The renderer preloads the asset.
+- The runtime draw path uses the new sprite sheet.
+- The code compiles.
+- Any remaining build failures are documented and clearly unrelated.
+- Document scope explicitly. If only one renderer was migrated, state which related systems still use the old procedural path so future work is not ambiguous.

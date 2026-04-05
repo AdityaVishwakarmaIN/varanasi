@@ -486,6 +486,17 @@ export type CloudWeatherMode =
   | 'storm'
   | 'severe_storm';
 
+export type CloudSpriteKey =
+  | 'cirrus_faint'
+  | 'cirrus_thin'
+  | 'cumulus_soft'
+  | 'altocumulus_patchy'
+  | 'stratus_layered'
+  | 'stratus_overcast'
+  | 'cumulonimbus_heavy'
+  | 'cumulonimbus_rain'
+  | 'cumulonimbus_severe';
+
 export type CloudPuff = {
   // Offset from cloud center (for multi-puff clouds)
   offsetX: number;
@@ -519,6 +530,8 @@ export type Cloud = {
   layer: number;
   // Meteorological cloud type - determines shape, color, and rendering
   cloudType: CloudType;
+  // Selected sprite frame from the shared cloud sheet
+  spriteKey: CloudSpriteKey;
 };
 
 export type LightningStrike = {

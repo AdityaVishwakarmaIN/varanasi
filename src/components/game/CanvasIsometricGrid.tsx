@@ -44,6 +44,7 @@ import {
   TRAIN_MIN_ZOOM,
 } from '@/components/game/constants';
 import { DEFAULT_CLOUD_WEATHER_MODE } from '@/components/game/cloudWeatherConfig';
+import { CLOUD_SPRITE_SHEET_SRC } from '@/components/game/cloudSpriteConfig';
 import {
   gridToScreen,
   screenToGrid,
@@ -79,6 +80,14 @@ import { useBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/
 import { useBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
 import { useSeaplaneSystem, SeaplaneSystemRefs, SeaplaneSystemState } from '@/components/game/seaplaneSystem';
 import { useEffectsSystems, EffectsSystemRefs, EffectsSystemState } from '@/components/game/effectsSystems';
+import {
+  buildWindTreeRenderItem,
+  createDefaultWindVisualState,
+  useWindSystem,
+  WindSystemRefs,
+  WindSystemState,
+  WindTreeRenderItem,
+} from '@/components/game/windSystem';
 import {
   analyzeMergedRoad,
 } from '@/components/game/trafficSystem';
@@ -147,6 +156,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const buildingsCanvasRef = useRef<HTMLCanvasElement>(null); // Buildings rendered on top of cars/trains
   const airCanvasRef = useRef<HTMLCanvasElement>(null); // Aircraft + fireworks rendered above buildings
   const lightingCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -258,6 +268,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lightningIdRef = useRef(0);
   const weatherChangeTimerRef = useRef(0);
   const weatherInitializedRef = useRef(false);
+  const windStateRef = useRef(createDefaultWindVisualState());
+  const visibleWindTreesRef = useRef<WindTreeRenderItem[]>([]);
 
   // Traffic light system timer (cumulative time for cycling through states)
   const trafficLightTimerRef = useRef(0);
@@ -490,6 +502,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     updateClouds,
     drawClouds,
   } = useEffectsSystems(effectsSystemRefs, effectsSystemState);
+
+  const windSystemRefs: WindSystemRefs = {
+    windStateRef,
+    visibleTreesRef: visibleWindTreesRef,
+  };
+
+  const windSystemState: WindSystemState = {
+    worldStateRef,
+    isMobile,
+  };
+
+  const {
+    updateWind,
+    drawWindTrees,
+    drawWindDust,
+  } = useWindSystem(windSystemRefs, windSystemState);
   
   // PERF: Sync worldStateRef from latestStateRef (real-time) instead of React state (throttled)
   // This runs on every animation frame via the render loop, not on React state changes
@@ -901,6 +929,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     // High priority - water texture
     loadImage(WATER_ASSET_PATH).catch(console.error);
+
+    // High priority - cloud sprite sheet
+    loadImage(CLOUD_SPRITE_SHEET_SRC).catch(console.error);
     
     // Medium priority - load secondary sheets after a small delay
     // This allows the main content to render first
@@ -969,6 +1000,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         if (carsCanvasRef.current) {
           carsCanvasRef.current.style.width = `${rect.width}px`;
           carsCanvasRef.current.style.height = `${rect.height}px`;
+        }
+        if (windCanvasRef.current) {
+          windCanvasRef.current.style.width = `${rect.width}px`;
+          windCanvasRef.current.style.height = `${rect.height}px`;
         }
         if (buildingsCanvasRef.current) {
           buildingsCanvasRef.current.style.width = `${rect.width}px`;
@@ -1173,6 +1208,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       isPinchZooming: isPinchZoomingRef.current,
       trafficLightTimer: trafficLightTimerRef.current,
     };
+    const activePack = getActiveSpritePack();
     
     
     // Draw isometric tile base
@@ -1287,6 +1323,26 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         ctx.stroke();
       }
     }
+
+    function drawTileFireEffect(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      const fireX = x + TILE_WIDTH / 2;
+      const fireY = y - 10;
+
+      ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(fireX, fireY, 18, 25, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
+      ctx.beginPath();
+      ctx.ellipse(fireX, fireY + 5, 10, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+      ctx.beginPath();
+      ctx.ellipse(fireX, fireY + 8, 5, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     
     // Helper function to draw water tile at a given screen position
     // Used for marina/pier buildings that sit on water
@@ -1380,7 +1436,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
       
       // Check if this building type has a sprite in the tile renderer, parks sheet, or stations sheet
-      const activePack = getActiveSpritePack();
       const hasTileSprite = BUILDING_TO_SPRITE[buildingType] || 
         (activePack.parksBuildings && activePack.parksBuildings[buildingType]) ||
         (activePack.stationsVariants && activePack.stationsVariants[buildingType]);
@@ -1674,23 +1729,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       
       // Draw fire effect
       if (tile.building.onFire) {
-        const fireX = x + w / 2;
-        const fireY = y - 10;
-        
-        ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
-        ctx.beginPath();
-        ctx.ellipse(fireX, fireY, 18, 25, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
-        ctx.beginPath();
-        ctx.ellipse(fireX, fireY + 5, 10, 15, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
-        ctx.beginPath();
-        ctx.ellipse(fireX, fireY + 8, 5, 8, 0, 0, Math.PI * 2);
-        ctx.fill();
+        drawTileFireEffect(ctx, x, y);
       }
     }
     
@@ -2019,11 +2058,42 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         
         // Disable image smoothing for crisp pixel art
         buildingsCtx.imageSmoothingEnabled = false;
+
+        const nextVisibleWindTrees = visibleWindTreesRef.current;
+        nextVisibleWindTrees.length = 0;
         
         // Draw buildings on the buildings canvas
         // PERF: Use for loop instead of forEach
         for (let i = 0; i < buildingQueue.length; i++) {
           const { tile, screenX, screenY } = buildingQueue[i];
+          if (tile.building.type === 'tree') {
+            try {
+              const tileMetadata = getTileMetadata(tile.x, tile.y);
+              const treeRenderItem = buildWindTreeRenderItem(
+                tile.building,
+                tile.x,
+                tile.y,
+                screenX,
+                screenY,
+                {
+                  hasAdjacentRoad: tileMetadata?.hasAdjacentRoad,
+                  shouldFlipForRoad: tileMetadata?.shouldFlipForRoad,
+                },
+                activePack
+              );
+
+              if (treeRenderItem) {
+                nextVisibleWindTrees.push(treeRenderItem);
+                if (tile.building.onFire) {
+                  drawTileFireEffect(buildingsCtx, screenX, screenY);
+                }
+                continue;
+              }
+            } catch (error) {
+              console.error('Wind tree render fallback', error);
+            }
+          }
+
           drawBuilding(buildingsCtx, screenX, screenY, tile);
         }
         
@@ -2410,15 +2480,23 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
+    const windCanvas = windCanvasRef.current;
     const airCanvas = airCanvasRef.current;
-    if (!canvas || !airCanvas) return;
+    if (!canvas || !windCanvas || !airCanvas) return;
     const ctx = canvas.getContext('2d');
+    const windCtx = windCanvas.getContext('2d');
     const airCtx = airCanvas.getContext('2d');
-    if (!ctx || !airCtx) return;
+    if (!ctx || !windCtx || !airCtx) return;
     
     ctx.imageSmoothingEnabled = false;
+    windCtx.imageSmoothingEnabled = false;
     airCtx.imageSmoothingEnabled = false;
-    
+
+    const clearWindCanvas = () => {
+      windCtx.setTransform(1, 0, 0, 1, 0, 0);
+      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+    };
+
     const clearAirCanvas = () => {
       airCtx.setTransform(1, 0, 0, 1, 0, 0);
       airCtx.clearRect(0, 0, airCanvas.width, airCanvas.height);
@@ -2464,6 +2542,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         updateFireworks(delta, visualHour); // Update fireworks (nighttime only)
         updateSmog(delta); // Update factory smog particles
         updateClouds(delta, visualHour); // Update atmospheric clouds
+        updateWind(delta); // Update weather-dependent wind visuals
         setCloudWeatherMode(worldStateRef.current.cloudWeatherMode);
         navLightFlashTimerRef.current += delta * 3; // Update nav light flash timer
         trafficLightTimerRef.current += delta; // Update traffic light cycle timer
@@ -2510,6 +2589,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Clear the canvases but don't draw anything - hides all animated elements while panning/zooming
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        clearWindCanvas();
         clearAirCanvas();
       } else {
         drawCars(ctx);
@@ -2524,6 +2604,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         drawPedestrians(ctx); // Draw walking pedestrians (below buildings)
         drawEmergencyVehicles(ctx); // Draw emergency vehicles!
+        clearWindCanvas();
+        drawWindTrees(windCtx); // Draw swaying trees on their own lightweight layer
         clearAirCanvas();
         
         // Draw incident indicators on air canvas (above buildings so tooltips are visible)
@@ -2536,6 +2618,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
           drawSeaplanes(airCtx); // Draw seaplanes (skip when panning zoomed out on desktop)
         }
+        drawWindDust(airCtx); // Draw lightweight wind dust above the city
         drawClouds(airCtx, visualHour); // Draw atmospheric clouds (above helicopters)
         drawAirplanes(airCtx); // Draw airplanes above clouds
         drawFireworks(airCtx); // Draw fireworks above everything (nighttime only)
@@ -2545,7 +2628,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, visualHour, isMobile, setCloudWeatherMode]);
+  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile, setCloudWeatherMode]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({
@@ -3096,6 +3179,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       />
       <canvas
         ref={carsCanvasRef}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        className="absolute top-0 left-0 pointer-events-none"
+      />
+      <canvas
+        ref={windCanvasRef}
         width={canvasSize.width}
         height={canvasSize.height}
         className="absolute top-0 left-0 pointer-events-none"

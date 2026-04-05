@@ -1,0 +1,4 @@
+interface:
+  display_name: "Varanasi Image To Asset"
+  short_description: "Convert images into runtime assets."
+  default_prompt: "Use -image-to-asset to inspect an existing image, choose a safe runtime format for this repo, integrate it under public/assets, wire it into code, and verify chroma-key behavior."

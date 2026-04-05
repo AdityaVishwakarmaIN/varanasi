@@ -22,6 +22,8 @@ const ASSETS_DIR = path.join(ROOT_DIR, 'public', 'assets');
 // WebP compression quality (0-100, higher = better quality, larger file)
 // 80 is a good balance for game sprites
 const WEBP_QUALITY = 80;
+const LOSSLESS_WEBP_FILES = new Set();
+const SKIP_WEBP_FILES = new Set();
 
 /**
  * Get all PNG files recursively from a directory
@@ -56,6 +58,10 @@ function formatBytes(bytes) {
  */
 async function convertToWebP(pngPath) {
   const webpPath = pngPath.replace(/\.png$/, '.webp');
+  if (SKIP_WEBP_FILES.has(path.basename(pngPath))) {
+    return { skipped: true, pngPath };
+  }
+  const useLossless = LOSSLESS_WEBP_FILES.has(path.basename(pngPath));
   
   // Skip if WebP already exists and is newer than PNG
   if (existsSync(webpPath)) {
@@ -71,7 +77,7 @@ async function convertToWebP(pngPath) {
     const originalSize = pngStats.size;
     
     await sharp(pngPath)
-      .webp({ quality: WEBP_QUALITY, lossless: false })
+      .webp({ quality: WEBP_QUALITY, lossless: useLossless })
       .toFile(webpPath);
     
     const webpStats = await stat(webpPath);

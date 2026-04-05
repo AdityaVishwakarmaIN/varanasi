@@ -53,6 +53,12 @@ import {
   CLOUD_TYPES_ORDERED,
   CLOUD_TYPE_CONFIG,
 } from './cloudWeatherConfig';
+import {
+  CLOUD_SPRITE_SHEET_SRC,
+  getCloudSpriteDefinition,
+  pickCloudSpriteKey,
+} from './cloudSpriteConfig';
+import { getCachedImage } from './imageLoader';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
 
@@ -878,6 +884,7 @@ export function useEffectsSystems(
       puffs: generateCloudPuffs(cloudType),
       layer,
       cloudType,
+      spriteKey: pickCloudSpriteKey(cloudType, worldStateRef.current.cloudWeatherMode),
     };
 
     cloudsRef.current.push(cloud);
@@ -1060,124 +1067,16 @@ export function useEffectsSystems(
     }
   }, [worldStateRef, cloudsRef, cloudSpawnTimerRef, getRandomLightningInterval, isMobile, lightningCooldownRef, lightningStrikeRef, maybeSpawnLightning, pickWeatherMode, spawnCloud, weatherChangeTimerRef, weatherInitializedRef]);
 
-  // Get gradient color stops for a cloud type and portion (for cumulonimbus base/top)
-  const getCloudGradientStops = (cloudType: CloudType, portion: 'base' | 'top' | undefined, puffOpacity: number): [number, string][] => {
-    const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
-
-    if (weatherConfig.palette === 'storm') {
-      if (portion === 'top') {
-        return [
-          [0, `rgba(168, 174, 188, ${puffOpacity})`],
-          [0.45, `rgba(132, 138, 152, ${puffOpacity * 0.8})`],
-          [0.75, `rgba(95, 101, 114, ${puffOpacity * 0.35})`],
-          [1, `rgba(72, 78, 90, 0)`],
-        ];
-      }
-
-      return [
-        [0, `rgba(72, 78, 92, ${puffOpacity})`],
-        [0.4, `rgba(58, 63, 76, ${puffOpacity * 0.88})`],
-        [0.7, `rgba(42, 46, 58, ${puffOpacity * 0.45})`],
-        [1, `rgba(28, 31, 40, 0)`],
-      ];
-    }
-
-    if (weatherConfig.palette === 'severe') {
-      if (portion === 'top') {
-        return [
-          [0, `rgba(138, 144, 158, ${puffOpacity})`],
-          [0.4, `rgba(104, 110, 124, ${puffOpacity * 0.8})`],
-          [0.7, `rgba(70, 75, 88, ${puffOpacity * 0.35})`],
-          [1, `rgba(42, 46, 56, 0)`],
-        ];
-      }
-
-      return [
-        [0, `rgba(34, 37, 46, ${puffOpacity})`],
-        [0.4, `rgba(24, 27, 34, ${puffOpacity * 0.92})`],
-        [0.7, `rgba(15, 17, 22, ${puffOpacity * 0.5})`],
-        [1, `rgba(8, 10, 14, 0)`],
-      ];
-    }
-
-    switch (cloudType) {
-      case 'cumulus':
-        // Bright white, fair-weather
-        return [
-          [0, `rgba(255, 255, 255, ${puffOpacity})`],
-          [0.4, `rgba(250, 250, 252, ${puffOpacity * 0.9})`],
-          [0.7, `rgba(245, 245, 250, ${puffOpacity * 0.5})`],
-          [1, `rgba(240, 240, 248, 0)`],
-        ];
-      case 'stratus':
-        // Gray overcast, flat layered
-        return [
-          [0, `rgba(220, 222, 228, ${puffOpacity})`],
-          [0.35, `rgba(200, 204, 212, ${puffOpacity * 0.9})`],
-          [0.65, `rgba(185, 190, 200, ${puffOpacity * 0.5})`],
-          [1, `rgba(175, 180, 192, 0)`],
-        ];
-      case 'cirrus':
-        // Wispy, faint icy white, high altitude
-        return [
-          [0, `rgba(255, 255, 255, ${puffOpacity * 0.9})`],
-          [0.3, `rgba(248, 250, 255, ${puffOpacity * 0.6})`],
-          [0.6, `rgba(240, 245, 252, ${puffOpacity * 0.25})`],
-          [1, `rgba(235, 240, 250, 0)`],
-        ];
-      case 'cumulonimbus':
-        // Storm cloud: dark base, bright anvil top
-        if (portion === 'base') {
-          return [
-            [0, `rgba(120, 125, 140, ${puffOpacity})`],
-            [0.3, `rgba(100, 108, 125, ${puffOpacity * 0.9})`],
-            [0.6, `rgba(85, 92, 110, ${puffOpacity * 0.5})`],
-            [1, `rgba(70, 78, 95, 0)`],
-          ];
-        }
-        // Top / anvil: bright white
-        return [
-          [0, `rgba(255, 255, 255, ${puffOpacity})`],
-          [0.4, `rgba(248, 248, 252, ${puffOpacity * 0.85})`],
-          [0.7, `rgba(240, 242, 248, ${puffOpacity * 0.4})`],
-          [1, `rgba(235, 238, 245, 0)`],
-        ];
-      case 'altocumulus':
-        // Patchy mackerel sky, gray-white
-        return [
-          [0, `rgba(238, 240, 245, ${puffOpacity})`],
-          [0.4, `rgba(225, 228, 235, ${puffOpacity * 0.85})`],
-          [0.7, `rgba(210, 215, 225, ${puffOpacity * 0.45})`],
-          [1, `rgba(200, 206, 218, 0)`],
-        ];
-      default:
-        return [[0, `rgba(255,255,255,${puffOpacity})`], [1, `rgba(240,240,245,0)`]];
-    }
-  };
-
-  // Draw a single puff (circle or ellipse based on stretch)
-  const drawPuff = (ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, stretchX: number, stretchY: number, gradient: CanvasGradient) => {
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    const rx = radius * stretchX;
-    const ry = radius * stretchY;
-    if (Math.abs(rx - ry) < 0.5) {
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-    } else {
-      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-    }
-    ctx.fill();
-  };
-
-  // Draw clouds - distinct rendering per cloud type for climate diversity
-  const drawClouds = useCallback((ctx: CanvasRenderingContext2D, currentHour: number) => {
+  // Draw clouds from the shared sprite sheet instead of generating puffs at draw time.
+  const drawClouds = useCallback((ctx: CanvasRenderingContext2D, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const weatherConfig = CLOUD_WEATHER_CONFIG[cloudWeatherMode];
+    const cloudSpriteSheet = getCachedImage(CLOUD_SPRITE_SHEET_SRC);
 
     // Skip if no clouds or zoomed out too far
-    if (!weatherConfig.showClouds || cloudsRef.current.length === 0 || currentZoom < CLOUD_MIN_ZOOM) {
+    if (!weatherConfig.showClouds || cloudsRef.current.length === 0 || currentZoom < CLOUD_MIN_ZOOM || !cloudSpriteSheet) {
       return;
     }
     
@@ -1193,91 +1092,45 @@ export function useEffectsSystems(
     ctx.save();
     ctx.scale(dpr * currentZoom, dpr * currentZoom);
     ctx.translate(currentOffset.x / currentZoom, currentOffset.y / currentZoom);
+    ctx.imageSmoothingEnabled = true;
     
     const viewWidth = canvas.width / (dpr * currentZoom);
     const viewHeight = canvas.height / (dpr * currentZoom);
-    const viewLeft = -currentOffset.x / currentZoom - CLOUD_WIDTH;
-    const viewTop = -currentOffset.y / currentZoom - CLOUD_WIDTH;
-    const viewRight = viewWidth - currentOffset.x / currentZoom + CLOUD_WIDTH;
-    const viewBottom = viewHeight - currentOffset.y / currentZoom + CLOUD_WIDTH;
-    const viewportArea = viewWidth * viewHeight;
+    const cloudDrawPadding = CLOUD_WIDTH * 2;
+    const viewLeft = -currentOffset.x / currentZoom - cloudDrawPadding;
+    const viewTop = -currentOffset.y / currentZoom - cloudDrawPadding;
+    const viewRight = viewWidth - currentOffset.x / currentZoom + cloudDrawPadding;
+    const viewBottom = viewHeight - currentOffset.y / currentZoom + cloudDrawPadding;
     
     const sortedClouds = [...cloudsRef.current].sort((a, b) => a.layer - b.layer);
     
-    // Estimate cloud coverage: sum approximate area of visible clouds / viewport area
-    // When coverage exceeds CLOUD_MAX_COVERAGE, fade clouds so they don't obscure the city
-    let totalCloudArea = 0;
-    for (const cloud of sortedClouds) {
-      if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
-      // Approximate each cloud's footprint: max puff extent squared (puffs overlap so we undercount)
-      let maxExtent = 0;
-      for (const puff of cloud.puffs) {
-        const rx = puff.size * cloud.scale * (puff.stretchX ?? 1);
-        const ry = puff.size * cloud.scale * (puff.stretchY ?? 1);
-        const extent = Math.sqrt(puff.offsetX * puff.offsetX + puff.offsetY * puff.offsetY) + Math.max(rx, ry);
-        if (extent > maxExtent) maxExtent = extent;
-      }
-      totalCloudArea += Math.PI * maxExtent * maxExtent; // circular footprint
-    }
-    const coverage = viewportArea > 0 ? totalCloudArea / viewportArea : 0;
-    // let coverageOpacity = 1;
-    // if (coverage > CLOUD_MAX_COVERAGE) {
-    //   const fadeRange = CLOUD_COVERAGE_FADE_END - CLOUD_MAX_COVERAGE;
-    //   coverageOpacity = Math.max(0, 1 - (coverage - CLOUD_MAX_COVERAGE) / fadeRange);
-    // }
-    
     for (const cloud of sortedClouds) {
       if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
       
-      const finalOpacity = cloud.opacity * zoomOpacity; // coverageOpacity intentionally disabled
-      
-      // Draw each puff with type-specific colors and shape
-      for (const puff of cloud.puffs) {
-        const puffX = cloud.x + puff.offsetX * cloud.scale;
-        const puffY = cloud.y + puff.offsetY * cloud.scale;
-        const puffSize = puff.size * cloud.scale;
-        const puffOpacity = finalOpacity * puff.opacity;
-        const stretchX = puff.stretchX ?? 1;
-        const stretchY = puff.stretchY ?? 1;
-        const maxRadius = Math.max(puffSize * stretchX, puffSize * stretchY);
-        
-        if (puffOpacity <= 0.01) continue;
-        
-        const stops = getCloudGradientStops(cloud.cloudType, puff.portion, puffOpacity);
-        const gradient = ctx.createRadialGradient(puffX, puffY, 0, puffX, puffY, maxRadius);
-        for (const [pos, color] of stops) gradient.addColorStop(pos, color);
-        
-        drawPuff(ctx, puffX, puffY, puffSize, stretchX, stretchY, gradient);
-      }
-      
-      // Shadow/depth (skip for cirrus - too wispy; reduce for stratus)
-      const baseShadowMult = weatherConfig.palette === 'light' ? 0.15 : 0.08;
-      const shadowMult = cloud.cloudType === 'cirrus' ? 0 : cloud.cloudType === 'stratus' ? baseShadowMult * 0.7 : baseShadowMult;
-      if (shadowMult > 0) {
-        const shadowY = cloud.y + 8 * cloud.scale;
-        for (const puff of cloud.puffs) {
-          const puffX = cloud.x + puff.offsetX * cloud.scale;
-          const puffY = shadowY + puff.offsetY * cloud.scale;
-          const puffSize = puff.size * cloud.scale * 0.9;
-          const stretchX = puff.stretchX ?? 1;
-          const stretchY = puff.stretchY ?? 1;
-          const shadowOpacity = finalOpacity * puff.opacity * shadowMult;
-          if (shadowOpacity <= 0.01) continue;
-          
-          const grad = ctx.createRadialGradient(puffX, puffY, 0, puffX, puffY, puffSize * Math.max(stretchX, stretchY));
-          if (weatherConfig.palette === 'light') {
-            grad.addColorStop(0, `rgba(160, 168, 185, ${shadowOpacity})`);
-            grad.addColorStop(0.5, `rgba(175, 182, 198, ${shadowOpacity * 0.5})`);
-            grad.addColorStop(1, `rgba(190, 195, 208, 0)`);
-          } else {
-            grad.addColorStop(0, `rgba(18, 20, 28, ${shadowOpacity})`);
-            grad.addColorStop(0.5, `rgba(30, 34, 44, ${shadowOpacity * 0.5})`);
-            grad.addColorStop(1, `rgba(48, 54, 66, 0)`);
-          }
-          drawPuff(ctx, puffX, puffY, puffSize, stretchX, stretchY, grad);
-        }
-      }
+      const finalOpacity = cloud.opacity * zoomOpacity;
+      if (finalOpacity <= 0.01) continue;
+
+      const sprite = getCloudSpriteDefinition(cloud.spriteKey);
+      const drawWidth = sprite.baseWidth * cloud.scale;
+      const drawHeight = drawWidth * (sprite.sh / sprite.sw);
+      const drawX = cloud.x - drawWidth / 2;
+      const drawY = cloud.y - drawHeight / 2;
+
+      ctx.globalAlpha = finalOpacity;
+      ctx.drawImage(
+        cloudSpriteSheet,
+        sprite.sx,
+        sprite.sy,
+        sprite.sw,
+        sprite.sh,
+        drawX,
+        drawY,
+        drawWidth,
+        drawHeight
+      );
     }
+
+    ctx.globalAlpha = 1;
 
     if (lightningStrikeRef.current) {
       const strike = lightningStrikeRef.current;
