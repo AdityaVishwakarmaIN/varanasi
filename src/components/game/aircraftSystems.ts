@@ -28,8 +28,8 @@ export interface AircraftSystemRefs {
 
 export interface AircraftSystemState {
   worldStateRef: React.MutableRefObject<WorldRenderState>;
-  gridVersionRef: React.MutableRefObject<number>;
-  cachedPopulationRef: React.MutableRefObject<{ count: number; gridVersion: number }>;
+  structureVersionRef: React.MutableRefObject<number>;
+  cachedPopulationRef: React.MutableRefObject<{ count: number; structureVersion: number }>;
   isMobile: boolean;
 }
 
@@ -46,7 +46,7 @@ export function useAircraftSystems(
     helicopterSpawnTimerRef,
   } = refs;
 
-  const { worldStateRef, gridVersionRef, cachedPopulationRef, isMobile } = systemState;
+  const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
 
   // Find airports callback
   const findAirportsCallback = useCallback((): { x: number; y: number }[] => {
@@ -78,9 +78,9 @@ export function useAircraftSystems(
     const airports = findAirportsCallback();
     
     // Get cached population count (only recalculate when grid changes)
-    const currentGridVersion = gridVersionRef.current;
+    const currentStructureVersion = structureVersionRef.current;
     let totalPopulation: number;
-    if (cachedPopulationRef.current.gridVersion === currentGridVersion) {
+    if (cachedPopulationRef.current.structureVersion === currentStructureVersion) {
       totalPopulation = cachedPopulationRef.current.count;
     } else {
       // Recalculate and cache
@@ -90,7 +90,7 @@ export function useAircraftSystems(
           totalPopulation += currentGrid[y][x].building.population || 0;
         }
       }
-      cachedPopulationRef.current = { count: totalPopulation, gridVersion: currentGridVersion };
+      cachedPopulationRef.current = { count: totalPopulation, structureVersion: currentStructureVersion };
     }
 
     // No airplanes if no airport or insufficient population
@@ -293,7 +293,7 @@ export function useAircraftSystems(
     }
     
     airplanesRef.current = updatedAirplanes;
-  }, [worldStateRef, gridVersionRef, cachedPopulationRef, airplanesRef, airplaneIdRef, airplaneSpawnTimerRef, findAirportsCallback, isMobile]);
+  }, [worldStateRef, structureVersionRef, cachedPopulationRef, airplanesRef, airplaneIdRef, airplaneSpawnTimerRef, findAirportsCallback, isMobile]);
 
   // Update helicopters - spawn, move between hospitals/airports, and manage lifecycle
   const updateHelicopters = useCallback((delta: number) => {
@@ -313,9 +313,9 @@ export function useAircraftSystems(
     const heliports = findHeliportsCallback();
     
     // Get cached population count
-    const currentGridVersion = gridVersionRef.current;
+    const currentStructureVersion = structureVersionRef.current;
     let totalPopulation: number;
-    if (cachedPopulationRef.current.gridVersion === currentGridVersion) {
+    if (cachedPopulationRef.current.structureVersion === currentStructureVersion) {
       totalPopulation = cachedPopulationRef.current.count;
     } else {
       // Recalculate and cache
@@ -325,7 +325,7 @@ export function useAircraftSystems(
           totalPopulation += currentGrid[y][x].building.population || 0;
         }
       }
-      cachedPopulationRef.current = { count: totalPopulation, gridVersion: currentGridVersion };
+      cachedPopulationRef.current = { count: totalPopulation, structureVersion: currentStructureVersion };
     }
 
     // No helicopters if fewer than 2 heliports or insufficient population
@@ -508,7 +508,7 @@ export function useAircraftSystems(
     }
     
     helicoptersRef.current = updatedHelicopters;
-  }, [worldStateRef, gridVersionRef, cachedPopulationRef, helicoptersRef, helicopterIdRef, helicopterSpawnTimerRef, findHeliportsCallback, isMobile]);
+  }, [worldStateRef, structureVersionRef, cachedPopulationRef, helicoptersRef, helicopterIdRef, helicopterSpawnTimerRef, findHeliportsCallback, isMobile]);
 
   return {
     updateAirplanes,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { msg } from 'gt-next';
 import { useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
@@ -25,6 +25,7 @@ const PARK_BUILDINGS = new Set([
 
 interface MiniMapProps {
   onNavigate?: (gridX: number, gridY: number) => void;
+  onViewportSubscribe?: (listener: MiniMapViewportListener) => () => void;
   viewport?: { 
     offset: { x: number; y: number }; 
     zoom: number; 
@@ -32,22 +33,42 @@ interface MiniMapProps {
   } | null;
 }
 
+type MiniMapViewport = {
+  offset: { x: number; y: number };
+  zoom: number;
+  canvasSize: { width: number; height: number };
+};
+
+type MiniMapViewportListener = (viewport: MiniMapViewport | null) => void;
+
 // Canvas-based Minimap - Memoized with throttled grid rendering
 // Translatable label
 const MINIMAP_LABEL = msg('Minimap');
 
-export const MiniMap = React.memo(function MiniMap({ onNavigate, viewport }: MiniMapProps) {
+export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubscribe, viewport }: MiniMapProps) {
   const { state } = useGame();
-  const { grid, gridSize, tick } = state;
+  const { grid, gridSize, tick, structureVersion } = state;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [subscribedViewport, setSubscribedViewport] = useState<MiniMapViewport | null>(null);
   const gridImageRef = useRef<ImageData | null>(null);
   const lastGridRenderTickRef = useRef(-1);
-  const lastGridRef = useRef<typeof grid | null>(null);
+  const lastStructureVersionRef = useRef(-1);
   const m = useMessages();
   
   // Pre-compute color map for faster lookups
   const serviceBuildings = useMemo(() => SERVICE_BUILDINGS, []);
   const parkBuildings = useMemo(() => PARK_BUILDINGS, []);
+
+  useEffect(() => {
+    if (!onViewportSubscribe) {
+      setSubscribedViewport(viewport || null);
+      return;
+    }
+
+    return onViewportSubscribe((nextViewport) => {
+      setSubscribedViewport(nextViewport);
+    });
+  }, [onViewportSubscribe, viewport]);
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -59,17 +80,18 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, viewport }: Min
     const size = 140;
     const scale = size / gridSize;
     
-    // Track if grid reference changed (indicates building placement or other grid modification)
-    const gridChanged = lastGridRef.current !== grid;
-    lastGridRef.current = grid;
+    // Track if structure version changed (indicates building/zone/terrain changes)
+    const currentStructureVersion = structureVersion ?? 0;
+    const structureVersionChanged = lastStructureVersionRef.current !== currentStructureVersion;
     
     // Re-render grid portion every 10 ticks OR when grid changes (building placed, etc.)
     // This ensures immediate updates when user places buildings while keeping CPU usage low
     const shouldRenderGrid = lastGridRenderTickRef.current === -1 || 
                              tick - lastGridRenderTickRef.current >= 10 ||
-                             gridChanged;
+                             structureVersionChanged;
     
     if (shouldRenderGrid) {
+      lastStructureVersionRef.current = currentStructureVersion;
       lastGridRenderTickRef.current = tick;
       
       ctx.fillStyle = '#0b1723';
@@ -110,8 +132,8 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, viewport }: Min
     }
     
     // Draw viewport rectangle (always updated)
-    if (viewport) {
-      const { offset, zoom, canvasSize } = viewport;
+    if (subscribedViewport) {
+      const { offset, zoom, canvasSize } = subscribedViewport;
       
       const screenToGridForMinimap = (screenX: number, screenY: number) => {
         const adjustedX = (screenX - offset.x) / zoom;
@@ -136,7 +158,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, viewport }: Min
       ctx.closePath();
       ctx.stroke();
     }
-  }, [grid, gridSize, viewport, tick, serviceBuildings, parkBuildings]);
+  }, [grid, gridSize, tick, structureVersion, subscribedViewport, serviceBuildings, parkBuildings]);
 
   const [isDragging, setIsDragging] = useState(false);
   

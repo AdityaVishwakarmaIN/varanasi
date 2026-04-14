@@ -673,10 +673,10 @@ export function createMergeInfoCache(
   gridSize: number,
   cacheRef: React.MutableRefObject<Map<string, MergedRoadInfo>>,
   cacheVersionRef: React.MutableRefObject<number>,
-  gridVersionRef: React.MutableRefObject<number>
+  roadNetworkVersionRef: React.MutableRefObject<number>
 ): (gx: number, gy: number) => MergedRoadInfo {
   return (gx: number, gy: number): MergedRoadInfo => {
-    const currentVersion = gridVersionRef.current;
+    const currentVersion = roadNetworkVersionRef.current;
     if (cacheVersionRef.current !== currentVersion) {
       cacheRef.current.clear();
       cacheVersionRef.current = currentVersion;

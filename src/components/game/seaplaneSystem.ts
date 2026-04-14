@@ -37,8 +37,8 @@ export interface SeaplaneSystemRefs {
 
 export interface SeaplaneSystemState {
   worldStateRef: React.MutableRefObject<WorldRenderState>;
-  gridVersionRef: React.MutableRefObject<number>;
-  cachedPopulationRef: React.MutableRefObject<{ count: number; gridVersion: number }>;
+  structureVersionRef: React.MutableRefObject<number>;
+  cachedPopulationRef: React.MutableRefObject<{ count: number; structureVersion: number }>;
   isMobile: boolean;
 }
 
@@ -68,7 +68,7 @@ export function useSeaplaneSystem(
   systemState: SeaplaneSystemState
 ) {
   const { seaplanesRef, seaplaneIdRef, seaplaneSpawnTimerRef } = refs;
-  const { worldStateRef, gridVersionRef, cachedPopulationRef, isMobile } = systemState;
+  const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
 
   // Find bays callback
   const findBaysCallback = useCallback((): BayInfo[] => {
@@ -107,9 +107,9 @@ export function useSeaplaneSystem(
     const allDocks = findDocksCallback();
     
     // Get cached population count
-    const currentGridVersion = gridVersionRef.current;
+    const currentStructureVersion = structureVersionRef.current;
     let totalPopulation: number;
-    if (cachedPopulationRef.current.gridVersion === currentGridVersion) {
+    if (cachedPopulationRef.current.structureVersion === currentStructureVersion) {
       totalPopulation = cachedPopulationRef.current.count;
     } else {
       // Recalculate and cache
@@ -119,7 +119,7 @@ export function useSeaplaneSystem(
           totalPopulation += currentGrid[y][x].building.population || 0;
         }
       }
-      cachedPopulationRef.current = { count: totalPopulation, gridVersion: currentGridVersion };
+      cachedPopulationRef.current = { count: totalPopulation, structureVersion: currentStructureVersion };
     }
 
     // No seaplanes if no bays or insufficient population
@@ -646,7 +646,7 @@ export function useSeaplaneSystem(
     }
     
     seaplanesRef.current = updatedSeaplanes;
-  }, [worldStateRef, gridVersionRef, cachedPopulationRef, seaplanesRef, seaplaneIdRef, seaplaneSpawnTimerRef, findBaysCallback, findDocksCallback, isOverWaterCallback, isMobile]);
+  }, [worldStateRef, structureVersionRef, cachedPopulationRef, seaplanesRef, seaplaneIdRef, seaplaneSpawnTimerRef, findBaysCallback, findDocksCallback, isOverWaterCallback, isMobile]);
 
   return {
     updateSeaplanes,

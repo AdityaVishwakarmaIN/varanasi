@@ -38,7 +38,7 @@ const ALL_PARK_TYPES = new Set<BuildingType>([
   'mountain_lodge', 'mountain_trailhead'
 ]);
 
-export function useBuildingHelpers(grid: Tile[][], gridSize: number) {
+export function useBuildingHelpers(grid: Tile[][], gridSize: number, structureVersion: number) {
   // Pre-compute all tile metadata once when grid changes
   // This converts O(n) per-tile lookups during render to O(1) map lookups
   // PERF: Store gridSize for numeric key calculation
@@ -253,7 +253,7 @@ export function useBuildingHelpers(grid: Tile[][], gridSize: number) {
     }
     
     return map;
-  }, [grid, gridSize]);
+  }, [grid, gridSize, structureVersion]);
   
   // O(1) lookup functions that use the pre-computed map
   // PERF: Use numeric key calculation (gridY * gridSize + gridX)

@@ -1044,12 +1044,15 @@ function checkAndCreateBridges(
   placedX: number,
   placedY: number,
   trackType: 'road' | 'rail'
-): void {
+): boolean {
   // Check for bridge opportunities from the placed tile
   const opportunity = detectBridgeOpportunity(grid, gridSize, placedX, placedY, trackType);
   if (opportunity) {
     buildBridges(grid, opportunity);
+    return true;
   }
+
+  return false;
 }
 
 /**
@@ -1086,16 +1089,31 @@ export function createBridgesOnPath(
   }
   
   const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
+  let didCreateBridge = false;
   
   // Check each tile of the specified track type in the path for bridge opportunities
   for (const tile of pathTiles) {
     // Only check from actual track type tiles (not water or other types)
     if (newGrid[tile.y]?.[tile.x]?.building.type === trackType) {
-      checkAndCreateBridges(newGrid, state.gridSize, tile.x, tile.y, trackType);
+      if (checkAndCreateBridges(newGrid, state.gridSize, tile.x, tile.y, trackType)) {
+        didCreateBridge = true;
+      }
     }
   }
+
+  if (!didCreateBridge) {
+    return state;
+  }
+
+  const nextStructureVersion = (state.structureVersion ?? 0) + 1;
+  const nextRoadNetworkVersion = (state.roadNetworkVersion ?? 0) + 1;
   
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: nextStructureVersion,
+    roadNetworkVersion: nextRoadNetworkVersion,
+  };
 }
 
 function createInitialBudget(): Budget {
@@ -1271,6 +1289,8 @@ export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityNam
     adjacentCities,
     waterBodies,
     gameVersion: 0,
+    structureVersion: 0,
+    roadNetworkVersion: 0,
     cities: [defaultCity],
   };
 }
@@ -1453,6 +1473,7 @@ export function upgradeServiceBuilding(state: GameState, x: number, y: number): 
     grid: newGrid,
     stats: newStats,
     services,
+    structureVersion: (state.structureVersion ?? 0) + 1,
   };
 }
 
@@ -2239,6 +2260,7 @@ export function simulateTick(
   
   // Track which rows have been modified to avoid unnecessary row cloning
   const modifiedRows = new Set<number>();
+  let didStructureChange = false;
   const newGrid: Tile[][] = new Array(size);
   
   // Initialize with references to original rows (will clone on write)
@@ -2318,7 +2340,11 @@ export function simulateTick(
         
         if (canConstruct) {
           const constructionSpeed = getConstructionSpeed(tile.building.type);
-          tile.building.constructionProgress = Math.min(100, tile.building.constructionProgress + constructionSpeed);
+          const nextConstructionProgress = Math.min(100, tile.building.constructionProgress + constructionSpeed);
+          if (nextConstructionProgress !== tile.building.constructionProgress) {
+            tile.building.constructionProgress = nextConstructionProgress;
+            didStructureChange = true;
+          }
         }
       }
 
@@ -2327,6 +2353,7 @@ export function simulateTick(
         const origin = findBuildingOrigin(newGrid, x, y, size);
         if (!origin) {
           tile.building = createBuilding('grass');
+          didStructureChange = true;
           tile.building.powered = newPowered;
           tile.building.watered = newWatered;
         }
@@ -2364,6 +2391,7 @@ export function simulateTick(
         if (roadAccess && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
           const candidateSize = getBuildingSize(candidate);
           if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
+          didStructureChange = true;
             // Pre-clone all rows that will be modified by the building footprint
             for (let dy = 0; dy < candidateSize.height && y + dy < size; dy++) {
               if (!modifiedRows.has(y + dy)) {
@@ -2377,7 +2405,25 @@ export function simulateTick(
       } else if (tile.zone !== 'none' && tile.building.type !== 'grass') {
         // Evolve existing building - this may modify multiple tiles for multi-tile buildings
         // The evolveBuilding function handles its own row modifications internally
+        const beforeBuilding = tile.building;
+        const beforeBuildingState = {
+          type: beforeBuilding.type,
+          level: beforeBuilding.level,
+          constructionProgress: beforeBuilding.constructionProgress,
+          onFire: beforeBuilding.onFire,
+          abandoned: beforeBuilding.abandoned,
+        };
         newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand);
+        const evolvedBuilding = newGrid[y][x].building;
+        const didEvolveStructureChange =
+          beforeBuildingState.type !== evolvedBuilding.type ||
+          beforeBuildingState.level !== evolvedBuilding.level ||
+          beforeBuildingState.constructionProgress !== evolvedBuilding.constructionProgress ||
+          beforeBuildingState.onFire !== evolvedBuilding.onFire ||
+          beforeBuildingState.abandoned !== evolvedBuilding.abandoned;
+        if (didEvolveStructureChange) {
+          didStructureChange = true;
+        }
       }
 
       // Update pollution from buildings
@@ -2388,6 +2434,7 @@ export function simulateTick(
       if (state.disastersEnabled && tile.building.onFire) {
         tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
         if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
+          didStructureChange = true;
           tile.building = createBuilding('grass');
           tile.zone = 'none';
         }
@@ -2407,6 +2454,7 @@ export function simulateTick(
           const spreadChance = getFireSpreadChance(adjacentFireCount, fireCoverage, cloudWeatherMode);
           
           if (Math.random() < spreadChance) {
+            didStructureChange = true;
             igniteBuilding(tile.building);
           }
         }
@@ -2418,6 +2466,7 @@ export function simulateTick(
         !tile.building.onFire &&
         Math.random() < getRandomFireIgnitionChance(tile.building.type, cloudWeatherMode)
       ) {
+        didStructureChange = true;
         igniteBuilding(tile.building);
       }
     }
@@ -2434,6 +2483,7 @@ export function simulateTick(
           // Only clone row AFTER tree actually grows (optimization: avoids cloning ~99.96% of rows)
           const grew = tryGrowTree(tile, treeGrowthChance);
           if (grew && !modifiedRows.has(y)) {
+            didStructureChange = true;
             newGrid[y] = state.grid[y].map(t => ({ ...t, building: { ...t.building } }));
             modifiedRows.add(y);
           }
@@ -2563,6 +2613,10 @@ export function simulateTick(
     }
   }
 
+  const nextStructureVersion = didStructureChange
+    ? (state.structureVersion ?? 0) + 1
+    : (state.structureVersion ?? 0);
+
   return {
     ...state,
     grid: newGrid,
@@ -2575,6 +2629,8 @@ export function simulateTick(
     stats: newStats,
     budget: newBudget,
     services,
+    structureVersion: nextStructureVersion,
+    roadNetworkVersion: state.roadNetworkVersion ?? 0,
     advisorMessages,
     notifications: newNotifications,
     history,
@@ -2990,7 +3046,15 @@ export function placeBuilding(
     // sides of water should not automatically create a bridge - only explicit dragging should
   }
 
-  return { ...state, grid: newGrid };
+  const nextStructureVersion = (state.structureVersion ?? 0) + 1;
+  const nextRoadNetworkVersion = (state.roadNetworkVersion ?? 0) + (buildingType === 'road' || buildingType === 'rail' ? 1 : 0);
+
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: nextStructureVersion,
+    roadNetworkVersion: nextRoadNetworkVersion,
+  };
 }
 
 // Find the origin tile of a multi-tile building that contains the given tile
@@ -3152,7 +3216,12 @@ export function bulldozeTile(state: GameState, x: number, y: number): GameState 
       newGrid[bt.y][bt.x].zone = 'none';
       newGrid[bt.y][bt.x].hasRailOverlay = false;
     }
-    return { ...state, grid: newGrid };
+    return {
+      ...state,
+      grid: newGrid,
+      structureVersion: (state.structureVersion ?? 0) + 1,
+      roadNetworkVersion: (state.roadNetworkVersion ?? 0) + 1,
+    };
   }
   
   // Special handling for roads - check if adjacent to a bridge start/end
@@ -3169,7 +3238,12 @@ export function bulldozeTile(state: GameState, x: number, y: number): GameState 
         newGrid[bt.y][bt.x].zone = 'none';
         newGrid[bt.y][bt.x].hasRailOverlay = false;
       }
-      return { ...state, grid: newGrid };
+      return {
+        ...state,
+        grid: newGrid,
+        structureVersion: (state.structureVersion ?? 0) + 1,
+        roadNetworkVersion: (state.roadNetworkVersion ?? 0) + 1,
+      };
     }
   }
   
@@ -3199,7 +3273,12 @@ export function bulldozeTile(state: GameState, x: number, y: number): GameState 
     // Don't remove subway when bulldozing surface buildings
   }
 
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: (state.structureVersion ?? 0) + 1,
+    roadNetworkVersion: tile.building.type === 'road' ? (state.roadNetworkVersion ?? 0) + 1 : (state.roadNetworkVersion ?? 0),
+  };
 }
 
 // Place a subway line underground (doesn't affect surface buildings)
@@ -3216,7 +3295,11 @@ export function placeSubway(state: GameState, x: number, y: number): GameState {
   const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
   newGrid[y][x].hasSubway = true;
 
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: (state.structureVersion ?? 0) + 1,
+  };
 }
 
 // Remove subway from a tile
@@ -3230,7 +3313,11 @@ export function removeSubway(state: GameState, x: number, y: number): GameState 
   const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
   newGrid[y][x].hasSubway = false;
 
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: (state.structureVersion ?? 0) + 1,
+  };
 }
 
 // Terraform a tile into water
@@ -3269,7 +3356,12 @@ export function placeWaterTerraform(state: GameState, x: number, y: number): Gam
   newGrid[y][x].zone = 'none';
   newGrid[y][x].hasSubway = false; // Remove any subway under water
 
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: (state.structureVersion ?? 0) + 1,
+    roadNetworkVersion: (state.roadNetworkVersion ?? 0) + (tile.building.type === 'road' ? 1 : 0),
+  };
 }
 
 // Terraform a tile into land (grass)
@@ -3286,7 +3378,11 @@ export function placeLandTerraform(state: GameState, x: number, y: number): Game
   newGrid[y][x].building = createBuilding('grass');
   newGrid[y][x].zone = 'none';
 
-  return { ...state, grid: newGrid };
+  return {
+    ...state,
+    grid: newGrid,
+    structureVersion: (state.structureVersion ?? 0) + 1,
+  };
 }
 
 // Generate a random advanced city state with developed zones, infrastructure, and buildings

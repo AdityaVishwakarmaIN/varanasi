@@ -59,9 +59,10 @@ export interface VehicleSystemRefs {
 export interface VehicleSystemState {
   worldStateRef: React.MutableRefObject<WorldRenderState>;
   gridVersionRef: React.MutableRefObject<number>;
-  cachedRoadTileCountRef: React.MutableRefObject<{ count: number; gridVersion: number }>;
+  roadNetworkVersionRef: React.MutableRefObject<number>;
+  cachedRoadTileCountRef: React.MutableRefObject<{ count: number; roadVersion: number }>;
   // PERF: Pre-computed intersection map to avoid repeated getDirectionOptions() calls per-car per-frame
-  cachedIntersectionMapRef: React.MutableRefObject<{ map: Map<number, boolean>; gridVersion: number }>;
+  cachedIntersectionMapRef: React.MutableRefObject<{ map: Map<number, boolean>; roadVersion: number }>;
   state: {
     services: {
       police: number[][];
@@ -98,8 +99,15 @@ export function useVehicleSystems(
     trainsRef,
   } = refs;
 
-  const { worldStateRef, gridVersionRef, cachedRoadTileCountRef, cachedIntersectionMapRef, state, isMobile } = systemState;
-
+  const {
+    worldStateRef,
+    gridVersionRef,
+    roadNetworkVersionRef,
+    cachedRoadTileCountRef,
+    cachedIntersectionMapRef,
+    state,
+    isMobile,
+  } = systemState;
   const spawnRandomCar = useCallback(() => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
@@ -899,8 +907,8 @@ export function useVehicleSystems(
     if (!isRoadTile(grid, gridSize, x, y)) return false;
     
     // Check if cache is valid for current grid version
-    const currentVersion = gridVersionRef.current;
-    if (cachedIntersectionMapRef.current.gridVersion !== currentVersion) {
+    const currentVersion = roadNetworkVersionRef.current;
+    if (cachedIntersectionMapRef.current.roadVersion !== currentVersion) {
       // Rebuild the intersection cache for the entire grid
       const newMap = new Map<number, boolean>();
       for (let cy = 0; cy < gridSize; cy++) {
@@ -911,13 +919,13 @@ export function useVehicleSystems(
           }
         }
       }
-      cachedIntersectionMapRef.current = { map: newMap, gridVersion: currentVersion };
+      cachedIntersectionMapRef.current = { map: newMap, roadVersion: currentVersion };
     }
     
     // O(1) lookup from cache
     const key = y * gridSize + x;
     return cachedIntersectionMapRef.current.map.get(key) ?? false;
-  }, [gridVersionRef, cachedIntersectionMapRef]);
+  }, [roadNetworkVersionRef, cachedIntersectionMapRef]);
 
   const updateCars = useCallback((delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
@@ -940,9 +948,9 @@ export function useVehicleSystems(
     
     // Scale car count with road tiles (similar to pedestrians) for proper density on large maps
     // Use cached road tile count for performance
-    const currentGridVersion = gridVersionRef.current;
+    const currentGridVersion = roadNetworkVersionRef.current;
     let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.gridVersion === currentGridVersion) {
+    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
       roadTileCount = cachedRoadTileCountRef.current.count;
     } else {
       roadTileCount = 0;
@@ -954,7 +962,7 @@ export function useVehicleSystems(
           }
         }
       }
-      cachedRoadTileCountRef.current = { count: roadTileCount, gridVersion: currentGridVersion };
+      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
     }
     
     // Target ~0.5 cars per road tile on desktop, ~0.15 on mobile (for performance)
@@ -1179,7 +1187,7 @@ export function useVehicleSystems(
     }
     
     carsRef.current = updatedCars;
-  }, [worldStateRef, carsRef, carSpawnTimerRef, spawnRandomCar, trafficLightTimerRef, isIntersection, isMobile, trainsRef, gridVersionRef, cachedRoadTileCountRef]);
+  }, [worldStateRef, carsRef, carSpawnTimerRef, spawnRandomCar, trafficLightTimerRef, isIntersection, isMobile, trainsRef, roadNetworkVersionRef, cachedRoadTileCountRef]);
 
   const updateBuses = useCallback((delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
@@ -1201,9 +1209,9 @@ export function useVehicleSystems(
 
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
 
-    const currentGridVersion = gridVersionRef.current;
+    const currentGridVersion = roadNetworkVersionRef.current;
     let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.gridVersion === currentGridVersion) {
+    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
       roadTileCount = cachedRoadTileCountRef.current.count;
     } else {
       roadTileCount = 0;
@@ -1215,7 +1223,7 @@ export function useVehicleSystems(
           }
         }
       }
-      cachedRoadTileCountRef.current = { count: roadTileCount, gridVersion: currentGridVersion };
+      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
     }
 
     const maxBuses = isMobile ? MAX_BUSES_MOBILE : MAX_BUSES;
@@ -1333,7 +1341,7 @@ export function useVehicleSystems(
     }
 
     busesRef.current = updatedBuses;
-  }, [worldStateRef, state.stats.population, isMobile, busesRef, busSpawnTimerRef, spawnBus, buildBusRouteFrom, trafficLightTimerRef, trainsRef, gridVersionRef, cachedRoadTileCountRef, isIntersection]);
+  }, [worldStateRef, state.stats.population, isMobile, busesRef, busSpawnTimerRef, spawnBus, buildBusRouteFrom, trafficLightTimerRef, trainsRef, roadNetworkVersionRef, cachedRoadTileCountRef, isIntersection]);
 
   const updatePedestrians = useCallback((delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
@@ -1355,9 +1363,9 @@ export function useVehicleSystems(
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
     // Cache road tile count (expensive to calculate every frame)
-    const currentGridVersion = gridVersionRef.current;
+    const currentGridVersion = roadNetworkVersionRef.current;
     let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.gridVersion === currentGridVersion) {
+    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
       roadTileCount = cachedRoadTileCountRef.current.count;
     } else {
       roadTileCount = 0;
@@ -1369,7 +1377,7 @@ export function useVehicleSystems(
           }
         }
       }
-      cachedRoadTileCountRef.current = { count: roadTileCount, gridVersion: currentGridVersion };
+      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
     }
     
     // Scale pedestrian count with city size (road tiles), with a reasonable cap
@@ -1438,7 +1446,7 @@ export function useVehicleSystems(
     }
     
     pedestriansRef.current = updatedPedestrians;
-  }, [worldStateRef, gridVersionRef, cachedRoadTileCountRef, pedestriansRef, pedestrianSpawnTimerRef, spawnPedestrian, trafficLightTimerRef, isMobile]);
+  }, [worldStateRef, roadNetworkVersionRef, cachedRoadTileCountRef, pedestriansRef, pedestrianSpawnTimerRef, spawnPedestrian, trafficLightTimerRef, isMobile]);
 
   const drawCars = useCallback((ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
@@ -1461,6 +1469,13 @@ export function useVehicleSystems(
     ctx.save();
     ctx.scale(dpr * currentZoom, dpr * currentZoom);
     ctx.translate(currentOffset.x / currentZoom, currentOffset.y / currentZoom);
+
+    const viewWidth = canvas.width / (dpr * currentZoom);
+    const viewHeight = canvas.height / (dpr * currentZoom);
+    const viewLeft = -currentOffset.x / currentZoom - TILE_WIDTH;
+    const viewTop = -currentOffset.y / currentZoom - TILE_HEIGHT * 2;
+    const viewRight = viewWidth - currentOffset.x / currentZoom + TILE_WIDTH;
+    const viewBottom = viewHeight - currentOffset.y / currentZoom + TILE_HEIGHT * 2;
     
     carsRef.current.forEach(car => {
       const { screenX, screenY } = gridToScreen(car.tileX, car.tileY, 0, 0);
@@ -1469,7 +1484,11 @@ export function useVehicleSystems(
       const meta = DIRECTION_META[car.direction];
       const carX = centerX + meta.vec.dx * car.progress + meta.normal.nx * car.laneOffset;
       const carY = centerY + meta.vec.dy * car.progress + meta.normal.ny * car.laneOffset;
-      
+
+      if (carX < viewLeft - 60 || carX > viewRight + 60 || carY < viewTop - 80 || carY > viewBottom + 80) {
+        return;
+      }
+
       ctx.save();
       ctx.translate(carX, carY);
       ctx.rotate(meta.angle);
@@ -1494,7 +1513,7 @@ export function useVehicleSystems(
       
       ctx.restore();
     });
-    
+
     ctx.restore();
   }, [worldStateRef, carsRef, isMobile]);
 

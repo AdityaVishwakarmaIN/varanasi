@@ -174,6 +174,15 @@ const toolZoneMap: Partial<Record<Tool, ZoneType>> = {
   zone_dezone: 'none',
 };
 
+function normalizeGameStateVersions(state: GameState): GameState {
+  return {
+    ...state,
+    gameVersion: state.gameVersion ?? 0,
+    structureVersion: state.structureVersion ?? 0,
+    roadNetworkVersion: state.roadNetworkVersion ?? 0,
+  };
+}
+
 // Load game state from localStorage
 // Supports both compressed (lz-string) and uncompressed (legacy) formats
 function loadGameState(): GameState | null {
@@ -282,15 +291,21 @@ function loadGameState(): GameState | null {
             }
           }
         }
-        // Ensure gameVersion exists for backward compatibility
+        // Ensure version fields exist for backward compatibility
         if (parsed.gameVersion === undefined) {
           parsed.gameVersion = 0;
+        }
+        if (parsed.structureVersion === undefined) {
+          parsed.structureVersion = 0;
+        }
+        if (parsed.roadNetworkVersion === undefined) {
+          parsed.roadNetworkVersion = 0;
         }
         // Migrate to include UUID if missing
         if (!parsed.id) {
           parsed.id = generateUUID();
         }
-        return parsed as GameState;
+        return normalizeGameStateVersions(parsed as GameState);
       } else {
         localStorage.removeItem(ISOCITY_STORAGE_KEY);
       }
@@ -518,7 +533,7 @@ function loadSavedCityState(): GameState | null {
     if (saved) {
       const parsed = decompressSavedCity(saved);
       if (parsed?.state && parsed.state.grid && parsed.state.gridSize && parsed.state.stats) {
-        return parsed.state as GameState;
+        return normalizeGameStateVersions(parsed.state as GameState);
       }
     }
   } catch (e) {
@@ -630,7 +645,7 @@ function loadCityState(cityId: string): GameState | null {
       
       const parsed = JSON.parse(jsonString);
       if (parsed && parsed.grid && parsed.gridSize && parsed.stats) {
-        return parsed as GameState;
+        return normalizeGameStateVersions(parsed as GameState);
       }
     }
   } catch (e) {
@@ -1146,6 +1161,8 @@ export function GameProvider({ children, startFresh = false }: { children: React
     setState((prev) => ({
       ...fresh,
       gameVersion: (prev.gameVersion ?? 0) + 1,
+      structureVersion: (prev.structureVersion ?? 0) + 1,
+      roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
     }));
   }, []);
 
@@ -1217,9 +1234,12 @@ export function GameProvider({ children, startFresh = false }: { children: React
         }
         // Increment gameVersion to clear vehicles/entities when loading a new state
         cloudWeatherModeRef.current = 'clear';
+        const normalizedState = normalizeGameStateVersions(parsed as GameState);
         setState((prev) => ({
-          ...(parsed as GameState),
+          ...normalizedState,
           gameVersion: (prev.gameVersion ?? 0) + 1,
+          structureVersion: (normalizedState.structureVersion ?? 0) + 1,
+          roadNetworkVersion: (normalizedState.roadNetworkVersion ?? 0) + 1,
         }));
         return true;
       }
@@ -1241,6 +1261,8 @@ export function GameProvider({ children, startFresh = false }: { children: React
     setState((prev) => ({
       ...randomCity,
       gameVersion: (prev.gameVersion ?? 0) + 1,
+      structureVersion: (prev.structureVersion ?? 0) + 1,
+      roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
     }));
   }, []);
 
@@ -1330,6 +1352,8 @@ export function GameProvider({ children, startFresh = false }: { children: React
         },
         // Increment game version to reset vehicles/entities
         gameVersion: (prev.gameVersion ?? 0) + 1,
+        structureVersion: (prev.structureVersion ?? 0) + 1,
+        roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
       };
     });
   }, []);
@@ -1429,6 +1453,8 @@ export function GameProvider({ children, startFresh = false }: { children: React
         },
         // Increment game version to reset vehicles/entities
         gameVersion: (prev.gameVersion ?? 0) + 1,
+        structureVersion: (prev.structureVersion ?? 0) + 1,
+        roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
       };
     });
     return success;
@@ -1478,7 +1504,13 @@ export function GameProvider({ children, startFresh = false }: { children: React
     if (savedState) {
       skipNextSaveRef.current = true;
       cloudWeatherModeRef.current = 'clear';
-      setState(savedState);
+      const normalizedSavedState = normalizeGameStateVersions(savedState);
+      setState((prev) => ({
+        ...normalizedSavedState,
+        gameVersion: (prev.gameVersion ?? 0) + 1,
+        structureVersion: (normalizedSavedState.structureVersion ?? 0) + 1,
+        roadNetworkVersion: (normalizedSavedState.roadNetworkVersion ?? 0) + 1,
+      }));
       clearSavedCityStorage();
       return true;
     }
@@ -1598,13 +1630,16 @@ export function GameProvider({ children, startFresh = false }: { children: React
     
     skipNextSaveRef.current = true;
     cloudWeatherModeRef.current = 'clear';
+    const normalizedCityState = normalizeGameStateVersions(cityState);
     setState((prev) => ({
-      ...cityState,
+      ...normalizedCityState,
       gameVersion: (prev.gameVersion ?? 0) + 1,
+      structureVersion: (normalizedCityState.structureVersion ?? 0) + 1,
+      roadNetworkVersion: (normalizedCityState.roadNetworkVersion ?? 0) + 1,
     }));
     
     // Also update the current game in local storage
-    saveGameState(cityState);
+    saveGameState(normalizedCityState);
     
     return true;
   }, []);

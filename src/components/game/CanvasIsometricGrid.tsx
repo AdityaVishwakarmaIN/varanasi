@@ -151,7 +151,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     visualHour,
     setCloudWeatherMode,
   } = useGame();
-  const { grid, gridSize, selectedTool, speed, adjacentCities, waterBodies, gameVersion } = state;
+  const {
+    grid,
+    gridSize,
+    selectedTool,
+    speed,
+    adjacentCities,
+    waterBodies,
+    gameVersion,
+    structureVersion,
+    roadNetworkVersion,
+  } = state;
   
   // PERF: Use latestStateRef for real-time grid access in animation loops
   // This avoids waiting for React state sync which is throttled for performance
@@ -279,11 +289,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const trafficLightTimerRef = useRef(0);
 
   // Performance: Cache expensive grid calculations
-  const cachedRoadTileCountRef = useRef<{ count: number; gridVersion: number }>({ count: 0, gridVersion: -1 });
-  const cachedPopulationRef = useRef<{ count: number; gridVersion: number }>({ count: 0, gridVersion: -1 });
+  const cachedRoadTileCountRef = useRef<{ count: number; roadVersion: number }>({ count: 0, roadVersion: -1 });
+  const cachedPopulationRef = useRef<{ count: number; structureVersion: number }>({ count: 0, structureVersion: -1 });
   // PERF: Cache intersection status per-tile to avoid repeated getDirectionOptions() calls
-  const cachedIntersectionMapRef = useRef<{ map: Map<number, boolean>; gridVersion: number }>({ map: new Map(), gridVersion: -1 });
+  const cachedIntersectionMapRef = useRef<{ map: Map<number, boolean>; roadVersion: number }>({ map: new Map(), roadVersion: -1 });
   const gridVersionRef = useRef(0);
+  const roadNetworkVersionRef = useRef(-1);
   
   // Performance: Cache road merge analysis (expensive calculation done per-road-tile)
   const roadAnalysisCacheRef = useRef<Map<string, ReturnType<typeof analyzeMergedRoad>>>(new Map());
@@ -340,7 +351,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const CLICK_SELECTION_MAX_MS = 500;
 
   // Use extracted building helpers (with pre-computed tile metadata for O(1) lookups)
-  const { isPartOfMultiTileBuilding, findBuildingOrigin, isPartOfParkBuilding, getTileMetadata } = useBuildingHelpers(grid, gridSize);
+  const { isPartOfMultiTileBuilding, findBuildingOrigin, isPartOfParkBuilding, getTileMetadata } = useBuildingHelpers(
+    grid,
+    gridSize,
+    structureVersion
+  );
 
   // Use extracted vehicle systems
   const vehicleSystemRefs: VehicleSystemRefs = {
@@ -367,6 +382,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const vehicleSystemState: VehicleSystemState = {
     worldStateRef,
     gridVersionRef,
+    roadNetworkVersionRef,
     cachedRoadTileCountRef,
     cachedIntersectionMapRef,
     state: {
@@ -408,7 +424,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
   const aircraftSystemState: AircraftSystemState = {
     worldStateRef,
-    gridVersionRef,
+    structureVersionRef: gridVersionRef,
     cachedPopulationRef,
     isMobile,
   };
@@ -427,7 +443,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
   const seaplaneSystemState: SeaplaneSystemState = {
     worldStateRef,
-    gridVersionRef,
+    structureVersionRef: gridVersionRef,
     cachedPopulationRef,
     isMobile,
   };
@@ -495,7 +511,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
   const effectsSystemState: EffectsSystemState = {
     worldStateRef,
-    gridVersionRef,
+    structureVersionRef: gridVersionRef,
     isMobile,
   };
 
@@ -530,31 +546,39 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // Initial sync from React state
     worldStateRef.current.grid = grid;
     worldStateRef.current.gridSize = gridSize;
-    gridVersionRef.current++;
-    crossingPositionsRef.current = findRailroadCrossings(grid, gridSize);
-  }, [grid, gridSize]);
+    gridVersionRef.current = structureVersion;
+    if (roadNetworkVersionRef.current !== roadNetworkVersion) {
+      roadNetworkVersionRef.current = roadNetworkVersion;
+      crossingPositionsRef.current = findRailroadCrossings(grid, gridSize);
+    }
+  }, [grid, gridSize, structureVersion, roadNetworkVersion]);
   
   // PERF: Continuously sync from latestStateRef for real-time grid updates
   // This allows canvas to see simulation changes before React state syncs
   useEffect(() => {
     let animFrameId: number;
-    let lastGridVersion = 0;
     
     const syncFromRef = () => {
       animFrameId = requestAnimationFrame(syncFromRef);
       
-      // Only update if latestStateRef has newer data
+      // Always keep latestStateRef data in sync for immediate draw loop access
       const latest = latestStateRef.current;
-      if (latest && latest.grid !== worldStateRef.current.grid) {
+      if (!latest) return;
+      
+      if (latest.grid !== worldStateRef.current.grid) {
         worldStateRef.current.grid = latest.grid;
         worldStateRef.current.gridSize = latest.gridSize;
-        // Only recalculate crossings if grid actually changed
-        const newVersion = gridVersionRef.current + 1;
-        if (newVersion !== lastGridVersion) {
-          lastGridVersion = newVersion;
-          gridVersionRef.current = newVersion;
-          crossingPositionsRef.current = findRailroadCrossings(latest.grid, latest.gridSize);
-        }
+      }
+
+      const latestStructureVersion = latest.structureVersion ?? gridVersionRef.current;
+      const latestRoadNetworkVersion = latest.roadNetworkVersion ?? roadNetworkVersionRef.current;
+
+      if (gridVersionRef.current !== latestStructureVersion) {
+        gridVersionRef.current = latestStructureVersion;
+      }
+      if (roadNetworkVersionRef.current !== latestRoadNetworkVersion) {
+        roadNetworkVersionRef.current = latestRoadNetworkVersion;
+        crossingPositionsRef.current = findRailroadCrossings(latest.grid, latest.gridSize);
       }
     };
     
@@ -1187,9 +1211,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return false;
     }
     
-    // Helper to get cached road merge analysis (invalidates when grid changes)
+    // Helper to get cached road merge analysis (invalidates when road network changes)
     function getCachedMergeInfo(gx: number, gy: number): ReturnType<typeof analyzeMergedRoad> {
-      const currentVersion = gridVersionRef.current;
+      const currentVersion = roadNetworkVersionRef.current;
       if (roadAnalysisCacheVersionRef.current !== currentVersion) {
         roadAnalysisCacheRef.current.clear();
         roadAnalysisCacheVersionRef.current = currentVersion;

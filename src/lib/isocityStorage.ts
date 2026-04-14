@@ -114,6 +114,7 @@ export function clearIsoCityStoredGameData(): void {
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i);
       if (!key) continue;
+      if (key === ISOCITY_UI_PREFERENCES_STORAGE_KEY) continue;
 
       if (APP_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
         keysToRemove.push(key);

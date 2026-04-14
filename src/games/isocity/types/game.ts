@@ -172,6 +172,8 @@ export interface GameState {
   adjacentCities: AdjacentCity[];
   waterBodies: WaterBody[];
   gameVersion: number;
+  structureVersion: number;
+  roadNetworkVersion: number;
   cities: City[];
 }
 

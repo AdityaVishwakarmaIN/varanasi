@@ -1,3 +1,5 @@
+// CHANGE SUMMARY: Added pre-render blur handling to cloud sprite drawing for softer sky visuals.
+// Earlier state: cloud sprites were rendered directly and appeared with sharp edges on screen.
 import { useCallback } from 'react';
 import { Firework, FactorySmog, Cloud, CloudPuff, CloudType, LightningStrike, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { BuildingType } from '@/types/game';
@@ -62,6 +64,8 @@ import { getCachedImage } from './imageLoader';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
 
+const CLOUD_SPRITE_BLUR_PX = 2.5;
+
 export interface EffectsSystemRefs {
   fireworksRef: React.MutableRefObject<Firework[]>;
   fireworkIdRef: React.MutableRefObject<number>;
@@ -83,7 +87,7 @@ export interface EffectsSystemRefs {
 
 export interface EffectsSystemState {
   worldStateRef: React.MutableRefObject<WorldRenderState>;
-  gridVersionRef: React.MutableRefObject<number>;
+  structureVersionRef: React.MutableRefObject<number>;
   isMobile: boolean;
 }
 
@@ -110,7 +114,7 @@ export function useEffectsSystems(
     weatherInitializedRef,
   } = refs;
 
-  const { worldStateRef, gridVersionRef, isMobile } = systemState;
+  const { worldStateRef, structureVersionRef, isMobile } = systemState;
 
   // Find firework buildings callback
   const findFireworkBuildingsCallback = useCallback((): { x: number; y: number; type: BuildingType }[] => {
@@ -461,10 +465,10 @@ export function useEffectsSystems(
     const particleMaxAge = isMobile ? SMOG_PARTICLE_MAX_AGE_MOBILE : SMOG_PARTICLE_MAX_AGE;
     const spawnMultiplier = isMobile ? SMOG_SPAWN_INTERVAL_MOBILE_MULTIPLIER : 1;
     
-    // Rebuild factory list if grid has changed
-    const currentGridVersion = gridVersionRef.current;
-    if (smogLastGridVersionRef.current !== currentGridVersion) {
-      smogLastGridVersionRef.current = currentGridVersion;
+    // Rebuild factory list if structure has changed
+    const currentStructureVersion = structureVersionRef.current;
+    if (smogLastGridVersionRef.current !== currentStructureVersion) {
+      smogLastGridVersionRef.current = currentStructureVersion;
       
       const factories = findSmogFactoriesCallback();
       
@@ -570,7 +574,7 @@ export function useEffectsSystems(
         return true;
       });
     }
-  }, [worldStateRef, gridVersionRef, factorySmogRef, smogLastGridVersionRef, findSmogFactoriesCallback, isMobile]);
+  }, [worldStateRef, structureVersionRef, factorySmogRef, smogLastGridVersionRef, findSmogFactoriesCallback, isMobile]);
 
   // Draw smog particles
   const drawSmog = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -1102,33 +1106,38 @@ export function useEffectsSystems(
     const viewRight = viewWidth - currentOffset.x / currentZoom + cloudDrawPadding;
     const viewBottom = viewHeight - currentOffset.y / currentZoom + cloudDrawPadding;
     
-    const sortedClouds = [...cloudsRef.current].sort((a, b) => a.layer - b.layer);
+    ctx.save();
+    ctx.filter = `blur(${CLOUD_SPRITE_BLUR_PX}px)`;
     
-    for (const cloud of sortedClouds) {
-      if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
-      
-      const finalOpacity = cloud.opacity * zoomOpacity;
-      if (finalOpacity <= 0.01) continue;
+    for (let layer = 0; layer < CLOUD_LAYER_SPEEDS.length; layer++) {
+      for (const cloud of cloudsRef.current) {
+        if (cloud.layer !== layer) continue;
+        if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
+        
+        const finalOpacity = cloud.opacity * zoomOpacity;
+        if (finalOpacity <= 0.01) continue;
 
-      const sprite = getCloudSpriteDefinition(cloud.spriteKey);
-      const drawWidth = sprite.baseWidth * cloud.scale;
-      const drawHeight = drawWidth * (sprite.sh / sprite.sw);
-      const drawX = cloud.x - drawWidth / 2;
-      const drawY = cloud.y - drawHeight / 2;
+        const sprite = getCloudSpriteDefinition(cloud.spriteKey);
+        const drawWidth = sprite.baseWidth * cloud.scale;
+        const drawHeight = drawWidth * (sprite.sh / sprite.sw);
+        const drawX = cloud.x - drawWidth / 2;
+        const drawY = cloud.y - drawHeight / 2;
 
-      ctx.globalAlpha = finalOpacity;
-      ctx.drawImage(
-        cloudSpriteSheet,
-        sprite.sx,
-        sprite.sy,
-        sprite.sw,
-        sprite.sh,
-        drawX,
-        drawY,
-        drawWidth,
-        drawHeight
-      );
+        ctx.globalAlpha = finalOpacity;
+        ctx.drawImage(
+          cloudSpriteSheet,
+          sprite.sx,
+          sprite.sy,
+          sprite.sw,
+          sprite.sh,
+          drawX,
+          drawY,
+          drawWidth,
+          drawHeight
+        );
+      }
     }
+    ctx.restore();
 
     ctx.globalAlpha = 1;
 

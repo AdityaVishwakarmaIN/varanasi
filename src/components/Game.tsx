@@ -1,4 +1,5 @@
-// CHANGE SUMMARY: Added desktop state to persist overlay/minimap visibility, hydrate/save prefs, and conditionally render those panels.
+// CHANGE SUMMARY: Desktop overlay/minimap visibility persisted via localStorage; state initializes from storage on client mount
+// and the save effect skips the first run so defaults are not written over saved prefs during the mount effect flush.
 // Earlier state: Overlay mode toggle + minimap were always rendered, and no desktop panel visibility preferences were persisted.
 
 'use client';
@@ -43,21 +44,36 @@ import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 // Cargo type names for notifications
 const CARGO_TYPE_NAMES = [msg('containers'), msg('bulk materials'), msg('oil')];
 
+type ViewportState = {
+  offset: { x: number; y: number };
+  zoom: number;
+  canvasSize: { width: number; height: number };
+};
+
+type MiniMapViewportListener = (viewport: ViewportState | null) => void;
+
 export default function Game({ onExit }: { onExit?: () => void }) {
   const gt = useGT();
   const m = useMessages();
   const { state, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
-  const [showOverlayPanel, setShowOverlayPanel] = useState(true);
-  const [showMinimap, setShowMinimap] = useState(true);
+  // Read from localStorage on first client render so we never persist the default `true,true`
+  // in the same effect flush as hydration (that was overwriting saved prefs on every mount).
+  const [showOverlayPanel, setShowOverlayPanel] = useState(() =>
+    typeof window === 'undefined' ? true : loadIsocityUiPreferences().showOverlayPanel,
+  );
+  const [showMinimap, setShowMinimap] = useState(() =>
+    typeof window === 'undefined' ? true : loadIsocityUiPreferences().showMinimap,
+  );
   const [selectedTile, setSelectedTile] = useState<{ x: number; y: number } | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number } | null>(null);
-  const [viewport, setViewport] = useState<{ offset: { x: number; y: number }; zoom: number; canvasSize: { width: number; height: number } } | null>(null);
+  const minimapViewportRef = useRef<ViewportState | null>(null);
+  const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
   const isInitialMount = useRef(true);
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
   const [showShareModal, setShowShareModal] = useState(false);
-  const hasHydratedUiPreferences = useRef(false);
+  const skipInitialUiPrefsSave = useRef(true);
   const multiplayer = useMultiplayerOptional();
   
   // Cheat code system
@@ -92,6 +108,36 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const previousSelectedToolRef = useRef<Tool | null>(null);
   const hasCapturedInitialTool = useRef(false);
   const currentSelectedToolRef = useRef<Tool>(state.selectedTool);
+
+  const handleViewportChange = useCallback((nextViewport: ViewportState) => {
+    const previousViewport = minimapViewportRef.current;
+    const changed = !previousViewport
+      || previousViewport.offset.x !== nextViewport.offset.x
+      || previousViewport.offset.y !== nextViewport.offset.y
+      || previousViewport.zoom !== nextViewport.zoom
+      || previousViewport.canvasSize.width !== nextViewport.canvasSize.width
+      || previousViewport.canvasSize.height !== nextViewport.canvasSize.height;
+
+    if (!changed) return;
+
+    minimapViewportRef.current = nextViewport;
+
+    minimapViewportListenersRef.current.forEach((listener) => {
+      listener(nextViewport);
+    });
+  }, []);
+
+  const subscribeMiniMapViewport = useCallback((listener: MiniMapViewportListener) => {
+    minimapViewportListenersRef.current.add(listener);
+
+    if (minimapViewportRef.current) {
+      listener(minimapViewportRef.current);
+    }
+
+    return () => {
+      minimapViewportListenersRef.current.delete(listener);
+    };
+  }, []);
   
   // Keep currentSelectedToolRef in sync with state
   useEffect(() => {
@@ -226,14 +272,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat]);
 
   useEffect(() => {
-    const { showOverlayPanel: savedShowOverlayPanel, showMinimap: savedShowMinimap } = loadIsocityUiPreferences();
-    setShowOverlayPanel(savedShowOverlayPanel);
-    setShowMinimap(savedShowMinimap);
-    hasHydratedUiPreferences.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!hasHydratedUiPreferences.current) return;
+    if (skipInitialUiPrefsSave.current) {
+      skipInitialUiPrefsSave.current = false;
+      return;
+    }
     saveIsocityUiPreferences({ showOverlayPanel, showMinimap });
   }, [showOverlayPanel, showMinimap]);
   
@@ -373,14 +415,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               setSelectedTile={setSelectedTile}
               navigationTarget={navigationTarget}
               onNavigationComplete={() => setNavigationTarget(null)}
-              onViewportChange={setViewport}
+              onViewportChange={handleViewportChange}
               onBargeDelivery={handleBargeDelivery}
             />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
             )}
             {showMinimap && (
-              <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} viewport={viewport} />
+              <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} onViewportSubscribe={subscribeMiniMapViewport} />
             )}
             
             {/* Multiplayer Players Indicator */}
