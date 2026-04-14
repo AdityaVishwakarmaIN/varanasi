@@ -1,3 +1,6 @@
+// CHANGE SUMMARY: Added desktop state to persist overlay/minimap visibility, hydrate/save prefs, and conditionally render those panels.
+// Earlier state: Overlay mode toggle + minimap were always rendered, and no desktop panel visibility preferences were persisted.
+
 'use client';
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
@@ -7,6 +10,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { MobileToolbar } from '@/components/mobile/MobileToolbar';
 import { MobileTopBar } from '@/components/mobile/MobileTopBar';
 import { msg, useMessages, useGT } from 'gt-next';
+import { loadIsocityUiPreferences, saveIsocityUiPreferences } from '@/lib/isocityStorage';
 
 // Import shadcn components
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -44,6 +48,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const m = useMessages();
   const { state, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [showOverlayPanel, setShowOverlayPanel] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(true);
   const [selectedTile, setSelectedTile] = useState<{ x: number; y: number } | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number } | null>(null);
   const [viewport, setViewport] = useState<{ offset: { x: number; y: number }; zoom: number; canvasSize: { width: number; height: number } } | null>(null);
@@ -51,6 +57,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
   const [showShareModal, setShowShareModal] = useState(false);
+  const hasHydratedUiPreferences = useRef(false);
   const multiplayer = useMultiplayerOptional();
   
   // Cheat code system
@@ -217,6 +224,18 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         break;
     }
   }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat]);
+
+  useEffect(() => {
+    const { showOverlayPanel: savedShowOverlayPanel, showMinimap: savedShowMinimap } = loadIsocityUiPreferences();
+    setShowOverlayPanel(savedShowOverlayPanel);
+    setShowMinimap(savedShowMinimap);
+    hasHydratedUiPreferences.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedUiPreferences.current) return;
+    saveIsocityUiPreferences({ showOverlayPanel, showMinimap });
+  }, [showOverlayPanel, showMinimap]);
   
   // Track barge deliveries to show occasional notifications
   const bargeDeliveryCountRef = useRef(0);
@@ -340,7 +359,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <Sidebar onExit={onExit} />
         
         <div className="flex-1 flex flex-col ml-56">
-          <TopBar />
+          <TopBar
+            showOverlayPanel={showOverlayPanel}
+            showMinimap={showMinimap}
+            onToggleOverlayPanel={setShowOverlayPanel}
+            onToggleMinimap={setShowMinimap}
+          />
           <StatsPanel />
           <div className="flex-1 relative overflow-visible">
             <CanvasIsometricGrid 
@@ -352,8 +376,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onViewportChange={setViewport}
               onBargeDelivery={handleBargeDelivery}
             />
-            <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
-            <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} viewport={viewport} />
+            {showOverlayPanel && (
+              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
+            )}
+            {showMinimap && (
+              <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} viewport={viewport} />
+            )}
             
             {/* Multiplayer Players Indicator */}
             {isMultiplayer && (

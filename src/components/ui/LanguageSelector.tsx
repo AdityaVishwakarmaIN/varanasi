@@ -1,3 +1,6 @@
+// CHANGE SUMMARY: Exported shared LANGUAGE_OPTIONS for reuse by desktop TopBar while preserving LanguageSelector behavior for existing call sites.
+// Earlier state: language options were local-only and not exported, forcing duplicate locale metadata usage elsewhere.
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -14,7 +17,7 @@ import { Card } from '@/components/ui/card';
 import { T } from 'gt-next';
 
 // Language configuration with display names
-const LANGUAGES = [
+export const LANGUAGE_OPTIONS = [
   { code: 'en', name: 'English' },
   { code: 'es', name: 'Español' },
   { code: 'zh', name: '中文' },
@@ -25,6 +28,8 @@ const LANGUAGES = [
   { code: 'it', name: 'Italiano' },
   { code: 'tr', name: 'Türkçe' },
 ] as const;
+
+export type LanguageOption = (typeof LANGUAGE_OPTIONS)[number];
 
 // Globe icon for language button
 function GlobeIcon({ size = 16 }: { size?: number }) {
@@ -88,7 +93,7 @@ export function LanguageSelector({
   const setLocale = useSetLocale();
   const [isOpen, setIsOpen] = useState(false);
   
-  const currentLanguage = LANGUAGES.find(l => l.code === locale) || LANGUAGES[0];
+  const currentLanguage = LANGUAGE_OPTIONS.find(l => l.code === locale) || LANGUAGE_OPTIONS[0];
 
   const handleSelectLanguage = (code: string) => {
     setLocale(code);
@@ -125,7 +130,7 @@ export function LanguageSelector({
                   <T>Select Language</T>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {LANGUAGES.map((language) => (
+                  {LANGUAGE_OPTIONS.map((language) => (
                     <Button
                       key={language.code}
                       variant={locale === language.code ? 'default' : 'ghost'}
@@ -165,7 +170,7 @@ export function LanguageSelector({
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[140px]">
-        {LANGUAGES.map((language) => (
+                  {LANGUAGE_OPTIONS.map((language) => (
           <DropdownMenuItem
             key={language.code}
             onClick={() => setLocale(language.code)}

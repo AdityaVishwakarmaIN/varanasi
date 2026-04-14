@@ -1,3 +1,6 @@
+// CHANGE SUMMARY: Desktop map interaction now uses a short-click rule for tile popup selection and resets tool to 'select' on right-click.
+// Earlier state: select-mode mousedown could select immediately and right-click had default browser context menu behavior.
+
 'use client';
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
@@ -144,6 +147,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     connectToCity,
     checkAndDiscoverCities,
     currentSpritePack,
+    setTool,
     visualHour,
     setCloudWeatherMode,
   } = useGame();
@@ -173,7 +177,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const wheelZoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Timeout to detect end of wheel zoom
   const zoomRef = useRef(isMobile ? 0.6 : 1); // Ref for animation loop to check zoom level
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const panCandidateRef = useRef<{ startX: number; startY: number; gridX: number; gridY: number } | null>(null);
+  const panCandidateRef = useRef<{ startX: number; startY: number; gridX: number; gridY: number; startedAt: number } | null>(null);
   const [hoveredTile, setHoveredTile] = useState<{ x: number; y: number } | null>(null);
   const [hoveredIncident, setHoveredIncident] = useState<{
     x: number;
@@ -333,6 +337,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const supportsDragPlace = selectedTool !== 'select';
 
   const PAN_DRAG_THRESHOLD = 6;
+  const CLICK_SELECTION_MAX_MS = 500;
 
   // Use extracted building helpers (with pre-computed tile metadata for O(1) lookups)
   const { isPartOfMultiTileBuilding, findBuildingOrigin, isPartOfParkBuilding, getTileMetadata } = useBuildingHelpers(grid, gridSize);
@@ -2648,6 +2653,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   });
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!isMobile && e.button === 2) {
+      e.preventDefault();
+      panCandidateRef.current = null;
+      setIsPanning(false);
+      setIsDragging(false);
+      setRoadDrawDirection(null);
+      setDragStartTile(null);
+      setDragEndTile(null);
+      setTool('select');
+      return;
+    }
+
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
       setIsPanning(true);
       setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
@@ -2673,21 +2690,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
         if (selectedTool === 'select') {
           const tile = grid[gridY]?.[gridX];
-          const isOpenTile = tile?.building.type === 'empty' ||
-            tile?.building.type === 'grass' ||
-            tile?.building.type === 'water';
-          if (isOpenTile) {
-            panCandidateRef.current = { startX: e.clientX, startY: e.clientY, gridX, gridY };
+          if (!tile) {
             return;
           }
-          panCandidateRef.current = null;
-          // For multi-tile buildings, select the origin tile
-          const origin = findBuildingOrigin(gridX, gridY);
-          if (origin) {
-            setSelectedTile({ x: origin.originX, y: origin.originY });
-          } else {
-            setSelectedTile({ x: gridX, y: gridY });
-          }
+          panCandidateRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            gridX,
+            gridY,
+            startedAt: performance.now(),
+          };
+          return;
         } else if (showsDragGrid) {
           panCandidateRef.current = null;
           // Start drag rectangle selection for zoning tools
@@ -2712,7 +2725,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeAtTile, zoom, showsDragGrid, supportsDragPlace, setSelectedTile, findBuildingOrigin, grid]);
+  }, [offset, gridSize, selectedTool, placeAtTile, zoom, showsDragGrid, supportsDragPlace, setSelectedTile, findBuildingOrigin, grid, setTool]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -2897,13 +2910,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   
   const handleMouseUp = useCallback(() => {
     if (panCandidateRef.current && !isPanning && selectedTool === 'select') {
-      const { gridX, gridY } = panCandidateRef.current;
+      const { gridX, gridY, startedAt } = panCandidateRef.current;
+      const clickDurationMs = performance.now() - startedAt;
       panCandidateRef.current = null;
-      const origin = findBuildingOrigin(gridX, gridY);
-      if (origin) {
-        setSelectedTile({ x: origin.originX, y: origin.originY });
-      } else {
-        setSelectedTile({ x: gridX, y: gridY });
+
+      if (clickDurationMs <= CLICK_SELECTION_MAX_MS) {
+        const origin = findBuildingOrigin(gridX, gridY);
+        if (origin) {
+          setSelectedTile({ x: origin.originX, y: origin.originY });
+        } else {
+          setSelectedTile({ x: gridX, y: gridY });
+        }
       }
     } else {
       panCandidateRef.current = null;
@@ -3158,6 +3175,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onContextMenu={(e) => {
+        e.preventDefault();
+      }}
       onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}

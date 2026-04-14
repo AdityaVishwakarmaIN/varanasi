@@ -1,12 +1,23 @@
+// CHANGE SUMMARY: Replaced the desktop language button with an Options dropdown containing overlay/minimap toggles plus language selection.
+// Earlier state: language selector was a standalone control and did not expose view panel visibility actions from the top bar.
+
 'use client';
 
 import React, { useState } from 'react';
 import { msg, useMessages } from 'gt-next';
+import { useLocale, useSetLocale } from 'gt-next/client';
 import { useGame } from '@/context/GameContext';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
 import {
   PlayIcon,
   PauseIcon,
@@ -19,7 +30,7 @@ import {
   CheckIcon,
 } from '@/components/ui/Icons';
 import { copyShareUrl } from '@/lib/shareState';
-import { LanguageSelector } from '@/components/ui/LanguageSelector';
+import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -33,6 +44,9 @@ const UI_LABELS = {
   education: msg('Education'),
   safety: msg('Safety'),
   environment: msg('Environment'),
+  viewOverlay: msg('View Overlay'),
+  minimap: msg('Minimap'),
+  languageSwitcher: msg('Language'),
 };
 
 // ============================================================================
@@ -171,10 +185,24 @@ export const StatsPanel = React.memo(function StatsPanel() {
 // TOP BAR
 // ============================================================================
 
-export const TopBar = React.memo(function TopBar() {
+interface TopBarProps {
+  showOverlayPanel: boolean;
+  showMinimap: boolean;
+  onToggleOverlayPanel: (isVisible: boolean) => void;
+  onToggleMinimap: (isVisible: boolean) => void;
+}
+
+export const TopBar = React.memo(function TopBar({
+  showOverlayPanel,
+  showMinimap,
+  onToggleOverlayPanel,
+  onToggleMinimap,
+}: TopBarProps) {
   const { state, setSpeed, setTaxRate, visualHour } = useGame();
   const { stats, year, month, day, speed, taxRate, cityName } = state;
   const m = useMessages();
+  const locale = useLocale();
+  const setLocale = useSetLocale();
   
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
@@ -269,7 +297,46 @@ export const TopBar = React.memo(function TopBar() {
         
         <Separator orientation="vertical" className="h-8" />
         
-        <LanguageSelector iconOnly={false} variant="ghost" iconSize={14} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1 h-7 px-2">
+              <span className="text-xs text-muted-foreground">Options</span>
+              <span className="text-xs text-muted-foreground/75">▾</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 p-2">
+            <div className="px-2 py-2">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.viewOverlay))}</span>
+                  <Switch checked={showOverlayPanel} onCheckedChange={onToggleOverlayPanel} />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.minimap))}</span>
+                  <Switch checked={showMinimap} onCheckedChange={onToggleMinimap} />
+                </div>
+              </div>
+            </div>
+            <Separator className="my-1" />
+            <div className="px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+              {String(m(UI_LABELS.languageSwitcher))}
+            </div>
+            {LANGUAGE_OPTIONS.map((language) => (
+              <DropdownMenuItem
+                key={language.code}
+                onClick={() => setLocale(language.code)}
+                className="flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <span className="text-xs">{language.name}</span>
+                {language.code === locale ? (
+                  <span className="text-xs text-foreground">✓</span>
+                ) : (
+                  <span className="w-3 h-3" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
