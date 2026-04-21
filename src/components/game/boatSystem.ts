@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { Boat, TourWaypoint, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import {
   BOAT_COLORS,
@@ -27,7 +26,7 @@ export interface BoatSystemState {
   visualHour: number;
 }
 
-export function useBoatSystem(
+export function createBoatSystem(
   refs: BoatSystemRefs,
   systemState: BoatSystemState
 ) {
@@ -35,31 +34,31 @@ export function useBoatSystem(
   const { worldStateRef, isMobile, visualHour } = systemState;
 
   // Find marinas and piers callback
-  const findMarinasAndPiersCallback = useCallback(() => {
+  const findMarinasAndPiersCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findMarinasAndPiers(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find adjacent water tile callback
-  const findAdjacentWaterTileCallback = useCallback((dockX: number, dockY: number) => {
+  const findAdjacentWaterTileCallback = (dockX: number, dockY: number) => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findAdjacentWaterTile(currentGrid, currentGridSize, dockX, dockY);
-  }, [worldStateRef]);
+  };
 
   // Check if screen position is over water callback
-  const isOverWaterCallback = useCallback((screenX: number, screenY: number): boolean => {
+  const isOverWaterCallback = (screenX: number, screenY: number): boolean => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return isOverWater(currentGrid, currentGridSize, screenX, screenY);
-  }, [worldStateRef]);
+  };
 
   // Generate tour waypoints callback
-  const generateTourWaypointsCallback = useCallback((startTileX: number, startTileY: number): TourWaypoint[] => {
+  const generateTourWaypointsCallback = (startTileX: number, startTileY: number): TourWaypoint[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return generateTourWaypoints(currentGrid, currentGridSize, startTileX, startTileY);
-  }, [worldStateRef]);
+  };
 
   // Update boats - spawn, move, and manage lifecycle
-  const updateBoats = useCallback((delta: number) => {
+  const updateBoats = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -348,10 +347,10 @@ export function useBoatSystem(
     }
     
     boatsRef.current = updatedBoats;
-  }, [worldStateRef, boatsRef, boatIdRef, boatSpawnTimerRef, findMarinasAndPiersCallback, findAdjacentWaterTileCallback, isOverWaterCallback, generateTourWaypointsCallback, isMobile]);
+  };
 
   // Draw boats with wakes
-  const drawBoats = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawBoats = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -516,7 +515,7 @@ export function useBoatSystem(
     }
     
     ctx.restore();
-  }, [worldStateRef, boatsRef, visualHour]);
+  };
 
   return {
     updateBoats,

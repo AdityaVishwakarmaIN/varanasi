@@ -10,6 +10,7 @@ const BACKGROUND_COLOR = { r: 255, g: 0, b: 0 };
 const COLOR_THRESHOLD = 155; // Adjust this value to be more/less aggressive
 // Image cache for building sprites
 const imageCache = new Map<string, HTMLImageElement>();
+const bitmapCache = new Map<string, ImageBitmap>();
 
 // Track WebP support (detected once on first use)
 let webpSupported: boolean | null = null;
@@ -17,6 +18,98 @@ let webpSupported: boolean | null = null;
 // Event emitter for image loading progress (to trigger re-renders)
 type ImageLoadCallback = () => void;
 const imageLoadCallbacks = new Set<ImageLoadCallback>();
+
+export type CachedCanvasImage = HTMLImageElement | ImageBitmap;
+
+function isHtmlImage(image: CachedCanvasImage): image is HTMLImageElement {
+  return 'naturalWidth' in image;
+}
+
+export function getCanvasImageDimensions(image: CachedCanvasImage): { width: number; height: number } {
+  if (isHtmlImage(image)) {
+    return {
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+    };
+  }
+
+  return {
+    width: image.width,
+    height: image.height,
+  };
+}
+
+type ProcessingSurface = {
+  canvas: HTMLCanvasElement | OffscreenCanvas;
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+};
+
+function createProcessingSurface(width: number, height: number, preferOffscreen: boolean = false): ProcessingSurface {
+  if (preferOffscreen && typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not get offscreen canvas context');
+    }
+    return { canvas, ctx };
+  }
+
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not get canvas context');
+    }
+    return { canvas, ctx };
+  }
+
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not get offscreen canvas context');
+    }
+    return { canvas, ctx };
+  }
+
+  throw new Error('No canvas implementation available for image processing');
+}
+
+function applyBackgroundFilter(
+  image: CanvasImageSource,
+  threshold: number,
+  preferOffscreen: boolean = false
+): ProcessingSurface {
+  const { width, height } = getCanvasImageDimensions(image as CachedCanvasImage);
+  const surface = createProcessingSurface(width, height, preferOffscreen);
+  const { ctx } = surface;
+
+  ctx.drawImage(image, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+
+    const distance = Math.sqrt(
+      Math.pow(r - BACKGROUND_COLOR.r, 2) +
+      Math.pow(g - BACKGROUND_COLOR.g, 2) +
+      Math.pow(b - BACKGROUND_COLOR.b, 2)
+    );
+
+    if (distance <= threshold) {
+      data[i + 3] = 0;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return surface;
+}
 
 /**
  * Check if the browser supports WebP format
@@ -86,6 +179,19 @@ function loadImageDirect(src: string): Promise<HTMLImageElement> {
   });
 }
 
+async function loadBitmapDirect(src: string): Promise<ImageBitmap> {
+  const response = await fetch(src);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${src}`);
+  }
+
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+  bitmapCache.set(src, bitmap);
+  notifyImageLoaded();
+  return bitmap;
+}
+
 /**
  * Load an image from a source URL, preferring WebP if available
  * @param src The image source path (PNG)
@@ -120,6 +226,25 @@ export async function loadImage(src: string): Promise<HTMLImageElement> {
   return loadImageDirect(src);
 }
 
+export async function loadImageBitmap(src: string): Promise<ImageBitmap> {
+  if (bitmapCache.has(src)) {
+    return bitmapCache.get(src)!;
+  }
+
+  const webpPath = getWebPPath(src);
+  if (webpPath) {
+    try {
+      const bitmap = await loadBitmapDirect(webpPath);
+      bitmapCache.set(src, bitmap);
+      return bitmap;
+    } catch {
+      console.debug(`WebP bitmap not available for ${src}, using source asset`);
+    }
+  }
+
+  return loadBitmapDirect(src);
+}
+
 /**
  * Filters colors close to the background color from an image, making them transparent
  * @param img The source image to process
@@ -129,75 +254,42 @@ export async function loadImage(src: string): Promise<HTMLImageElement> {
 export function filterBackgroundColor(img: HTMLImageElement, threshold: number = COLOR_THRESHOLD): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     try {
-      console.log('Starting background color filtering...', { 
-        imageSize: `${img.naturalWidth || img.width}x${img.naturalHeight || img.height}`,
-        threshold,
-        backgroundColor: BACKGROUND_COLOR
-      });
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Could not get canvas context'));
+      if (typeof document === 'undefined') {
+        reject(new Error('HTMLImageElement filtering requires a document-backed canvas'));
         return;
       }
-      
-      // Draw the original image to the canvas
-      ctx.drawImage(img, 0, 0);
-      
-      // Get image data
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      
-      console.log(`Processing ${data.length / 4} pixels...`);
-      
-      // Process each pixel
-      let filteredCount = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        // Calculate color distance using Euclidean distance in RGB space
-        const distance = Math.sqrt(
-          Math.pow(r - BACKGROUND_COLOR.r, 2) +
-          Math.pow(g - BACKGROUND_COLOR.g, 2) +
-          Math.pow(b - BACKGROUND_COLOR.b, 2)
-        );
-        
-        // If the color is close to the background color, make it transparent
-        if (distance <= threshold) {
-          data[i + 3] = 0; // Set alpha to 0 (transparent)
-          filteredCount++;
-        }
+
+      const surface = applyBackgroundFilter(img, threshold, false);
+      if (!(surface.canvas instanceof HTMLCanvasElement)) {
+        reject(new Error('Expected an HTMLCanvasElement processing surface'));
+        return;
       }
-      
-      // Debug: log filtering results
-      const totalPixels = data.length / 4;
-      const percentage = filteredCount > 0 ? ((filteredCount / totalPixels) * 100).toFixed(2) : '0.00';
-      console.log(`Filtered ${filteredCount} pixels (${percentage}%) from sprite sheet`);
-      
-      // Put the modified image data back
-      ctx.putImageData(imageData, 0, 0);
-      
-      // Create a new image from the processed canvas
+
       const filteredImg = new Image();
       filteredImg.onload = () => {
-        console.log('Filtered image created successfully');
         resolve(filteredImg);
       };
       filteredImg.onerror = (error) => {
-        console.error('Failed to create filtered image:', error);
         reject(new Error('Failed to create filtered image'));
       };
-      filteredImg.src = canvas.toDataURL();
+      filteredImg.src = surface.canvas.toDataURL();
     } catch (error) {
       reject(error);
     }
   });
+}
+
+export async function filterBackgroundColorToBitmap(
+  image: CanvasImageSource,
+  threshold: number = COLOR_THRESHOLD
+): Promise<ImageBitmap> {
+  const surface = applyBackgroundFilter(image, threshold, true);
+
+  if ('transferToImageBitmap' in surface.canvas) {
+    return surface.canvas.transferToImageBitmap();
+  }
+
+  return createImageBitmap(surface.canvas);
 }
 
 /**
@@ -224,6 +316,23 @@ export function loadSpriteImage(src: string, applyFilter: boolean = true): Promi
   });
 }
 
+export async function loadSpriteImageBitmap(src: string, applyFilter: boolean = true): Promise<ImageBitmap> {
+  const cacheKey = applyFilter ? `${src}_filtered` : src;
+  if (bitmapCache.has(cacheKey)) {
+    return bitmapCache.get(cacheKey)!;
+  }
+
+  const bitmap = await loadImageBitmap(src);
+  if (!applyFilter) {
+    bitmapCache.set(cacheKey, bitmap);
+    return bitmap;
+  }
+
+  const filtered = await filterBackgroundColorToBitmap(bitmap);
+  bitmapCache.set(cacheKey, filtered);
+  return filtered;
+}
+
 /**
  * Check if an image is cached
  * @param src The image source path
@@ -244,9 +353,18 @@ export function getCachedImage(src: string, filtered: boolean = false): HTMLImag
   return imageCache.get(cacheKey);
 }
 
+export function getCachedBitmap(src: string, filtered: boolean = false): ImageBitmap | undefined {
+  const cacheKey = filtered ? `${src}_filtered` : src;
+  return bitmapCache.get(cacheKey);
+}
+
 /**
  * Clear the image cache
  */
 export function clearImageCache(): void {
+  bitmapCache.forEach((bitmap) => {
+    bitmap.close();
+  });
+  bitmapCache.clear();
   imageCache.clear();
 }

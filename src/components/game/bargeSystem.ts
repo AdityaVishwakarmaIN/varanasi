@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { Barge, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import {
   BARGE_COLORS,
@@ -38,7 +37,7 @@ export interface BargeSystemState {
   onBargeDelivery?: (cargoValue: number, cargoType: number) => void;
 }
 
-export function useBargeSystem(
+export function createBargeSystem(
   refs: BargeSystemRefs,
   systemState: BargeSystemState
 ) {
@@ -46,31 +45,31 @@ export function useBargeSystem(
   const { worldStateRef, isMobile, visualHour, onBargeDelivery } = systemState;
 
   // Find ocean-connected marinas callback
-  const findOceanMarinasCallback = useCallback(() => {
+  const findOceanMarinasCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findOceanConnectedMarinas(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find ocean spawn points callback
-  const findOceanSpawnPointsCallback = useCallback(() => {
+  const findOceanSpawnPointsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findOceanSpawnPoints(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find adjacent water tile for marina (2x2 building) callback
-  const findAdjacentWaterTileForMarinaCallback = useCallback((marinaX: number, marinaY: number) => {
+  const findAdjacentWaterTileForMarinaCallback = (marinaX: number, marinaY: number) => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findAdjacentWaterTileForMarina(currentGrid, currentGridSize, marinaX, marinaY);
-  }, [worldStateRef]);
+  };
 
   // Check if screen position is over water callback
-  const isOverWaterCallback = useCallback((screenX: number, screenY: number): boolean => {
+  const isOverWaterCallback = (screenX: number, screenY: number): boolean => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return isOverWater(currentGrid, currentGridSize, screenX, screenY);
-  }, [worldStateRef]);
+  };
 
   // Update barges - spawn from ocean edges, navigate to marinas, and return
-  const updateBarges = useCallback((delta: number) => {
+  const updateBarges = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -330,10 +329,10 @@ export function useBargeSystem(
     }
     
     bargesRef.current = updatedBarges;
-  }, [worldStateRef, bargesRef, bargeIdRef, bargeSpawnTimerRef, findOceanMarinasCallback, findOceanSpawnPointsCallback, findAdjacentWaterTileForMarinaCallback, isOverWaterCallback, isMobile, onBargeDelivery]);
+  };
 
   // Draw barges with wakes
-  const drawBarges = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawBarges = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -537,7 +536,7 @@ export function useBargeSystem(
     }
     
     ctx.restore();
-  }, [worldStateRef, bargesRef, visualHour, isMobile]);
+  };
 
   return {
     updateBarges,

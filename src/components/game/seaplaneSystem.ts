@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { Seaplane, WorldRenderState, TILE_WIDTH, TILE_HEIGHT, WakeParticle } from './types';
 import {
   SEAPLANE_MIN_POPULATION,
@@ -63,7 +62,7 @@ function findDocksInBay(
   return result;
 }
 
-export function useSeaplaneSystem(
+export function createSeaplaneSystem(
   refs: SeaplaneSystemRefs,
   systemState: SeaplaneSystemState
 ) {
@@ -71,25 +70,25 @@ export function useSeaplaneSystem(
   const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
 
   // Find bays callback
-  const findBaysCallback = useCallback((): BayInfo[] => {
+  const findBaysCallback = (): BayInfo[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findBays(currentGrid, currentGridSize, SEAPLANE_MIN_BAY_SIZE);
-  }, [worldStateRef]);
+  };
 
   // Find marinas and piers callback
-  const findDocksCallback = useCallback((): DockInfo[] => {
+  const findDocksCallback = (): DockInfo[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findMarinasAndPiers(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Check if screen position is over water callback
-  const isOverWaterCallback = useCallback((screenX: number, screenY: number): boolean => {
+  const isOverWaterCallback = (screenX: number, screenY: number): boolean => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return isOverWater(currentGrid, currentGridSize, screenX, screenY);
-  }, [worldStateRef]);
+  };
 
   // Update seaplanes - spawn, move, and manage lifecycle
-  const updateSeaplanes = useCallback((delta: number) => {
+  const updateSeaplanes = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -646,7 +645,7 @@ export function useSeaplaneSystem(
     }
     
     seaplanesRef.current = updatedSeaplanes;
-  }, [worldStateRef, structureVersionRef, cachedPopulationRef, seaplanesRef, seaplaneIdRef, seaplaneSpawnTimerRef, findBaysCallback, findDocksCallback, isOverWaterCallback, isMobile]);
+  };
 
   return {
     updateSeaplanes,

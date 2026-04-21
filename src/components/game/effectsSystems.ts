@@ -1,6 +1,5 @@
 // CHANGE SUMMARY: Added pre-render blur handling to cloud sprite drawing for softer sky visuals.
 // Earlier state: cloud sprites were rendered directly and appeared with sharp edges on screen.
-import { useCallback } from 'react';
 import { Firework, FactorySmog, Cloud, CloudPuff, CloudType, LightningStrike, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { BuildingType } from '@/types/game';
 import {
@@ -91,7 +90,7 @@ export interface EffectsSystemState {
   isMobile: boolean;
 }
 
-export function useEffectsSystems(
+export function createEffectsSystems(
   refs: EffectsSystemRefs,
   systemState: EffectsSystemState
 ) {
@@ -117,19 +116,19 @@ export function useEffectsSystems(
   const { worldStateRef, structureVersionRef, isMobile } = systemState;
 
   // Find firework buildings callback
-  const findFireworkBuildingsCallback = useCallback((): { x: number; y: number; type: BuildingType }[] => {
+  const findFireworkBuildingsCallback = (): { x: number; y: number; type: BuildingType }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findFireworkBuildings(currentGrid, currentGridSize, FIREWORK_BUILDINGS);
-  }, [worldStateRef]);
+  };
 
   // Find smog factories callback
-  const findSmogFactoriesCallback = useCallback(() => {
+  const findSmogFactoriesCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findSmogFactories(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Update fireworks - spawn, animate, and manage lifecycle
-  const updateFireworks = useCallback((delta: number, currentHour: number) => {
+  const updateFireworks = (delta: number, currentHour: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
 
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -331,10 +330,10 @@ export function useEffectsSystems(
     }
     
     fireworksRef.current = updatedFireworks;
-  }, [worldStateRef, fireworksRef, fireworkIdRef, fireworkSpawnTimerRef, fireworkShowActiveRef, fireworkShowStartTimeRef, fireworkLastHourRef, findFireworkBuildingsCallback, isMobile]);
+  };
 
   // Draw fireworks
-  const drawFireworks = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawFireworks = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -436,10 +435,10 @@ export function useEffectsSystems(
     }
     
     ctx.restore();
-  }, [worldStateRef, fireworksRef]);
+  };
 
   // Update smog particles - spawn new particles and update existing ones
-  const updateSmog = useCallback((delta: number) => {
+  const updateSmog = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -574,10 +573,10 @@ export function useEffectsSystems(
         return true;
       });
     }
-  }, [worldStateRef, structureVersionRef, factorySmogRef, smogLastGridVersionRef, findSmogFactoriesCallback, isMobile]);
+  };
 
   // Draw smog particles
-  const drawSmog = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawSmog = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -648,9 +647,9 @@ export function useEffectsSystems(
     }
     
     ctx.restore();
-  }, [worldStateRef, factorySmogRef]);
+  };
 
-  const pickWeatherMode = useCallback(() => {
+  const pickWeatherMode = () => {
     const roll = Math.random();
     let threshold = 0;
 
@@ -662,10 +661,10 @@ export function useEffectsSystems(
     }
 
     return CLOUD_WEATHER_PROBABILITY_SPLIT[CLOUD_WEATHER_PROBABILITY_SPLIT.length - 1]?.mode ?? 'severe_storm';
-  }, []);
+  };
 
   // Pick cloud type based on time-of-day weights and the active weather mode.
-  const pickCloudType = useCallback((currentHour: number): CloudType => {
+  const pickCloudType = (currentHour: number): CloudType => {
     const hour = Math.floor(currentHour) % 24;
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
     const baseWeights = CLOUD_TYPE_WEIGHTS_BY_HOUR[hour] ?? CLOUD_TYPE_WEIGHTS_DEFAULT;
@@ -684,13 +683,13 @@ export function useEffectsSystems(
       if (r <= 0) return CLOUD_TYPES_ORDERED[i];
     }
     return CLOUD_TYPES_ORDERED[0];
-  }, [worldStateRef]);
+  };
 
   // Small jitter helper - keeps patterns coherent while adding natural variation
   const jitter = (base: number, range: number) => base + (Math.random() - 0.5) * range;
 
   // Generate cloud puffs with proper geometric patterns - coherent, natural grouping per type
-  const generateCloudPuffs = useCallback((cloudType: CloudType): CloudPuff[] => {
+  const generateCloudPuffs = (cloudType: CloudType): CloudPuff[] => {
     const cfg = CLOUD_TYPE_CONFIG[cloudType];
     const [sxMin, sxMax] = cfg.puffStretchX;
     const [syMin, syMax] = cfg.puffStretchY;
@@ -818,24 +817,24 @@ export function useEffectsSystems(
     }
 
     return puffs;
-  }, []);
+  };
 
-  const getRandomLightningInterval = useCallback((profile: 'none' | 'rare' | 'rapid'): number => {
+  const getRandomLightningInterval = (profile: 'none' | 'rare' | 'rapid'): number => {
     if (profile === 'none') return Number.POSITIVE_INFINITY;
 
     const cfg = CLOUD_LIGHTNING_CONFIG[profile];
     return cfg.minInterval + Math.random() * (cfg.maxInterval - cfg.minInterval);
-  }, []);
+  };
 
-  const getWeatherAdjustedOpacity = useCallback((cloudType: CloudType, baseOpacity: number) => {
+  const getWeatherAdjustedOpacity = (cloudType: CloudType, baseOpacity: number) => {
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
     const stormBoost = (cloudType === 'stratus' || cloudType === 'cumulonimbus') ? 0.08 : 0;
     return Math.min(0.9, baseOpacity * weatherConfig.opacityMultiplier + stormBoost);
-  }, [worldStateRef]);
+  };
 
   // Spawn a new cloud - at random upwind edge, or at overridePosition (for cloud groups).
   // overrideCloudType: when spawning a companion in a group, use same type as lead for coherent banks.
-  const spawnCloud = useCallback((currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }): { x: number; y: number; cloudType: CloudType } | null => {
+  const spawnCloud = (currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }): { x: number; y: number; cloudType: CloudType } | null => {
     const { canvasSize, zoom, offset } = worldStateRef.current;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
@@ -893,9 +892,9 @@ export function useEffectsSystems(
 
     cloudsRef.current.push(cloud);
     return { x: spawnX, y: spawnY, cloudType };
-  }, [worldStateRef, cloudIdRef, cloudsRef, generateCloudPuffs, getWeatherAdjustedOpacity, pickCloudType]);
+  };
 
-  const createLightningPath = useCallback((anchorX: number, anchorY: number, currentZoom: number): { x: number; y: number }[] => {
+  const createLightningPath = (anchorX: number, anchorY: number, currentZoom: number): { x: number; y: number }[] => {
     const segmentCount = isMobile ? 5 : 7;
     const maxReach = (isMobile ? 150 : 220) / Math.max(currentZoom, 0.35);
     const stepY = maxReach / segmentCount;
@@ -911,9 +910,9 @@ export function useEffectsSystems(
     }
 
     return path;
-  }, [isMobile]);
+  };
 
-  const maybeSpawnLightning = useCallback(() => {
+  const maybeSpawnLightning = () => {
     const { canvasSize, zoom, offset } = worldStateRef.current;
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
     const lightningProfile = weatherConfig.lightningProfile;
@@ -960,10 +959,10 @@ export function useEffectsSystems(
     };
 
     lightningCooldownRef.current = getRandomLightningInterval(lightningProfile);
-  }, [createLightningPath, getRandomLightningInterval, isMobile, lightningCooldownRef, lightningIdRef, lightningStrikeRef, cloudsRef, worldStateRef]);
+  };
 
   // Update clouds - spawn new ones and move existing
-  const updateClouds = useCallback((delta: number, currentHour: number) => {
+  const updateClouds = (delta: number, currentHour: number) => {
     const { canvasSize, zoom, offset, speed: gameSpeed } = worldStateRef.current;
 
     // Don't update when game is paused
@@ -1069,10 +1068,10 @@ export function useEffectsSystems(
         maybeSpawnLightning();
       }
     }
-  }, [worldStateRef, cloudsRef, cloudSpawnTimerRef, getRandomLightningInterval, isMobile, lightningCooldownRef, lightningStrikeRef, maybeSpawnLightning, pickWeatherMode, spawnCloud, weatherChangeTimerRef, weatherInitializedRef]);
+  };
 
   // Draw clouds from the shared sprite sheet instead of generating puffs at draw time.
-  const drawClouds = useCallback((ctx: CanvasRenderingContext2D, _currentHour: number) => {
+  const drawClouds = (ctx: CanvasRenderingContext2D, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -1168,7 +1167,7 @@ export function useEffectsSystems(
     }
 
     ctx.restore();
-  }, [worldStateRef, cloudsRef, isMobile, lightningStrikeRef]);
+  };
 
   return {
     updateFireworks,

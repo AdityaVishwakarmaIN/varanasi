@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React from 'react';
 import { Bus, Car, CarDirection, EmergencyVehicle, EmergencyVehicleType, Pedestrian, PedestrianDestType, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { BUS_COLORS, BUS_MIN_POPULATION, BUS_MIN_ZOOM, BUS_SPEED_MAX, BUS_SPEED_MIN, BUS_SPAWN_INTERVAL_MAX, BUS_SPAWN_INTERVAL_MIN, BUS_STOP_DURATION_MAX, BUS_STOP_DURATION_MIN, CAR_COLORS, CAR_MIN_ZOOM, CAR_MIN_ZOOM_MOBILE, DIRECTION_META, MAX_BUSES, MAX_BUSES_MOBILE, PEDESTRIAN_MAX_COUNT, PEDESTRIAN_MAX_COUNT_MOBILE, PEDESTRIAN_MIN_ZOOM, PEDESTRIAN_MIN_ZOOM_MOBILE, PEDESTRIAN_ROAD_TILE_DENSITY, PEDESTRIAN_ROAD_TILE_DENSITY_MOBILE, PEDESTRIAN_SPAWN_BATCH_SIZE, PEDESTRIAN_SPAWN_BATCH_SIZE_MOBILE, PEDESTRIAN_SPAWN_INTERVAL, PEDESTRIAN_SPAWN_INTERVAL_MOBILE, VEHICLE_FAR_ZOOM_THRESHOLD } from './constants';
 import { isRoadTile, getDirectionOptions, pickNextDirection, findPathOnRoads, getDirectionToTile, gridToScreen } from './utils';
@@ -74,7 +74,7 @@ export interface VehicleSystemState {
   isMobile: boolean;
 }
 
-export function useVehicleSystems(
+export function createVehicleSystems(
   refs: VehicleSystemRefs,
   systemState: VehicleSystemState
 ) {
@@ -108,7 +108,7 @@ export function useVehicleSystems(
     state,
     isMobile,
   } = systemState;
-  const spawnRandomCar = useCallback(() => {
+  const spawnRandomCar = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
     
@@ -147,24 +147,24 @@ export function useVehicleSystems(
     }
     
     return false;
-  }, [worldStateRef, carsRef, carIdRef, isMobile]);
+  };
 
-  const findResidentialBuildingsCallback = useCallback((): { x: number; y: number }[] => {
+  const findResidentialBuildingsCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findResidentialBuildings(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
-  const findPedestrianDestinationsCallback = useCallback((): { x: number; y: number; type: PedestrianDestType }[] => {
+  const findPedestrianDestinationsCallback = (): { x: number; y: number; type: PedestrianDestType }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findPedestrianDestinations(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
-  const findBusStopsCallback = useCallback((): { x: number; y: number }[] => {
+  const findBusStopsCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findBusStops(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
-  const buildBusRoute = useCallback(() => {
+  const buildBusRoute = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return null;
 
@@ -185,9 +185,9 @@ export function useVehicleSystems(
     }
 
     return null;
-  }, [worldStateRef, findBusStopsCallback]);
+  };
 
-  const buildBusRouteFrom = useCallback((start: { x: number; y: number }) => {
+  const buildBusRouteFrom = (start: { x: number; y: number }) => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return null;
 
@@ -205,9 +205,9 @@ export function useVehicleSystems(
     }
 
     return null;
-  }, [worldStateRef, findBusStopsCallback]);
+  };
 
-  const spawnBus = useCallback(() => {
+  const spawnBus = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
 
@@ -248,27 +248,27 @@ export function useVehicleSystems(
     });
 
     return true;
-  }, [worldStateRef, buildBusRoute, busesRef, busIdRef]);
+  };
 
   // Find recreation areas
-  const findRecreationAreasCallback = useCallback(() => {
+  const findRecreationAreasCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findRecreationAreas(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find enterable buildings
-  const findEnterableBuildingsCallback = useCallback(() => {
+  const findEnterableBuildingsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findEnterableBuildings(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find beach tiles (water tiles adjacent to land)
-  const findBeachTilesCallback = useCallback(() => {
+  const findBeachTilesCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findBeachTiles(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
-  const spawnPedestrian = useCallback(() => {
+  const spawnPedestrian = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
     
@@ -504,19 +504,19 @@ export function useVehicleSystems(
       return true;
     }
     return false;
-  }, [worldStateRef, findResidentialBuildingsCallback, findPedestrianDestinationsCallback, findRecreationAreasCallback, findEnterableBuildingsCallback, findBeachTilesCallback, pedestriansRef, pedestrianIdRef]);
+  };
 
-  const findStationsCallback = useCallback((type: 'fire_station' | 'police_station'): { x: number; y: number }[] => {
+  const findStationsCallback = (type: 'fire_station' | 'police_station'): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findStations(currentGrid, currentGridSize, type);
-  }, [worldStateRef]);
+  };
 
-  const findFiresCallback = useCallback((): { x: number; y: number }[] => {
+  const findFiresCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findFires(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
-  const spawnCrimeIncidents = useCallback((delta: number) => {
+  const spawnCrimeIncidents = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) return;
     
@@ -584,9 +584,9 @@ export function useVehicleSystems(
         timeRemaining: duration,
       });
     }
-  }, [worldStateRef, crimeSpawnTimerRef, activeCrimeIncidentsRef, state.services.police, state.stats.population]);
+  };
 
-  const updateCrimeIncidents = useCallback((delta: number) => {
+  const updateCrimeIncidents = (delta: number) => {
     const { speed: currentSpeed } = worldStateRef.current;
     if (currentSpeed === 0) return;
     
@@ -609,13 +609,13 @@ export function useVehicleSystems(
     for (let i = 0; i < keysToDelete.length; i++) {
       activeCrimeIncidentsRef.current.delete(keysToDelete[i]);
     }
-  }, [worldStateRef, activeCrimeIncidentsRef, activeCrimesRef]);
+  };
 
-  const findCrimeIncidents = useCallback((): { x: number; y: number }[] => {
+  const findCrimeIncidents = (): { x: number; y: number }[] => {
     return Array.from(activeCrimeIncidentsRef.current.values()).map(c => ({ x: c.x, y: c.y }));
-  }, [activeCrimeIncidentsRef]);
+  };
 
-  const dispatchEmergencyVehicle = useCallback((
+  const dispatchEmergencyVehicle = (
     type: EmergencyVehicleType,
     stationX: number,
     stationY: number,
@@ -659,9 +659,9 @@ export function useVehicleSystems(
     });
 
     return true;
-  }, [worldStateRef, emergencyVehiclesRef, emergencyVehicleIdRef]);
+  };
 
-  const updateEmergencyDispatch = useCallback(() => {
+  const updateEmergencyDispatch = () => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) return;
     
@@ -727,9 +727,9 @@ export function useVehicleSystems(
         }
       }
     }
-  }, [worldStateRef, findFiresCallback, findCrimeIncidents, findStationsCallback, dispatchEmergencyVehicle, activeFiresRef, activeCrimesRef]);
+  };
 
-  const updateEmergencyVehicles = useCallback((delta: number) => {
+  const updateEmergencyVehicles = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) {
       emergencyVehiclesRef.current = [];
@@ -899,11 +899,11 @@ export function useVehicleSystems(
     }
     
     emergencyVehiclesRef.current = updatedVehicles;
-  }, [worldStateRef, emergencyVehiclesRef, emergencyDispatchTimerRef, updateEmergencyDispatch, activeFiresRef, activeCrimesRef, activeCrimeIncidentsRef]);
+  };
 
   // Helper to check if a tile is an intersection (3+ connections)
   // PERF: Use cached intersection map to avoid repeated O(n) getDirectionOptions() calls per-car per-frame
-  const isIntersection = useCallback((grid: Tile[][], gridSize: number, x: number, y: number): boolean => {
+  const isIntersection = (grid: Tile[][], gridSize: number, x: number, y: number): boolean => {
     if (!isRoadTile(grid, gridSize, x, y)) return false;
     
     // Check if cache is valid for current grid version
@@ -925,9 +925,9 @@ export function useVehicleSystems(
     // O(1) lookup from cache
     const key = y * gridSize + x;
     return cachedIntersectionMapRef.current.map.get(key) ?? false;
-  }, [roadNetworkVersionRef, cachedIntersectionMapRef]);
+  };
 
-  const updateCars = useCallback((delta: number) => {
+  const updateCars = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     // Clear cars if zoomed out too far (use mobile threshold on mobile for better perf)
@@ -1187,9 +1187,9 @@ export function useVehicleSystems(
     }
     
     carsRef.current = updatedCars;
-  }, [worldStateRef, carsRef, carSpawnTimerRef, spawnRandomCar, trafficLightTimerRef, isIntersection, isMobile, trainsRef, roadNetworkVersionRef, cachedRoadTileCountRef]);
+  };
 
-  const updateBuses = useCallback((delta: number) => {
+  const updateBuses = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
 
     if (currentZoom < BUS_MIN_ZOOM) {
@@ -1341,9 +1341,9 @@ export function useVehicleSystems(
     }
 
     busesRef.current = updatedBuses;
-  }, [worldStateRef, state.stats.population, isMobile, busesRef, busSpawnTimerRef, spawnBus, buildBusRouteFrom, trafficLightTimerRef, trainsRef, roadNetworkVersionRef, cachedRoadTileCountRef, isIntersection]);
+  };
 
-  const updatePedestrians = useCallback((delta: number) => {
+  const updatePedestrians = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     // Clear pedestrians if zoomed out too far (use mobile threshold on mobile for better perf)
@@ -1446,9 +1446,9 @@ export function useVehicleSystems(
     }
     
     pedestriansRef.current = updatedPedestrians;
-  }, [worldStateRef, roadNetworkVersionRef, cachedRoadTileCountRef, pedestriansRef, pedestrianSpawnTimerRef, spawnPedestrian, trafficLightTimerRef, isMobile]);
+  };
 
-  const drawCars = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawCars = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1515,9 +1515,9 @@ export function useVehicleSystems(
     });
 
     ctx.restore();
-  }, [worldStateRef, carsRef, isMobile]);
+  };
 
-  const drawBuses = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawBuses = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1583,9 +1583,9 @@ export function useVehicleSystems(
     });
 
     ctx.restore();
-  }, [worldStateRef, busesRef]);
+  };
 
-  const drawPedestrians = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawPedestrians = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1618,10 +1618,10 @@ export function useVehicleSystems(
     drawPedestriansUtil(ctx, pedestriansRef.current, viewBounds, currentZoom, 'non-recreation');
     
     ctx.restore();
-  }, [worldStateRef, pedestriansRef, isMobile]);
+  };
 
   // Draw recreation pedestrians on air canvas (above buildings, smooth animation every frame)
-  const drawRecreationPedestrians = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawRecreationPedestrians = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1653,9 +1653,9 @@ export function useVehicleSystems(
     drawPedestriansUtil(ctx, pedestriansRef.current, viewBounds, currentZoom, 'recreation');
     
     ctx.restore();
-  }, [worldStateRef, pedestriansRef, isMobile]);
+  };
 
-  const drawEmergencyVehicles = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawEmergencyVehicles = (ctx: CanvasRenderingContext2D) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1783,11 +1783,11 @@ export function useVehicleSystems(
     });
     
     ctx.restore();
-  }, [worldStateRef, emergencyVehiclesRef]);
+  };
 
-  const incidentAnimTimeRef = useRef(0);
+  const incidentAnimTimeRef = { current: 0 };
 
-  const drawIncidentIndicators = useCallback((ctx: CanvasRenderingContext2D, delta: number) => {
+  const drawIncidentIndicators = (ctx: CanvasRenderingContext2D, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1914,7 +1914,7 @@ export function useVehicleSystems(
     }
     
     ctx.restore();
-  }, [worldStateRef, activeCrimeIncidentsRef]);
+  };
 
   return {
     spawnRandomCar,

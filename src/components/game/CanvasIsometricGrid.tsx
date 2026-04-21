@@ -76,17 +76,17 @@ import {
   generateTourWaypoints,
 } from '@/components/game/gridFinders';
 import { drawAirplanes as drawAirplanesUtil, drawHelicopters as drawHelicoptersUtil, drawSeaplanes as drawSeaplanesUtil } from '@/components/game/drawAircraft';
-import { useVehicleSystems, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
+import { createVehicleSystems, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
 import { useBuildingHelpers } from '@/components/game/buildingHelpers';
-import { useAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
-import { useBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
-import { useBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
-import { useSeaplaneSystem, SeaplaneSystemRefs, SeaplaneSystemState } from '@/components/game/seaplaneSystem';
-import { useEffectsSystems, EffectsSystemRefs, EffectsSystemState } from '@/components/game/effectsSystems';
+import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
+import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
+import { createBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
+import { createSeaplaneSystem, SeaplaneSystemRefs, SeaplaneSystemState } from '@/components/game/seaplaneSystem';
+import { createEffectsSystems, EffectsSystemRefs, EffectsSystemState } from '@/components/game/effectsSystems';
 import {
   buildWindTreeRenderItem,
   createDefaultWindVisualState,
-  useWindSystem,
+  createWindSystem,
   WindSystemRefs,
   WindSystemState,
   WindTreeRenderItem,
@@ -124,6 +124,7 @@ import {
 } from '@/components/game/trainSystem';
 import { Train } from '@/components/game/types';
 import { useLightingSystem } from '@/components/game/lightingSystem';
+import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -335,10 +336,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Counter to trigger re-renders when new images become available
   const [imageLoadVersion, setImageLoadVersion] = useState(0);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
+  const [isLightingWorkerEnabled, setIsLightingWorkerEnabled] = useState(false);
   const [dragStartTile, setDragStartTile] = useState<{ x: number; y: number } | null>(null);
   const [dragEndTile, setDragEndTile] = useState<{ x: number; y: number } | null>(null);
   const [cityConnectionDialog, setCityConnectionDialog] = useState<{ direction: 'north' | 'south' | 'east' | 'west' } | null>(null);
   const keysPressedRef = useRef<Set<string>>(new Set());
+  const renderWorkerManagerRef = useRef<RenderWorkerManager | null>(null);
+  const lightingCanvasTransferredRef = useRef(false);
 
   // Only zoning tools show the grid/rectangle selection visualization
   // Note: zone_water uses supportsDragPlace behavior (place on click/drag) instead of rectangle selection
@@ -410,7 +414,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     drawRecreationPedestrians,
     drawEmergencyVehicles,
     drawIncidentIndicators,
-  } = useVehicleSystems(vehicleSystemRefs, vehicleSystemState);
+  } = createVehicleSystems(vehicleSystemRefs, vehicleSystemState);
 
   // Use extracted aircraft systems
   const aircraftSystemRefs: AircraftSystemRefs = {
@@ -432,7 +436,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const {
     updateAirplanes,
     updateHelicopters,
-  } = useAircraftSystems(aircraftSystemRefs, aircraftSystemState);
+  } = createAircraftSystems(aircraftSystemRefs, aircraftSystemState);
 
   // Use extracted seaplane system
   const seaplaneSystemRefs: SeaplaneSystemRefs = {
@@ -450,7 +454,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
   const {
     updateSeaplanes,
-  } = useSeaplaneSystem(seaplaneSystemRefs, seaplaneSystemState);
+  } = createSeaplaneSystem(seaplaneSystemRefs, seaplaneSystemState);
 
   // Use extracted barge system
   const bargeSystemRefs: BargeSystemRefs = {
@@ -469,7 +473,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const {
     updateBarges,
     drawBarges,
-  } = useBargeSystem(bargeSystemRefs, bargeSystemState);
+  } = createBargeSystem(bargeSystemRefs, bargeSystemState);
 
   // Use extracted boat system
   const boatSystemRefs: BoatSystemRefs = {
@@ -487,7 +491,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const {
     updateBoats,
     drawBoats,
-  } = useBoatSystem(boatSystemRefs, boatSystemState);
+  } = createBoatSystem(boatSystemRefs, boatSystemState);
 
   // Use extracted effects systems (fireworks and smog)
   const effectsSystemRefs: EffectsSystemRefs = {
@@ -522,7 +526,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     drawSmog,
     updateClouds,
     drawClouds,
-  } = useEffectsSystems(effectsSystemRefs, effectsSystemState);
+  } = createEffectsSystems(effectsSystemRefs, effectsSystemState);
 
   const windSystemRefs: WindSystemRefs = {
     windStateRef,
@@ -538,7 +542,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     updateWind,
     drawWindTrees,
     drawWindDust,
-  } = useWindSystem(windSystemRefs, windSystemState);
+  } = createWindSystem(windSystemRefs, windSystemState);
   
   // PERF: Sync worldStateRef from latestStateRef (real-time) instead of React state (throttled)
   // This runs on every animation frame via the render loop, not on React state changes
@@ -872,7 +876,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     ctx.restore();
   }, [visualHour, isMobile]);
 
-  // Boats are now handled by useBoatSystem hook (see above)
+  // Boats are now handled by createBoatSystem hook (see above)
 
   // Update trains - spawn, move, and manage lifecycle
   const updateTrains = useCallback((delta: number) => {
@@ -933,7 +937,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     drawTrains(ctx, trainsRef.current, currentOffset, currentZoom, size, currentGrid, currentGridSize, visualHour, isMobile);
   }, [visualHour, isMobile]);
 
-  // Fireworks and smog are now handled by useEffectsSystems hook (see above)
+  // Fireworks and smog are now handled by createEffectsSystems hook (see above)
 
 
 
@@ -1058,6 +1062,94 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  useEffect(() => {
+    if (lightingCanvasTransferredRef.current) return;
+
+    const lightingCanvas = lightingCanvasRef.current;
+    if (!lightingCanvas) return;
+
+    const manager = new RenderWorkerManager();
+    if (!manager.support.supported) {
+      return;
+    }
+    if (!manager.prepare()) {
+      return;
+    }
+
+    try {
+      const offscreenLightingCanvas = lightingCanvas.transferControlToOffscreen();
+      lightingCanvasTransferredRef.current = true;
+      renderWorkerManagerRef.current = manager;
+
+      let cancelled = false;
+      manager.init({ lighting: offscreenLightingCanvas }).then((initialized) => {
+        if (cancelled) return;
+        if (initialized) {
+          setIsLightingWorkerEnabled(true);
+          return;
+        }
+
+        renderWorkerManagerRef.current = null;
+      });
+
+      return () => {
+        cancelled = true;
+        manager.terminate();
+        renderWorkerManagerRef.current = null;
+      };
+    } catch (error) {
+      console.warn('Lighting render worker initialization failed, using main-thread lighting', error);
+      manager.terminate();
+      renderWorkerManagerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const manager = renderWorkerManagerRef.current;
+    if (!isLightingWorkerEnabled || !manager) return;
+
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+    manager.updateLightingState({
+      grid,
+      gridSize,
+      cloudWeatherMode: worldStateRef.current.cloudWeatherMode,
+      visualHour,
+      isMobile,
+      viewport: {
+        offset,
+        zoom,
+        canvasSize,
+        dpr,
+        isInteractionActive: isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current,
+      },
+    });
+    manager.notifyGridVersion({
+      gameVersion,
+      structureVersion,
+      roadNetworkVersion,
+    });
+    manager.setSpeed(speed);
+    manager.updateTool(selectedTool, overlayMode);
+  }, [
+    canvasSize,
+    gameVersion,
+    grid,
+    gridSize,
+    isLightingWorkerEnabled,
+    isMobile,
+    isPanning,
+    isWheelZooming,
+    offset,
+    overlayMode,
+    roadNetworkVersion,
+    selectedTool,
+    speed,
+    structureVersion,
+    visualHour,
+    zoom,
+  ]);
   
   // Main render function - PERF: Uses requestAnimationFrame throttling to batch multiple state updates
   useEffect(() => {
@@ -2674,6 +2766,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     isWheelZoomingRef,
     isPanning,
     isWheelZooming,
+    disabled: isLightingWorkerEnabled,
+    transferredRef: lightingCanvasTransferredRef,
   });
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

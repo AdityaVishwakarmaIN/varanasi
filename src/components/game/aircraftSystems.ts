@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { Airplane, Helicopter, WorldRenderState, TILE_WIDTH, TILE_HEIGHT, PlaneType } from './types';
 import {
   AIRPLANE_MIN_POPULATION,
@@ -33,7 +32,7 @@ export interface AircraftSystemState {
   isMobile: boolean;
 }
 
-export function useAircraftSystems(
+export function createAircraftSystems(
   refs: AircraftSystemRefs,
   systemState: AircraftSystemState
 ) {
@@ -49,19 +48,19 @@ export function useAircraftSystems(
   const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
 
   // Find airports callback
-  const findAirportsCallback = useCallback((): { x: number; y: number }[] => {
+  const findAirportsCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findAirports(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Find heliports callback
-  const findHeliportsCallback = useCallback(() => {
+  const findHeliportsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     return findHeliports(currentGrid, currentGridSize);
-  }, [worldStateRef]);
+  };
 
   // Update airplanes - spawn, move, and manage lifecycle
-  const updateAirplanes = useCallback((delta: number) => {
+  const updateAirplanes = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -293,10 +292,10 @@ export function useAircraftSystems(
     }
     
     airplanesRef.current = updatedAirplanes;
-  }, [worldStateRef, structureVersionRef, cachedPopulationRef, airplanesRef, airplaneIdRef, airplaneSpawnTimerRef, findAirportsCallback, isMobile]);
+  };
 
   // Update helicopters - spawn, move between hospitals/airports, and manage lifecycle
-  const updateHelicopters = useCallback((delta: number) => {
+  const updateHelicopters = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -508,7 +507,7 @@ export function useAircraftSystems(
     }
     
     helicoptersRef.current = updatedHelicopters;
-  }, [worldStateRef, structureVersionRef, cachedPopulationRef, helicoptersRef, helicopterIdRef, helicopterSpawnTimerRef, findHeliportsCallback, isMobile]);
+  };
 
   return {
     updateAirplanes,

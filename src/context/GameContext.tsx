@@ -46,6 +46,12 @@ import {
   ISOCITY_STORAGE_KEY,
 } from '@/lib/isocityStorage';
 import type { CloudWeatherMode } from '@/components/game/types';
+import {
+  copyLegacyGridToBuffer,
+  createIsoCityGridBufferFromGrid,
+  setIsoCityGridVersions,
+  type IsoCityGridBuffer,
+} from '@/games/isocity/gridBuffer';
 
 export type DayNightMode = 'auto' | 'day' | 'night';
 
@@ -62,6 +68,12 @@ type GameContextValue = {
   // PERF: Ref to latest state for real-time access without React re-renders
   // Canvas should use this instead of state.grid for smooth updates
   latestStateRef: React.RefObject<GameState>;
+  // PERF: Struct-of-arrays mirror of state.grid, refreshed on every state change.
+  // Consumers (render worker, mini-map, read-only simulation scans) can read
+  // grid fields via typed-array indexing without walking Tile[][]. Mutations
+  // continue to flow through simulation.ts against state.grid; this buffer is
+  // a read-side mirror that stays in sync via a useEffect below.
+  gridBufferRef: React.RefObject<IsoCityGridBuffer | null>;
   setTool: (tool: Tool) => void;
   setSpeed: (speed: 0 | 1 | 2 | 3) => void;
   setTaxRate: (rate: number) => void;
@@ -732,9 +744,40 @@ export function GameProvider({ children, startFresh = false }: { children: React
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
   const cloudWeatherModeRef = useRef<CloudWeatherMode>('clear');
+  const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
   useEffect(() => {
     latestStateRef.current = state;
+
+    // PERF: Keep the SoA mirror in sync with state.grid so worker/MiniMap/etc.
+    // can read typed arrays without walking Tile[][]. The copy is ~12 bytes
+    // per tile (<1 MB even for 250x250 grids) and runs on each state change
+    // (~2 Hz during simulation), so cost is negligible compared to a full
+    // React re-render.
+    const current = gridBufferRef.current;
+    const sizeMatches =
+      current !== null &&
+      current.width === state.gridSize &&
+      current.height === state.gridSize;
+    if (!sizeMatches) {
+      gridBufferRef.current = createIsoCityGridBufferFromGrid(
+        state.grid,
+        state.gridSize,
+        state.gridSize,
+        {
+          gameVersion: state.gameVersion,
+          structureVersion: state.structureVersion,
+          roadNetworkVersion: state.roadNetworkVersion,
+        },
+      );
+    } else {
+      copyLegacyGridToBuffer(current, state.grid);
+      setIsoCityGridVersions(current, {
+        gameVersion: state.gameVersion,
+        structureVersion: state.structureVersion,
+        roadNetworkVersion: state.roadNetworkVersion,
+      });
+    }
   }, [state]);
   
   useEffect(() => {
@@ -1684,6 +1727,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
   const value: GameContextValue = {
     state,
     latestStateRef,
+    gridBufferRef,
     setTool,
     setSpeed,
     setTaxRate,
