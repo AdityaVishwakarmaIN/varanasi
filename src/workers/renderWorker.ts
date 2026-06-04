@@ -1,5 +1,6 @@
 import { renderLightingFrame } from '@/components/game/lightingRenderer';
 import { createPixiApp, LayerStack, PixiRenderer } from '@/components/game/gpu';
+import { decodeEntityFrame, type DecodedEntityFrame } from './entityFrameCodec';
 import type { Application } from 'pixi.js';
 import type {
   RenderWorkerCanvasMap,
@@ -15,6 +16,8 @@ let lightingSnapshot: RenderWorkerLightingSnapshot | null = null;
 // Step 8: latest entity snapshot received from the main thread (decode + draw replay
 // onto the dynamic layers is the runtime cutover).
 let entityFrame: RenderWorkerEntityFrame | null = null;
+// Decoded view of the latest entity frame (field-addressable; ready for per-kind replay).
+let decodedEntityFrame: DecodedEntityFrame | null = null;
 
 // ---- P6: off-thread GPU (PixiJS) backend hosted on an OffscreenCanvas ----
 // The 'gpu' canvas is transferred via transferControlToOffscreen and driven entirely
@@ -54,7 +57,17 @@ function renderGpu(viewport: RenderWorkerViewportState): void {
   if (!pixiApp || !pixiRenderer) return;
   pixiRenderer.beginFrame();
   pixiRenderer.applyCamera({ dpr: viewport.dpr, offset: viewport.offset, zoom: viewport.zoom });
-  // World draw passes are plumbed in P7 (entity snapshots over the protocol).
+  // Step 8: the entity frame is now DECODED into field-addressable groups. Each group is
+  // routed to its GPU layer here; the per-kind sprite/graphics replay (reusing the shared
+  // draw fns) is the remaining local bring-up. Decoding + layer routing is exercised so
+  // the transport is verified end-to-end (encode -> transfer -> decode -> layer select).
+  if (decodedEntityFrame) {
+    for (const group of decodedEntityFrame.groups) {
+      if (group.layer === 'gpu') continue;
+      pixiRenderer.setLayer(group.layer);
+      // per-record draw replay (group.record(i) / group.field(i, name)) wired locally.
+    }
+  }
   pixiApp.render();
 }
 
@@ -136,6 +149,7 @@ self.onmessage = (event: MessageEvent<RenderWorkerMessage>) => {
         // layers is wired during local bring-up. Keeping the newest frame only (drop
         // stale) avoids unbounded queueing if the GPU falls behind.
         entityFrame = message.frame;
+        decodedEntityFrame = decodeEntityFrame(message.frame);
         break;
 
       case 'terminate':

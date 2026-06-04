@@ -127,7 +127,7 @@ import { Train } from '@/components/game/types';
 import { useLightingSystem } from '@/components/game/lightingSystem';
 import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
-import { createPixiApp, LayerStack, PixiRenderer } from '@/components/game/gpu';
+import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/components/game/gpu';
 import type { Application } from 'pixi.js';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
@@ -180,6 +180,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const gpuCanvasRef = useRef<HTMLCanvasElement>(null); // P4: opt-in GPU (PixiJS) backend canvas
   const pixiAppRef = useRef<Application | null>(null);
   const pixiRendererRef = useRef<PixiRenderer | null>(null);
+  // Step 4/6: fixed-timestep clock decoupled from React; drives GPU render interpolation.
+  const gpuClockRef = useRef(new FixedTimestepClock());
+  // GPU/FPS heads-up display (only when the GPU flag is on) to aid local verification.
+  const hudRef = useRef<HTMLDivElement>(null);
+  const fpsFrameCountRef = useRef(0);
+  const fpsLastSampleRef = useRef(0);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -2399,6 +2405,191 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.restore();
     }
     
+      // Step 4 (P7): route the RETAINED base + buildings layers through the GPU backend
+      // via redrawLayer. Additive and flag-gated — the Canvas2D passes above are byte-
+      // identical and untouched. Reads the queues already populated + depth-sorted by the
+      // Canvas2D pass and replays them with the SAME IsoRenderer-typed draw fns into the
+      // persistent 'base'/'buildings' Pixi layers. redrawLayer does NOT call render() —
+      // the effects loop composites retained + dynamic layers each frame.
+      // REMAINING per-pass fidelity (local bring-up): beaches, railroad crossings,
+      // service-radius circles, water-body labels, tree fire overlays.
+      const gpuMain = pixiRendererRef.current;
+      if (gpuMain) {
+        const applyWorld = (r: IsoRenderer) => {
+          r.scale(dpr * zoom, dpr * zoom);
+          r.translate(offset.x / zoom, offset.y / zoom);
+        };
+        gpuMain.redrawLayer('base', () => {
+          gpuMain.save();
+          applyWorld(gpuMain);
+          for (let i = 0; i < waterQueue.length; i++) {
+            const { tile, screenX, screenY } = waterQueue[i];
+            drawBuilding(gpuMain, screenX, screenY, tile);
+          }
+          if (zoom >= 0.4) {
+            for (let i = 0; i < waterQueue.length; i++) {
+              const { tile, screenX, screenY } = waterQueue[i];
+              const adjacentLand = {
+                north: (tile.x - 1 >= 0 && tile.x - 1 < gridSize && tile.y >= 0 && tile.y < gridSize) && !isWater(tile.x - 1, tile.y) && !hasMarinaPier(tile.x - 1, tile.y) && !isBridge(tile.x - 1, tile.y),
+                east: (tile.x >= 0 && tile.x < gridSize && tile.y - 1 >= 0 && tile.y - 1 < gridSize) && !isWater(tile.x, tile.y - 1) && !hasMarinaPier(tile.x, tile.y - 1) && !isBridge(tile.x, tile.y - 1),
+                south: (tile.x + 1 >= 0 && tile.x + 1 < gridSize && tile.y >= 0 && tile.y < gridSize) && !isWater(tile.x + 1, tile.y) && !hasMarinaPier(tile.x + 1, tile.y) && !isBridge(tile.x + 1, tile.y),
+                west: (tile.x >= 0 && tile.x < gridSize && tile.y + 1 >= 0 && tile.y + 1 < gridSize) && !isWater(tile.x, tile.y + 1) && !hasMarinaPier(tile.x, tile.y + 1) && !isBridge(tile.x, tile.y + 1),
+              };
+              drawBeachOnWater(gpuMain, screenX, screenY, adjacentLand);
+            }
+          }
+          for (let i = 0; i < greenBaseTileQueue.length; i++) {
+            const { tile, screenX, screenY } = greenBaseTileQueue[i];
+            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom);
+          }
+          for (let i = 0; i < roadQueue.length; i++) {
+            const { tile, screenX, screenY } = roadQueue[i];
+            gpuMain.fillStyle = '#4a4a4a';
+            gpuMain.beginPath();
+            gpuMain.moveTo(screenX + halfTileWidth, screenY);
+            gpuMain.lineTo(screenX + tileWidth, screenY + halfTileHeight);
+            gpuMain.lineTo(screenX + halfTileWidth, screenY + tileHeight);
+            gpuMain.lineTo(screenX, screenY + halfTileHeight);
+            gpuMain.closePath();
+            gpuMain.fill();
+            drawBuilding(gpuMain, screenX, screenY, tile);
+            if (tile.hasRailOverlay) drawRailTracksOnly(gpuMain, screenX, screenY, tile.x, tile.y, grid, gridSize, zoom);
+          }
+          for (let i = 0; i < bridgeQueue.length; i++) {
+            const { tile, screenX, screenY } = bridgeQueue[i];
+            drawWaterTileAt(gpuMain, screenX, screenY, tile.x, tile.y);
+            drawBuilding(gpuMain, screenX, screenY, tile);
+          }
+          for (let i = 0; i < railQueue.length; i++) {
+            const { tile, screenX, screenY } = railQueue[i];
+            gpuMain.fillStyle = '#5B6345';
+            gpuMain.beginPath();
+            gpuMain.moveTo(screenX + halfTileWidth, screenY);
+            gpuMain.lineTo(screenX + tileWidth, screenY + halfTileHeight);
+            gpuMain.lineTo(screenX + halfTileWidth, screenY + tileHeight);
+            gpuMain.lineTo(screenX, screenY + halfTileHeight);
+            gpuMain.closePath();
+            gpuMain.fill();
+            drawRailTrack(gpuMain, screenX, screenY, tile.x, tile.y, grid, gridSize, zoom);
+          }
+          for (let i = 0; i < baseTileQueue.length; i++) {
+            const { tile, screenX, screenY } = baseTileQueue[i];
+            drawGreyBaseTile(gpuMain, screenX, screenY, tile, zoom);
+          }
+          for (let i = 0; i < roadQueue.length; i++) {
+            const { tile, screenX, screenY } = roadQueue[i];
+            if (!tile.hasRailOverlay) continue;
+            const crossingKey = tile.y * gridSize + tile.x;
+            if (!crossingKeySet.has(crossingKey)) continue;
+            const gateAngle = gateAnglesMap.get(crossingKey) ?? 0;
+            const crossingState = getCrossingStateForTile(currentTrains, tile.x, tile.y);
+            const isActive = crossingState !== 'open';
+            drawRailroadCrossing(gpuMain, screenX, screenY, tile.x, tile.y, grid, gridSize, zoom, currentFlashTimer, gateAngle, isActive);
+          }
+          for (let i = 0; i < bridgeQueue.length; i++) {
+            const { tile, screenX, screenY } = bridgeQueue[i];
+            if (tile.building.bridgeType === 'suspension') drawSuspensionBridgeTowers(gpuMain, screenX, screenY, tile.building, zoom);
+          }
+          gpuMain.restore();
+        });
+        gpuMain.redrawLayer('buildings', () => {
+          gpuMain.save();
+          applyWorld(gpuMain);
+          for (let i = 0; i < buildingQueue.length; i++) {
+            const { tile, screenX, screenY } = buildingQueue[i];
+            if (tile.building.type === 'tree') {
+              if (tile.building.onFire) drawTileFireEffect(gpuMain, screenX, screenY);
+              continue;
+            }
+            drawBuilding(gpuMain, screenX, screenY, tile);
+          }
+          for (let i = 0; i < bridgeQueue.length; i++) {
+            const { tile, screenX, screenY } = bridgeQueue[i];
+            if (tile.building.bridgeType === 'suspension') {
+              drawSuspensionBridgeTowers(gpuMain, screenX, screenY, tile.building, zoom);
+              drawSuspensionBridgeOverlay(gpuMain, screenX, screenY, tile.building, zoom);
+            }
+          }
+          for (let i = 0; i < overlayQueue.length; i++) {
+            const { tile, screenX, screenY } = overlayQueue[i];
+            const coverage = {
+              fire: state.services.fire[tile.y][tile.x],
+              police: state.services.police[tile.y][tile.x],
+              health: state.services.health[tile.y][tile.x],
+              education: state.services.education[tile.y][tile.x],
+            };
+            const fillStyle = getOverlayFillStyle(overlayMode, tile, coverage);
+            if (fillStyle !== 'rgba(0, 0, 0, 0)') {
+              gpuMain.fillStyle = fillStyle;
+              gpuMain.beginPath();
+              gpuMain.moveTo(screenX + halfTileWidth, screenY);
+              gpuMain.lineTo(screenX + tileWidth, screenY + halfTileHeight);
+              gpuMain.lineTo(screenX + halfTileWidth, screenY + tileHeight);
+              gpuMain.lineTo(screenX, screenY + halfTileHeight);
+              gpuMain.closePath();
+              gpuMain.fill();
+            }
+          }
+          if (overlayMode !== 'none' && overlayMode !== 'subway') {
+            const serviceBuildingTypes = OVERLAY_TO_BUILDING_TYPES[overlayMode];
+            const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
+            const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
+            const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
+            for (let yy = 0; yy < gridSize; yy++) {
+              for (let xx = 0; xx < gridSize; xx++) {
+                const tile = grid[yy][xx];
+                if (!serviceBuildingTypes.includes(tile.building.type)) continue;
+                if (tile.building.constructionProgress !== undefined && tile.building.constructionProgress < 100) continue;
+                if (tile.building.abandoned) continue;
+                const config = SERVICE_CONFIG[tile.building.type as keyof typeof SERVICE_CONFIG];
+                if (!config || !('range' in config)) continue;
+                const effectiveRange = config.range * (1 + (tile.building.level - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
+                const range = Math.floor(effectiveRange);
+                const { screenX: bldgScreenX, screenY: bldgScreenY } = gridToScreen(xx, yy, 0, 0);
+                const centerX = bldgScreenX + halfTileWidth;
+                const centerY = bldgScreenY + halfTileHeight;
+                gpuMain.strokeStyle = circleColor;
+                gpuMain.lineWidth = 2 / zoom;
+                gpuMain.beginPath();
+                gpuMain.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
+                gpuMain.stroke();
+                gpuMain.fillStyle = circleFillColor;
+                gpuMain.fill();
+                gpuMain.strokeStyle = highlightColor;
+                gpuMain.lineWidth = 3 / zoom;
+                gpuMain.beginPath();
+                gpuMain.moveTo(bldgScreenX + halfTileWidth, bldgScreenY);
+                gpuMain.lineTo(bldgScreenX + tileWidth, bldgScreenY + halfTileHeight);
+                gpuMain.lineTo(bldgScreenX + halfTileWidth, bldgScreenY + tileHeight);
+                gpuMain.lineTo(bldgScreenX, bldgScreenY + halfTileHeight);
+                gpuMain.closePath();
+                gpuMain.stroke();
+                gpuMain.fillStyle = highlightColor;
+                gpuMain.beginPath();
+                gpuMain.arc(centerX, centerY, 4 / zoom, 0, Math.PI * 2);
+                gpuMain.fill();
+              }
+            }
+          }
+          if (waterBodies && waterBodies.length > 0) {
+            gpuMain.font = `${Math.max(10, 12 / zoom)}px sans-serif`;
+            gpuMain.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+            gpuMain.lineWidth = 2;
+            gpuMain.textAlign = 'center';
+            gpuMain.textBaseline = 'middle';
+            for (const waterBody of waterBodies) {
+              if (waterBody.tiles.length === 0) continue;
+              const { screenX, screenY } = gridToScreen(waterBody.centerX, waterBody.centerY, 0, 0);
+              gpuMain.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+              gpuMain.strokeText(waterBody.name, screenX + tileWidth / 2, screenY + tileHeight / 2);
+              gpuMain.fillStyle = 'rgba(255, 255, 255, 0.9)';
+              gpuMain.fillText(waterBody.name, screenX + tileWidth / 2, screenY + tileHeight / 2);
+            }
+          }
+          gpuMain.restore();
+        });
+      }
+
     ctx.restore();
     }); // End requestAnimationFrame callback
     
@@ -2433,26 +2624,25 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     ctx.scale(zoom, zoom);
     
     // Helper to draw highlight diamond
-    const drawHighlight = (screenX: number, screenY: number, color: string = 'rgba(255, 255, 255, 0.25)', strokeColor: string = '#ffffff') => {
+    const drawHighlight = (r: IsoRenderer, screenX: number, screenY: number, color: string = 'rgba(255, 255, 255, 0.25)', strokeColor: string = '#ffffff') => {
       const w = TILE_WIDTH;
       const h = TILE_HEIGHT;
-      
-      // Draw semi-transparent fill
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(screenX + w / 2, screenY);
-      ctx.lineTo(screenX + w, screenY + h / 2);
-      ctx.lineTo(screenX + w / 2, screenY + h);
-      ctx.lineTo(screenX, screenY + h / 2);
-      ctx.closePath();
-      ctx.fill();
-      
-      // Draw border
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      r.fillStyle = color;
+      r.beginPath();
+      r.moveTo(screenX + w / 2, screenY);
+      r.lineTo(screenX + w, screenY + h / 2);
+      r.lineTo(screenX + w / 2, screenY + h);
+      r.lineTo(screenX, screenY + h / 2);
+      r.closePath();
+      r.fill();
+      r.strokeStyle = strokeColor;
+      r.lineWidth = 2;
+      r.stroke();
     };
-    
+
+    // Step 4: hover/selection highlights routed through a renderer so the GPU 'hover'
+    // layer can replay the same draws (Canvas2D path unchanged).
+    const paintHighlights = (r: IsoRenderer) => {
     // Draw hovered tile highlight (with multi-tile preview for buildings)
     if (hoveredTile && hoveredTile.x >= 0 && hoveredTile.x < gridSize && hoveredTile.y >= 0 && hoveredTile.y < gridSize) {
       // Check if selectedTool is a building type (not a non-building tool)
@@ -2471,14 +2661,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const ty = hoveredTile.y + dy;
             if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
               const { screenX, screenY } = gridToScreen(tx, ty, 0, 0);
-              drawHighlight(screenX, screenY);
+              drawHighlight(r, screenX, screenY);
             }
           }
         }
       } else {
         // Single tile highlight for non-building tools
         const { screenX, screenY } = gridToScreen(hoveredTile.x, hoveredTile.y, 0, 0);
-        drawHighlight(screenX, screenY);
+        drawHighlight(r, screenX, screenY);
       }
     }
     
@@ -2494,7 +2684,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const ty = selectedTile.y + dy;
             if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
               const { screenX, screenY } = gridToScreen(tx, ty, 0, 0);
-              drawHighlight(screenX, screenY, 'rgba(100, 200, 255, 0.3)', '#60a5fa');
+              drawHighlight(r, screenX, screenY, 'rgba(100, 200, 255, 0.3)', '#60a5fa');
             }
           }
         }
@@ -2607,15 +2797,30 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         
         if (status === 'valid') {
           // Valid bridge - show blue/cyan placeholder
-          drawHighlight(screenX, screenY, 'rgba(59, 130, 246, 0.5)', '#3b82f6');
+          drawHighlight(r, screenX, screenY, 'rgba(59, 130, 246, 0.5)', '#3b82f6');
         } else if (status === 'invalid') {
           // Invalid water crossing - show red
-          drawHighlight(screenX, screenY, 'rgba(239, 68, 68, 0.5)', '#ef4444');
+          drawHighlight(r, screenX, screenY, 'rgba(239, 68, 68, 0.5)', '#ef4444');
         }
         // Land tiles don't need special preview - they're already being placed
       }
     }
     
+    };
+    paintHighlights(ctx);
+    const pixiHover = pixiRendererRef.current;
+    if (pixiHover) {
+      const dprHover = window.devicePixelRatio || 1;
+      pixiHover.redrawLayer('hover', () => {
+        pixiHover.save();
+        pixiHover.scale(dprHover, dprHover);
+        pixiHover.translate(offset.x, offset.y);
+        pixiHover.scale(zoom, zoom);
+        paintHighlights(pixiHover);
+        pixiHover.restore();
+      });
+    }
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile]);
   
@@ -2629,6 +2834,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     let app: Application | null = null;
     const layers = new LayerStack();
     const renderer = new PixiRenderer(canvas, layers);
+    renderer.enableBitmapText(); // Step 7: route fillText/strokeText labels through BitmapText
     pixiRendererRef.current = renderer;
     createPixiApp({ canvas, width: canvasSize.width, height: canvasSize.height })
       .then((created) => {
@@ -2713,6 +2919,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const delta = Math.min((time - lastTime) / 1000, 0.3);
       lastTime = time;
       lastRenderTime = time;
+
+      if (GPU_RENDERER_ENABLED) {
+        fpsFrameCountRef.current++;
+        const elapsed = time - fpsLastSampleRef.current;
+        if (elapsed >= 500) {
+          const fps = Math.round((fpsFrameCountRef.current * 1000) / elapsed);
+          fpsFrameCountRef.current = 0;
+          fpsLastSampleRef.current = time;
+          const hud = hudRef.current;
+          if (hud) hud.textContent = `GPU ON (${pixiAppRef.current ? 'active' : 'init/fallback'}) \u00b7 ${fps} fps`;
+        }
+      }
       
       // PERF: Skip ALL vehicle/entity updates during mobile panning/zooming (not just drawing)
       // This provides a massive performance boost for big cities on mobile
@@ -2826,6 +3044,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const pixi = pixiRendererRef.current;
         const pixiApp = pixiAppRef.current;
         if (pixi && pixiApp) {
+          // Step 6: advance the fixed-timestep clock (alpha drives per-entity render
+          // interpolation during local bring-up; foundation wired here).
+          gpuClockRef.current.advance(performance.now());
           pixi.beginFrame();
           pixi.setLayer('cars');
           drawCars(pixi);
@@ -3478,6 +3699,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           height={canvasSize.height}
           className="absolute top-0 left-0 pointer-events-none"
         />
+      )}
+      {GPU_RENDERER_ENABLED && (
+        <div
+          ref={hudRef}
+          className="absolute top-2 left-2 pointer-events-none"
+          style={{ zIndex: 50, fontFamily: 'monospace', fontSize: 12, color: '#7CFC00', background: 'rgba(0,0,0,0.55)', padding: '2px 6px', borderRadius: 4 }}
+        >
+          GPU ON
+        </div>
       )}
       
       {selectedTile && selectedTool === 'select' && !isMobile && (
