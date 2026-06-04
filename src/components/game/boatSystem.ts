@@ -13,6 +13,7 @@ import {
 } from './constants';
 import { gridToScreen } from './utils';
 import { findMarinasAndPiers, findAdjacentWaterTile, isOverWater, generateTourWaypoints } from './gridFinders';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 export interface BoatSystemRefs {
   boatsRef: React.MutableRefObject<Boat[]>;
@@ -350,7 +351,7 @@ export function createBoatSystem(
   };
 
   // Draw boats with wakes
-  const drawBoats = (ctx: CanvasRenderingContext2D) => {
+  const drawBoats = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;

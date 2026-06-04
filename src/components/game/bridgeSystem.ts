@@ -6,6 +6,7 @@
 import { Tile, Building, BridgeType, BridgeOrientation } from '@/types/game';
 import { createDefaultFireState } from '@/lib/fireConfig';
 import { TILE_WIDTH, TILE_HEIGHT } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Constants
@@ -301,7 +302,7 @@ export function getBridgeColors(bridgeType: BridgeType, variant: number): { deck
  * Draw a bridge tile on the canvas
  */
 export function drawBridge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   screenX: number,
   screenY: number,
   building: Building,
@@ -360,7 +361,7 @@ export function drawBridge(
  * Draw a small bridge (wooden/stone)
  */
 function drawSmallBridge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   orientation: BridgeOrientation,
@@ -474,7 +475,7 @@ function drawSmallBridge(
  * Draw a medium bridge (concrete)
  */
 function drawMediumBridge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   orientation: BridgeOrientation,
@@ -548,7 +549,7 @@ function drawMediumBridge(
  * Draw a large bridge (steel truss)
  */
 function drawLargeBridge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   orientation: BridgeOrientation,
@@ -663,7 +664,7 @@ function drawLargeBridge(
  * Draw a suspension bridge
  */
 function drawSuspensionBridge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   orientation: BridgeOrientation,
@@ -797,7 +798,7 @@ function drawSuspensionBridge(
  * Draw a support pillar
  */
 function drawPillar(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   width: number,
@@ -815,7 +816,7 @@ function drawPillar(
  * Draw a bridge tower
  */
 function drawTower(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   width: number,

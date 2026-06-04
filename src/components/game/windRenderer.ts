@@ -8,6 +8,7 @@ import {
 } from './imageLoader';
 import { getSpriteRenderInfo, selectSpriteSource, type SpriteCoords } from './buildingSprite';
 import type { CloudWeatherMode, WorldRenderState } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 const WIND_DIRECTION_ANGLE = -0.28;
 const WIND_DIRECTION_X = Math.cos(WIND_DIRECTION_ANGLE);
@@ -65,7 +66,7 @@ export interface WindUpdateInput {
 }
 
 export interface WindDrawInput {
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  ctx: IsoRenderer;
   worldState: Pick<WorldRenderState, 'offset' | 'zoom'>;
   windState: WindVisualState;
   dpr?: number;

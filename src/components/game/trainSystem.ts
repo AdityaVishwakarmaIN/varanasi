@@ -37,6 +37,7 @@ import {
   TrackType,
 } from './railSystem';
 import { gridToScreen } from './utils';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Curve Interpolation Helpers
@@ -1032,7 +1033,7 @@ function updateExistingSmoke(
  * Handles curve interpolation for smooth movement on curved tracks
  */
 function drawCarriage(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   carriage: TrainCarriage,
   zoom: number,
   grid: Tile[][],
@@ -1199,7 +1200,7 @@ function seededRandom(seed: number): number {
 /**
  * Draw locomotive
  */
-function drawLocomotive(ctx: CanvasRenderingContext2D, color: string, scale: number, visualHour: number, trainId: number, isMobile: boolean = false): void {
+function drawLocomotive(ctx: IsoRenderer, color: string, scale: number, visualHour: number, trainId: number, isMobile: boolean = false): void {
   const len = TRAIN_CAR.LOCOMOTIVE_LENGTH * scale;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1333,7 +1334,7 @@ function drawLocomotive(ctx: CanvasRenderingContext2D, color: string, scale: num
 /**
  * Draw passenger car
  */
-function drawPassengerCar(ctx: CanvasRenderingContext2D, color: string, scale: number): void {
+function drawPassengerCar(ctx: IsoRenderer, color: string, scale: number): void {
   const len = TRAIN_CAR.CAR_LENGTH * scale;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1361,7 +1362,7 @@ function drawPassengerCar(ctx: CanvasRenderingContext2D, color: string, scale: n
 /**
  * Draw box car (freight)
  */
-function drawBoxCar(ctx: CanvasRenderingContext2D, color: string, scale: number): void {
+function drawBoxCar(ctx: IsoRenderer, color: string, scale: number): void {
   const len = TRAIN_CAR.FREIGHT_CAR_LENGTH * scale;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1390,7 +1391,7 @@ function drawBoxCar(ctx: CanvasRenderingContext2D, color: string, scale: number)
 /**
  * Draw tank car (freight)
  */
-function drawTankCar(ctx: CanvasRenderingContext2D, color: string, scale: number): void {
+function drawTankCar(ctx: IsoRenderer, color: string, scale: number): void {
   const len = TRAIN_CAR.FREIGHT_CAR_LENGTH * scale;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1419,7 +1420,7 @@ function drawTankCar(ctx: CanvasRenderingContext2D, color: string, scale: number
 /**
  * Draw flat car (freight)
  */
-function drawFlatCar(ctx: CanvasRenderingContext2D, color: string, scale: number): void {
+function drawFlatCar(ctx: IsoRenderer, color: string, scale: number): void {
   const len = TRAIN_CAR.FREIGHT_CAR_LENGTH * scale;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1446,7 +1447,7 @@ function drawFlatCar(ctx: CanvasRenderingContext2D, color: string, scale: number
 /**
  * Draw caboose
  */
-function drawCaboose(ctx: CanvasRenderingContext2D, color: string, scale: number): void {
+function drawCaboose(ctx: IsoRenderer, color: string, scale: number): void {
   const len = TRAIN_CAR.CAR_LENGTH * scale * 0.9;
   const wid = TRAIN_CAR.CAR_WIDTH * scale;
   
@@ -1486,7 +1487,7 @@ function drawCaboose(ctx: CanvasRenderingContext2D, color: string, scale: number
  * Draw all trains
  */
 export function drawTrains(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   trains: Train[],
   offset: { x: number; y: number },
   zoom: number,
@@ -1545,7 +1546,7 @@ export function drawTrains(
  * Draw smoke particles for a freight train
  */
 function drawTrainSmoke(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   train: Train,
   viewLeft: number,
   viewRight: number,

@@ -1,7 +1,7 @@
 import type { CloudWeatherMode, OverlayMode } from '@/components/game/types';
 import type { Tile, Tool } from '@/types/game';
 
-export type RenderWorkerCanvasId = 'base' | 'cars' | 'wind' | 'buildings' | 'air' | 'lighting';
+export type RenderWorkerCanvasId = 'base' | 'cars' | 'wind' | 'buildings' | 'air' | 'lighting' | 'gpu';
 
 export type RenderWorkerCanvasMap = Partial<Record<RenderWorkerCanvasId, OffscreenCanvas>>;
 

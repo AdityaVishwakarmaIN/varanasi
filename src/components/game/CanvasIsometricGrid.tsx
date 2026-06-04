@@ -101,6 +101,7 @@ import {
   drawSuspensionBridgeOverlay,
 } from '@/components/game/bridgeDrawing';
 import { CrimeType, getCrimeName, getCrimeDescription, getFireDescriptionForTile, getFireNameForTile } from '@/components/game/incidentData';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import {
   drawRailTrack,
   drawRailTracksOnly,
@@ -125,6 +126,13 @@ import {
 import { Train } from '@/components/game/types';
 import { useLightingSystem } from '@/components/game/lightingSystem';
 import { RenderWorkerManager } from '@/workers/renderWorkerManager';
+// P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
+import { createPixiApp, LayerStack, PixiRenderer } from '@/components/game/gpu';
+import type { Application } from 'pixi.js';
+
+// P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
+// Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
+const GPU_RENDERER_ENABLED = process.env.NEXT_PUBLIC_GPU_RENDERER === '1';
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -169,11 +177,16 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const m = useMessages();
   const gt = useGT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gpuCanvasRef = useRef<HTMLCanvasElement>(null); // P4: opt-in GPU (PixiJS) backend canvas
+  const pixiAppRef = useRef<Application | null>(null);
+  const pixiRendererRef = useRef<PixiRenderer | null>(null);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const buildingsCanvasRef = useRef<HTMLCanvasElement>(null); // Buildings rendered on top of cars/trains
-  const airCanvasRef = useRef<HTMLCanvasElement>(null); // Aircraft + fireworks rendered above buildings
+  const airCanvasRef = useRef<HTMLCanvasElement>(null); // Air-low: incident/recreation peds, helicopters, seaplanes
+  const ambientCanvasRef = useRef<HTMLCanvasElement>(null); // Wind dust + clouds (dedicated layer; future render-worker target)
+  const airHighCanvasRef = useRef<HTMLCanvasElement>(null); // Air-high: airplanes + fireworks (above clouds)
   const lightingCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderPendingRef = useRef<number | null>(null); // PERF: Track pending render frame
@@ -787,7 +800,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, []);
 
   // Draw airplanes with contrails (uses extracted utility)
-  const drawAirplanes = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawAirplanes = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -817,7 +830,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [visualHour, isMobile]);
 
   // Draw helicopters with rotor wash (uses extracted utility)
-  const drawHelicopters = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawHelicopters = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -847,7 +860,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [visualHour, isMobile]);
 
   // Draw seaplanes with wakes and contrails (uses extracted utility)
-  const drawSeaplanes = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawSeaplanes = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -922,7 +935,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [isMobile]);
 
   // Draw trains on the rail network
-  const drawTrainsCallback = useCallback((ctx: CanvasRenderingContext2D) => {
+  const drawTrainsCallback = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize, canvasSize: size } = worldStateRef.current;
 
     if (!currentGrid || currentGridSize <= 0 || trainsRef.current.length === 0) {
@@ -1045,6 +1058,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         if (airCanvasRef.current) {
           airCanvasRef.current.style.width = `${rect.width}px`;
           airCanvasRef.current.style.height = `${rect.height}px`;
+        }
+        if (ambientCanvasRef.current) {
+          ambientCanvasRef.current.style.width = `${rect.width}px`;
+          ambientCanvasRef.current.style.height = `${rect.height}px`;
+        }
+        if (airHighCanvasRef.current) {
+          airHighCanvasRef.current.style.width = `${rect.width}px`;
+          airHighCanvasRef.current.style.height = `${rect.height}px`;
         }
         if (lightingCanvasRef.current) {
           lightingCanvasRef.current.style.width = `${rect.width}px`;
@@ -1333,7 +1354,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     
     // Draw isometric tile base
-    function drawIsometricTile(ctx: CanvasRenderingContext2D, x: number, y: number, tile: Tile, highlight: boolean, currentZoom: number, skipGreyBase: boolean = false, skipGreenBase: boolean = false) {
+    function drawIsometricTile(ctx: IsoRenderer, x: number, y: number, tile: Tile, highlight: boolean, currentZoom: number, skipGreyBase: boolean = false, skipGreenBase: boolean = false) {
       const w = TILE_WIDTH;
       const h = TILE_HEIGHT;
       
@@ -1445,7 +1466,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     }
 
-    function drawTileFireEffect(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    function drawTileFireEffect(ctx: IsoRenderer, x: number, y: number) {
       const fireX = x + TILE_WIDTH / 2;
       const fireY = y - 10;
 
@@ -1467,7 +1488,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     // Helper function to draw water tile at a given screen position
     // Used for marina/pier buildings that sit on water
-    function drawWaterTileAt(ctx: CanvasRenderingContext2D, screenX: number, screenY: number, gridX: number, gridY: number) {
+    function drawWaterTileAt(ctx: IsoRenderer, screenX: number, screenY: number, gridX: number, gridY: number) {
       const waterImage = getCachedImage(WATER_ASSET_PATH);
       if (!waterImage) return;
       
@@ -1525,7 +1546,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
     
     // Draw building sprite
-    function drawBuilding(ctx: CanvasRenderingContext2D, x: number, y: number, tile: Tile) {
+    function drawBuilding(ctx: IsoRenderer, x: number, y: number, tile: Tile) {
       const buildingType = tile.building.type;
       const w = TILE_WIDTH;
       const h = TILE_HEIGHT;
@@ -2598,20 +2619,58 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile]);
   
+  // P4: bootstrap the opt-in GPU (PixiJS) backend alongside the Canvas2D path.
+  // Flag-gated and client-only; default OFF leaves the Canvas2D renderer untouched.
+  useEffect(() => {
+    if (!GPU_RENDERER_ENABLED) return;
+    const canvas = gpuCanvasRef.current;
+    if (!canvas) return;
+    let disposed = false;
+    let app: Application | null = null;
+    const layers = new LayerStack();
+    const renderer = new PixiRenderer(canvas, layers);
+    pixiRendererRef.current = renderer;
+    createPixiApp({ canvas, width: canvasSize.width, height: canvasSize.height })
+      .then((created) => {
+        if (disposed) {
+          created.destroy(true);
+          return;
+        }
+        created.stage.addChild(layers.root);
+        app = created;
+        pixiAppRef.current = created;
+      })
+      .catch(() => {
+        // GPU init failed (no WebGPU/WebGL2): the Canvas2D path keeps running.
+      });
+    return () => {
+      disposed = true;
+      pixiAppRef.current = null;
+      pixiRendererRef.current = null;
+      if (app) app.destroy(true);
+    };
+  }, [canvasSize.width, canvasSize.height]);
+
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
     const windCanvas = windCanvasRef.current;
     const airCanvas = airCanvasRef.current;
-    if (!canvas || !windCanvas || !airCanvas) return;
+    const ambientCanvas = ambientCanvasRef.current;
+    const airHighCanvas = airHighCanvasRef.current;
+    if (!canvas || !windCanvas || !airCanvas || !ambientCanvas || !airHighCanvas) return;
     const ctx = canvas.getContext('2d');
     const windCtx = windCanvas.getContext('2d');
     const airCtx = airCanvas.getContext('2d');
-    if (!ctx || !windCtx || !airCtx) return;
+    const ambientCtx = ambientCanvas.getContext('2d');
+    const airHighCtx = airHighCanvas.getContext('2d');
+    if (!ctx || !windCtx || !airCtx || !ambientCtx || !airHighCtx) return;
     
     ctx.imageSmoothingEnabled = false;
     windCtx.imageSmoothingEnabled = false;
     airCtx.imageSmoothingEnabled = false;
+    ambientCtx.imageSmoothingEnabled = false;
+    airHighCtx.imageSmoothingEnabled = false;
 
     const clearWindCanvas = () => {
       windCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2621,6 +2680,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const clearAirCanvas = () => {
       airCtx.setTransform(1, 0, 0, 1, 0, 0);
       airCtx.clearRect(0, 0, airCanvas.width, airCanvas.height);
+    };
+
+    // Wind dust + clouds layer (dedicated canvas; future render-worker target)
+    const clearAmbientCanvas = () => {
+      ambientCtx.setTransform(1, 0, 0, 1, 0, 0);
+      ambientCtx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
+    };
+
+    // Airplanes + fireworks layer (above clouds)
+    const clearAirHighCanvas = () => {
+      airHighCtx.setTransform(1, 0, 0, 1, 0, 0);
+      airHighCtx.clearRect(0, 0, airHighCanvas.width, airHighCanvas.height);
     };
     
     let animationFrameId: number;
@@ -2712,6 +2783,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         clearWindCanvas();
         clearAirCanvas();
+        clearAmbientCanvas();
+        clearAirHighCanvas();
       } else {
         drawCars(ctx);
         drawBuses(ctx);
@@ -2728,6 +2801,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         clearWindCanvas();
         drawWindTrees(windCtx); // Draw swaying trees on their own lightweight layer
         clearAirCanvas();
+        clearAmbientCanvas();
+        clearAirHighCanvas();
         
         // Draw incident indicators on air canvas (above buildings so tooltips are visible)
         drawIncidentIndicators(airCtx, delta); // Draw fire/crime incident indicators!
@@ -2739,10 +2814,45 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
           drawSeaplanes(airCtx); // Draw seaplanes (skip when panning zoomed out on desktop)
         }
-        drawWindDust(airCtx); // Draw lightweight wind dust above the city
-        drawClouds(airCtx, visualHour); // Draw atmospheric clouds (above helicopters)
-        drawAirplanes(airCtx); // Draw airplanes above clouds
-        drawFireworks(airCtx); // Draw fireworks above everything (nighttime only)
+        drawWindDust(ambientCtx); // Draw lightweight wind dust on the ambient layer
+        drawClouds(ambientCtx, visualHour); // Draw atmospheric clouds on the ambient layer
+        drawAirplanes(airHighCtx); // Draw airplanes above clouds (air-high layer)
+        drawFireworks(airHighCtx); // Draw fireworks above everything (air-high layer)
+
+        // P4: optionally drive the GPU backend with the same IsoRenderer-typed draw
+        // passes. The world transform (dpr.zoom scale + offset translate) is applied
+        // INSIDE each draw fn via save/scale/translate, so it is baked per node here;
+        // applyCamera/worldMatrix are reserved for the OffscreenCanvas worker path (P6).
+        const pixi = pixiRendererRef.current;
+        const pixiApp = pixiAppRef.current;
+        if (pixi && pixiApp) {
+          pixi.beginFrame();
+          pixi.setLayer('cars');
+          drawCars(pixi);
+          drawBuses(pixi);
+          if (!skipSmallElements) drawBoats(pixi);
+          drawBarges(pixi);
+          drawTrainsCallback(pixi);
+          if (!skipSmallElements) drawSmog(pixi);
+          drawPedestrians(pixi);
+          drawEmergencyVehicles(pixi);
+          pixi.setLayer('wind');
+          drawWindTrees(pixi);
+          pixi.setLayer('air');
+          drawIncidentIndicators(pixi, delta);
+          drawRecreationPedestrians(pixi);
+          if (!skipSmallElements) {
+            drawHelicopters(pixi);
+            drawSeaplanes(pixi);
+          }
+          pixi.setLayer('ambient');
+          drawWindDust(pixi);
+          drawClouds(pixi, visualHour);
+          pixi.setLayer('airHigh');
+          drawAirplanes(pixi);
+          drawFireworks(pixi);
+          pixiApp.render();
+        }
       }
     };
     
@@ -3339,6 +3449,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         height={canvasSize.height}
         className="absolute top-0 left-0 pointer-events-none"
       />
+      {/* Ambient layer: wind dust + clouds (dedicated canvas; future render-worker target) */}
+      <canvas
+        ref={ambientCanvasRef}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        className="absolute top-0 left-0 pointer-events-none"
+      />
+      {/* Air-high layer: airplanes + fireworks, above clouds */}
+      <canvas
+        ref={airHighCanvasRef}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        className="absolute top-0 left-0 pointer-events-none"
+      />
       <canvas
         ref={lightingCanvasRef}
         width={canvasSize.width}
@@ -3346,6 +3470,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         className="absolute top-0 left-0 pointer-events-none"
         style={{ mixBlendMode: 'multiply' }}
       />
+      {/* P4: opt-in GPU (PixiJS) backend canvas — only mounted when the flag is on */}
+      {GPU_RENDERER_ENABLED && (
+        <canvas
+          ref={gpuCanvasRef}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          className="absolute top-0 left-0 pointer-events-none"
+        />
+      )}
       
       {selectedTile && selectedTool === 'select' && !isMobile && (
         <TileInfoPanel

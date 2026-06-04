@@ -7,6 +7,7 @@ import { TILE_WIDTH, TILE_HEIGHT } from './types';
 import { Building } from '@/types/game';
 import { ROAD_COLORS } from './trafficSystem';
 import { RAIL_COLORS, TRACK_GAUGE_RATIO, TRACK_SEPARATION_RATIO } from './railSystem';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Types
@@ -191,7 +192,7 @@ export function parseBridgeProperties(building: Building) {
  * Draw a 3D isometric support pillar
  */
 export function drawPillar(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   px: number,
   py: number,
   pillarW: number,
@@ -237,7 +238,7 @@ export function drawPillar(
  * Draw a 3D isometric suspension bridge tower
  */
 export function drawSuspensionTower(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   px: number,
   py: number,
   towerW: number,
@@ -271,7 +272,7 @@ export function drawSuspensionTower(
  * Draw a complete bridge tile as a SINGLE continuous shape to avoid gaps
  */
 export function drawBridgeTile(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   building: Building,
@@ -763,7 +764,7 @@ export function drawBridgeTile(
  * This ensures towers appear above base tiles but below the buildings canvas
  */
 export function drawSuspensionBridgeTowers(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   building: Building,
@@ -888,7 +889,7 @@ export function drawSuspensionBridgeTowers(
  * This is called separately after buildings are drawn for proper z-ordering
  */
 export function drawSuspensionBridgeOverlay(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   building: Building,

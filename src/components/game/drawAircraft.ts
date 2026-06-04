@@ -14,6 +14,7 @@ import {
   PLANE_SCALES,
 } from './constants';
 import { getCachedImage } from './imageLoader';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // Cache key for the planes sprite sheet (no red filter needed)
 const AIRPLANE_SPRITE_CACHE_KEY = '/assets/sprites_red_water_new_planes.png';
@@ -211,7 +212,7 @@ function getPlaneSprite(
  * Draw airplanes with contrails using sprite sheet
  */
 export function drawAirplanes(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   airplanes: Airplane[],
   viewBounds: { viewLeft: number; viewTop: number; viewRight: number; viewBottom: number },
   hour: number,
@@ -347,7 +348,7 @@ export function drawAirplanes(
  * Only shows lights that would be visible based on plane orientation
  */
 function drawNavigationLights(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   plane: Airplane,
   navLightFlashTimer: number,
   isMobile: boolean,
@@ -485,7 +486,7 @@ function drawNavigationLights(
  * Fallback airplane drawing when sprite is not available
  */
 function drawFallbackAirplane(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   plane: Airplane,
   hour: number,
   navLightFlashTimer: number,
@@ -601,7 +602,7 @@ function shadeColor(color: string, percent: number): string {
  * Draw helicopters with rotor wash and searchlights at night
  */
 export function drawHelicopters(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   helicopters: Helicopter[],
   viewBounds: { viewLeft: number; viewTop: number; viewRight: number; viewBottom: number },
   hour: number,
@@ -936,7 +937,7 @@ export function drawHelicopters(
  * Draw seaplanes with wakes (on water) and contrails (in air) using sprite sheet
  */
 export function drawSeaplanes(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   seaplanes: Seaplane[],
   viewBounds: { viewLeft: number; viewTop: number; viewRight: number; viewBottom: number },
   hour: number,
@@ -1124,7 +1125,7 @@ export function drawSeaplanes(
  * Draw navigation lights for seaplanes
  */
 function drawSeaplaneNavigationLights(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   seaplane: Seaplane,
   navLightFlashTimer: number,
   isMobile: boolean,
@@ -1249,7 +1250,7 @@ function drawSeaplaneNavigationLights(
  * Fallback seaplane drawing when sprite is not available
  */
 function drawFallbackSeaplane(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   seaplane: Seaplane,
   hour: number,
   navLightFlashTimer: number,

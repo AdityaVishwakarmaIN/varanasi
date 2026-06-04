@@ -62,6 +62,7 @@ import {
 import { getCachedImage } from './imageLoader';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 const CLOUD_SPRITE_BLUR_PX = 2.5;
 
@@ -333,7 +334,7 @@ export function createEffectsSystems(
   };
 
   // Draw fireworks
-  const drawFireworks = (ctx: CanvasRenderingContext2D) => {
+  const drawFireworks = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -576,7 +577,7 @@ export function createEffectsSystems(
   };
 
   // Draw smog particles
-  const drawSmog = (ctx: CanvasRenderingContext2D) => {
+  const drawSmog = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1071,7 +1072,9 @@ export function createEffectsSystems(
   };
 
   // Draw clouds from the shared sprite sheet instead of generating puffs at draw time.
-  const drawClouds = (ctx: CanvasRenderingContext2D, _currentHour: number) => {
+  // #1 perf: reusable offscreen layer so clouds are blurred ONCE per frame (not per sprite).
+  let cloudBlurLayer: OffscreenCanvas | null = null;
+  const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -1105,38 +1108,59 @@ export function createEffectsSystems(
     const viewRight = viewWidth - currentOffset.x / currentZoom + cloudDrawPadding;
     const viewBottom = viewHeight - currentOffset.y / currentZoom + cloudDrawPadding;
     
-    ctx.save();
-    ctx.filter = `blur(${CLOUD_SPRITE_BLUR_PX}px)`;
-    
-    for (let layer = 0; layer < CLOUD_LAYER_SPEEDS.length; layer++) {
-      for (const cloud of cloudsRef.current) {
-        if (cloud.layer !== layer) continue;
-        if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
-        
-        const finalOpacity = cloud.opacity * zoomOpacity;
-        if (finalOpacity <= 0.01) continue;
-
-        const sprite = getCloudSpriteDefinition(cloud.spriteKey);
-        const drawWidth = sprite.baseWidth * cloud.scale;
-        const drawHeight = drawWidth * (sprite.sh / sprite.sw);
-        const drawX = cloud.x - drawWidth / 2;
-        const drawY = cloud.y - drawHeight / 2;
-
-        ctx.globalAlpha = finalOpacity;
-        ctx.drawImage(
-          cloudSpriteSheet,
-          sprite.sx,
-          sprite.sy,
-          sprite.sw,
-          sprite.sh,
-          drawX,
-          drawY,
-          drawWidth,
-          drawHeight
-        );
-      }
+    // #1 perf: render clouds unblurred onto a reusable offscreen layer (same world transform),
+    // then composite that whole layer with a SINGLE blur. Previously each of up to ~36x3 clouds
+    // was drawn with ctx.filter=blur active (one expensive blurred drawImage per cloud per frame).
+    if (!cloudBlurLayer || cloudBlurLayer.width !== canvas.width || cloudBlurLayer.height !== canvas.height) {
+      cloudBlurLayer = new OffscreenCanvas(Math.max(1, canvas.width), Math.max(1, canvas.height));
     }
-    ctx.restore();
+    const layerCtx = cloudBlurLayer.getContext('2d');
+    if (layerCtx) {
+      layerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      layerCtx.clearRect(0, 0, cloudBlurLayer.width, cloudBlurLayer.height);
+      layerCtx.imageSmoothingEnabled = true;
+      // Match the world-space transform used for the clouds above.
+      layerCtx.scale(dpr * currentZoom, dpr * currentZoom);
+      layerCtx.translate(currentOffset.x / currentZoom, currentOffset.y / currentZoom);
+
+      for (let layer = 0; layer < CLOUD_LAYER_SPEEDS.length; layer++) {
+        for (const cloud of cloudsRef.current) {
+          if (cloud.layer !== layer) continue;
+          if (cloud.x < viewLeft || cloud.x > viewRight || cloud.y < viewTop || cloud.y > viewBottom) continue;
+
+          const finalOpacity = cloud.opacity * zoomOpacity;
+          if (finalOpacity <= 0.01) continue;
+
+          const sprite = getCloudSpriteDefinition(cloud.spriteKey);
+          const drawWidth = sprite.baseWidth * cloud.scale;
+          const drawHeight = drawWidth * (sprite.sh / sprite.sw);
+          const drawX = cloud.x - drawWidth / 2;
+          const drawY = cloud.y - drawHeight / 2;
+
+          layerCtx.globalAlpha = finalOpacity;
+          layerCtx.drawImage(
+            cloudSpriteSheet,
+            sprite.sx,
+            sprite.sy,
+            sprite.sw,
+            sprite.sh,
+            drawX,
+            drawY,
+            drawWidth,
+            drawHeight
+          );
+        }
+      }
+
+      // Composite the cloud layer in device-pixel space with a single blur. The blur radius is
+      // scaled by dpr*zoom so the on-screen softness matches the previous world-space blur(2.5px).
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.filter = `blur(${CLOUD_SPRITE_BLUR_PX * dpr * currentZoom}px)`;
+      ctx.globalAlpha = 1;
+      ctx.drawImage(cloudBlurLayer, 0, 0);
+      ctx.restore();
+    }
 
     ctx.globalAlpha = 1;
 

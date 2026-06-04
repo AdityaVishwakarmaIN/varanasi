@@ -5,6 +5,7 @@
 
 import { Tile, ZoneType } from '@/types/game';
 import { TILE_WIDTH, TILE_HEIGHT } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Types
@@ -122,7 +123,7 @@ const BEACH_INWARD_VECTORS: Record<BeachEdge, { dx: number; dy: number }> = {
  * This is the foundation for all tile rendering.
  */
 export function drawIsometricDiamond(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   colors: TileColorScheme,
@@ -169,7 +170,7 @@ export function drawIsometricDiamond(
  * Colors are determined by the tile's zone.
  */
 export function drawGreenBaseTile(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   tile: Tile,
@@ -206,7 +207,7 @@ export function drawGreenBaseTile(
  * Draw a grey base tile for buildings.
  */
 export function drawGreyBaseTile(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   _tile: Tile,
@@ -223,7 +224,7 @@ export function drawGreyBaseTile(
  * This shows a flat dirt tile to indicate construction preparation.
  */
 export function drawFoundationPlot(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   w: number,
@@ -310,7 +311,7 @@ const BEACH_CONFIG = {
  * @param shortenEnd - Whether to shorten at end (for corner connection)
  */
 function drawBeachEdge(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   startX: number,
   startY: number,
   endX: number,
@@ -399,7 +400,7 @@ function getShortenedInnerEndpoint(
  * Draw a corner piece where two beach edges meet.
  */
 function drawBeachCorner(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   cornerPoint: { x: number; y: number },
   edge1Corner: { x: number; y: number },
   edge1Inward: { dx: number; dy: number },
@@ -434,7 +435,7 @@ function drawBeachCorner(
  * Creates a sidewalk-style sandy strip along edges facing water.
  */
 export function drawBeach(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   adjacentWater: { north: boolean; east: boolean; south: boolean; west: boolean }
@@ -577,7 +578,7 @@ const BEACH_OUTWARD_VECTORS: Record<BeachEdge, { dx: number; dy: number }> = {
  * The beach is drawn FROM the edge INWARD toward the water center.
  */
 function drawBeachEdgeOnWater(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   startX: number,
   startY: number,
   endX: number,
@@ -635,7 +636,7 @@ function drawBeachEdgeOnWater(
  * Draw corner piece for beach on water tile.
  */
 function drawBeachCornerOnWater(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   cornerPoint: { x: number; y: number },
   edge1Corner: { x: number; y: number },
   edge1Inward: { dx: number; dy: number },
@@ -671,7 +672,7 @@ function drawBeachCornerOnWater(
  * @param adjacentLand - Which adjacent tiles are land (not water)
  */
 export function drawBeachOnWater(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   adjacentLand: { north: boolean; east: boolean; south: boolean; west: boolean }

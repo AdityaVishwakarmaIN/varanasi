@@ -13,8 +13,9 @@ export const ISOCITY_SAVED_CITY_PREFIX = 'isocity-city-';
 export const ISOCITY_SPRITE_PACK_STORAGE_KEY = 'isocity-sprite-pack';
 export const ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY = 'isocity-day-night-mode';
 export const ISOCITY_UI_PREFERENCES_STORAGE_KEY = 'isocity-ui-preferences';
+export const COASTER_STORAGE_PREFIX = 'coaster-';
 
-const APP_STORAGE_PREFIXES = ['isocity-'] as const;
+const APP_STORAGE_PREFIXES = ['isocity-', COASTER_STORAGE_PREFIX] as const;
 
 export interface IsocityUiPreferences {
   showOverlayPanel: boolean;

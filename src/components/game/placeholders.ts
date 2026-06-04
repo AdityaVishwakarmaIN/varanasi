@@ -1,4 +1,5 @@
 // ============================================================================
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 // PLACEHOLDER BUILDING COLORS
 // ============================================================================
 // Colors for rendering buildings before sprites are loaded
@@ -60,7 +61,7 @@ export const PLACEHOLDER_COLORS: Record<string, PlaceholderColor> = {
  * Uses simple colored 3D boxes that match the zone/category.
  */
 export function drawPlaceholderBuilding(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   buildingType: string,

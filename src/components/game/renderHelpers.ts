@@ -4,6 +4,7 @@
 
 import { BuildingType, Tile } from '@/types/game';
 import { TILE_WIDTH, TILE_HEIGHT } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 /**
  * Viewport bounds for culling objects outside the visible area
@@ -123,7 +124,7 @@ export function isInViewport(
  * Setup canvas context with standard transforms for world rendering
  */
 export function setupCanvasContext(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   offset: { x: number; y: number },
   zoom: number,
   dpr: number
@@ -136,7 +137,7 @@ export function setupCanvasContext(
 /**
  * Clear canvas and reset transforms
  */
-export function clearCanvas(ctx: CanvasRenderingContext2D): void {
+export function clearCanvas(ctx: IsoRenderer): void {
   const canvas = ctx.canvas;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);

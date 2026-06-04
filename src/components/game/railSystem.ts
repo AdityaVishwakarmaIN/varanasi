@@ -5,6 +5,7 @@
 
 import { Tile } from '@/types/game';
 import { TILE_WIDTH, TILE_HEIGHT, CarDirection } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Types
@@ -288,7 +289,7 @@ function offsetPoint(
  * Draw the ballast (gravel bed) foundation for DOUBLE tracks
  */
 function drawBallast(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   trackType: TrackType,
@@ -514,7 +515,7 @@ function drawBallast(
  * Draw rail ties (sleepers) for DOUBLE tracks
  */
 function drawTies(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   trackType: TrackType,
@@ -761,7 +762,7 @@ function drawTies(
  * Draw steel rails for DOUBLE tracks
  */
 function drawRails(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   trackType: TrackType,
@@ -1003,7 +1004,7 @@ function drawRails(
  * Draw a buffer stop at track terminus (smaller for double track)
  */
 function drawBufferStop(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   facing: 'north' | 'east' | 'south' | 'west',
@@ -1046,7 +1047,7 @@ function drawBufferStop(
  * This should be called AFTER the base tile is drawn
  */
 export function drawRailTrack(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   gridX: number,
@@ -1100,7 +1101,7 @@ export function getAdjacentRailForOverlay(
  * This is used when rail is overlaid on a road tile - the road provides the base
  */
 export function drawRailTracksOnly(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   gridX: number,
@@ -1123,7 +1124,7 @@ export function drawRailTracksOnly(
  * Draw inset rails for road overlays - darker borders to look embedded
  */
 function drawInsetRails(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   trackType: TrackType,
@@ -1493,7 +1494,7 @@ export const CROSSING_COLORS = {
  * Draw a railroad crossing signal (pole with flashing lights, no crossbuck)
  */
 export function drawCrossingSignal(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   position: 'nw' | 'ne' | 'sw' | 'se',
@@ -1574,7 +1575,7 @@ export function drawCrossingSignal(
  * @param tiltOverride - Optional override for tilt angle when closed
  */
 export function drawCrossingGate(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   position: 'nw' | 'ne' | 'sw' | 'se',
@@ -1659,7 +1660,7 @@ export function drawCrossingGate(
  * Draw complete railroad crossing visuals for a tile
  */
 export function drawRailroadCrossing(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   gridX: number,

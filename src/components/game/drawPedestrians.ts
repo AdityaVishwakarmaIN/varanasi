@@ -8,6 +8,7 @@ import { Pedestrian, PedestrianActivity, TILE_WIDTH, TILE_HEIGHT } from './types
 import { DIRECTION_META } from './constants';
 import { gridToScreen } from './utils';
 import { getPedestrianOpacity, getVisiblePedestrians } from './pedestrianSystem';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // LOD thresholds - draw simpler at lower zoom
 const LOD_SIMPLE_ZOOM = 0.55;  // Below this, draw very simple pedestrians (just above min zoom)
@@ -39,7 +40,7 @@ function getSidewalkYOffset(direction: 'north' | 'south' | 'east' | 'west', side
  * Draw hair/ponytail on a pedestrian
  * @param pedId - Pedestrian ID for consistent hair color (avoids flickering)
  */
-function drawHair(ctx: CanvasRenderingContext2D, headX: number, headY: number, headRadius: number, pedId: number): void {
+function drawHair(ctx: IsoRenderer, headX: number, headY: number, headRadius: number, pedId: number): void {
   // Pick a hair color based on pedestrian ID (stable, no flickering)
   const hairColor = HAIR_COLORS[pedId % HAIR_COLORS.length];
   
@@ -74,7 +75,7 @@ export type PedestrianFilterMode = 'all' | 'recreation' | 'non-recreation';
  *   - 'non-recreation': Walking pedestrians not at destinations - draw on cars canvas
  */
 export function drawPedestrians(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   pedestrians: Pedestrian[],
   viewBounds: { viewLeft: number; viewTop: number; viewRight: number; viewBottom: number },
   zoom: number = 1.0,
@@ -325,7 +326,7 @@ export function drawPedestrians(
 /**
  * Draw a very simple pedestrian (lowest LOD) - just colored dots
  */
-function drawSimplePedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSimplePedestrian(ctx: IsoRenderer, ped: Pedestrian): void {
   // Just draw a small colored circle for the body
   ctx.fillStyle = ped.shirtColor;
   ctx.beginPath();
@@ -342,7 +343,7 @@ function drawSimplePedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): v
 /**
  * Draw medium detail walking pedestrian
  */
-function drawMediumWalkingPedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawMediumWalkingPedestrian(ctx: IsoRenderer, ped: Pedestrian): void {
   const walkBob = Math.sin(ped.walkOffset) * 0.5;
   const scale = 0.30;
 
@@ -373,7 +374,7 @@ function drawMediumWalkingPedestrian(ctx: CanvasRenderingContext2D, ped: Pedestr
 /**
  * Draw medium detail activity pedestrian
  */
-function drawMediumActivityPedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawMediumActivityPedestrian(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.30;
   const anim = Math.sin(ped.activityAnimTimer);
 
@@ -411,7 +412,7 @@ function drawMediumActivityPedestrian(ctx: CanvasRenderingContext2D, ped: Pedest
 /**
  * Draw a standard walking pedestrian - OPTIMIZED
  */
-function drawWalkingPedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawWalkingPedestrian(ctx: IsoRenderer, ped: Pedestrian): void {
   const walkBob = Math.sin(ped.walkOffset) * 0.8;
   const walkSway = Math.sin(ped.walkOffset * 0.5) * 0.5;
   const scale = 0.30;
@@ -463,7 +464,7 @@ function drawWalkingPedestrian(ctx: CanvasRenderingContext2D, ped: Pedestrian): 
 /**
  * Draw a simplified dog for performance
  */
-function drawDogSimple(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawDogSimple(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.26;
   const offsetX = 8;
   const offsetY = 3;
@@ -487,7 +488,7 @@ function drawDogSimple(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a basketball player
  */
-function drawBasketballPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawBasketballPlayer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.32;
   const bounce = Math.abs(Math.sin(ped.activityAnimTimer * 1.5)) * 2;
   const armMove = Math.sin(ped.activityAnimTimer * 3) * 4;
@@ -548,7 +549,7 @@ function drawBasketballPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): v
 /**
  * Draw a tennis player
  */
-function drawTennisPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawTennisPlayer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.31;
   const swing = Math.sin(ped.activityAnimTimer * 1) * 5;
 
@@ -618,7 +619,7 @@ function drawTennisPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void 
 /**
  * Draw a soccer player
  */
-function drawSoccerPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSoccerPlayer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.31;
   const kick = Math.sin(ped.activityAnimTimer * 2) * 4;
   const run = Math.abs(Math.sin(ped.activityAnimTimer * 2.5));
@@ -679,7 +680,7 @@ function drawSoccerPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void 
 /**
  * Draw a baseball player
  */
-function drawBaseballPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawBaseballPlayer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.31;
   const swing = Math.sin(ped.activityAnimTimer * 1) * 6;
 
@@ -743,7 +744,7 @@ function drawBaseballPlayer(ctx: CanvasRenderingContext2D, ped: Pedestrian): voi
 /**
  * Draw a swimmer
  */
-function drawSwimmer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSwimmer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.22; // Smaller scale for pool swimmers
   const swim = Math.sin(ped.activityAnimTimer * 2);
   const bob = Math.sin(ped.activityAnimTimer * 1) * 1.5;
@@ -795,7 +796,7 @@ function drawSwimmer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a skateboarder
  */
-function drawSkateboarder(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSkateboarder(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.23; // Smaller scale for skate park
   const ride = Math.sin(ped.activityAnimTimer * 1.5);
   const bob = Math.abs(ride) * 1.5;
@@ -856,7 +857,7 @@ function drawSkateboarder(ctx: CanvasRenderingContext2D, ped: Pedestrian): void 
 /**
  * Draw a person sitting on a bench
  */
-function drawSittingPerson(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSittingPerson(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.22; // Smaller scale to fit better on bench
   const breathe = Math.sin(ped.activityAnimTimer * 0.5) * 0.3;
 
@@ -934,7 +935,7 @@ const BLANKET_COLORS = [
   { main: '#d4b5a5', accent: '#f5ece6' },  // Warm beige
 ];
 
-function drawPicnicker(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawPicnicker(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.22; // Smaller scale for park activities
 
   // Picnic blanket - muted pastel colors based on pedestrian ID
@@ -984,7 +985,7 @@ function drawPicnicker(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a jogger
  */
-function drawJogger(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawJogger(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.20; // Small scale for park joggers
   const run = ped.walkOffset;
   const bounce = Math.abs(Math.sin(run * 2)) * 2;
@@ -1046,14 +1047,14 @@ function drawJogger(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a dog walker - just uses the regular walking function which handles dogs
  */
-function drawDogWalker(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawDogWalker(ctx: IsoRenderer, ped: Pedestrian): void {
   drawWalkingPedestrian(ctx, ped);
 }
 
 /**
  * Draw a kid on playground
  */
-function drawPlaygroundKid(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawPlaygroundKid(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.20; // Small - it's a kid on playground
   const swing = Math.sin(ped.activityAnimTimer * 1.5) * 8;
   const sway = Math.cos(ped.activityAnimTimer * 1.5) * 3;
@@ -1110,7 +1111,7 @@ function drawPlaygroundKid(ctx: CanvasRenderingContext2D, ped: Pedestrian): void
 /**
  * Draw a spectator watching a game
  */
-function drawSpectator(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSpectator(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.22; // Smaller scale for park/stadium spectators
   const cheer = Math.sin(ped.activityAnimTimer * 2);
   const cheerUp = cheer > 0.7;
@@ -1183,7 +1184,7 @@ function drawSpectator(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a socializing person (facing another person)
  */
-function drawSocializingPerson(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawSocializingPerson(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.30;
   const gesture = Math.sin(ped.activityAnimTimer * 1) * 2;
 
@@ -1242,7 +1243,7 @@ function drawSocializingPerson(ctx: CanvasRenderingContext2D, ped: Pedestrian): 
 /**
  * Draw an idle person
  */
-function drawIdlePerson(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawIdlePerson(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.30;
   const breathe = Math.sin(ped.activityAnimTimer * 0.5) * 0.3;
 
@@ -1309,7 +1310,7 @@ function drawIdlePerson(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
 /**
  * Draw a shopper walking from road to shop entrance
  */
-function drawShopperQueuing(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawShopperQueuing(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.28;
   const walkBob = Math.sin(ped.walkOffset) * 0.6;
   const walkSway = Math.sin(ped.walkOffset * 0.5) * 0.4;
@@ -1365,7 +1366,7 @@ function drawShopperQueuing(ctx: CanvasRenderingContext2D, ped: Pedestrian): voi
 /**
  * Draw a shopper walking through shop door (entering or exiting)
  */
-function drawShopperAtDoor(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawShopperAtDoor(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.28;
   const walkBob = Math.sin(ped.walkOffset) * 0.5;
 
@@ -1451,7 +1452,7 @@ function drawShopperAtDoor(ctx: CanvasRenderingContext2D, ped: Pedestrian): void
  * Draw a beach swimmer (person swimming in open water near shore)
  * Different from pool swimmer - more realistic ocean swimming
  */
-function drawBeachSwimmer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawBeachSwimmer(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.24;
   const swim = Math.sin(ped.activityAnimTimer * 1.8);
   const bob = Math.sin(ped.activityAnimTimer * 1.2) * 1.5;
@@ -1544,7 +1545,7 @@ function drawBeachSwimmer(ctx: CanvasRenderingContext2D, ped: Pedestrian): void 
 /**
  * Draw a person lying on a beach mat/towel
  */
-function drawBeachMat(ctx: CanvasRenderingContext2D, ped: Pedestrian): void {
+function drawBeachMat(ctx: IsoRenderer, ped: Pedestrian): void {
   const scale = 0.22;
   const breathe = Math.sin(ped.activityAnimTimer * 0.3) * 0.3;
   

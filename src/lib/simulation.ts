@@ -34,6 +34,11 @@ import {
   isBuildingFireEligible,
 } from './fireConfig';
 import { tryGrowTree, TREE_GROWTH_CONFIG } from './treeGrowth';
+import {
+  calculateRatings,
+  calculateEnvironmentScore,
+  isEnvironmentPlayableBuildingType,
+} from './scoring';
 import { isMobile } from 'react-device-detect';
 import type { CloudWeatherMode } from '@/components/game/types';
 
@@ -1149,34 +1154,7 @@ function createInitialStats(): Stats {
   };
 }
 
-const ENVIRONMENT_TARGET_TREE_PERCENT = 25;
-const ENVIRONMENT_SCORE_MAX = 100;
-const ENVIRONMENT_PARK_WEIGHT_PERCENT = 50;
-
-function isEnvironmentPlayableBuildingType(buildingType: BuildingType): boolean {
-  return buildingType !== 'empty';
-}
-
-function calculateEnvironmentScore(
-  treeCount: number,
-  parkCount: number,
-  totalPollution: number,
-  totalTiles: number
-): number {
-  if (totalTiles <= 0) return 0;
-
-  // Tree coverage is the base metric and is measured against the full map area,
-  // including water tiles. Parks act as a partial bonus on top of that base.
-  const scaledTreeCoverage = (treeCount * 100) + (parkCount * ENVIRONMENT_PARK_WEIGHT_PERCENT);
-  const scaledTargetCoverage = totalTiles * ENVIRONMENT_TARGET_TREE_PERCENT;
-  const greenScore = Math.floor((scaledTreeCoverage * ENVIRONMENT_SCORE_MAX) / scaledTargetCoverage);
-  const pollutionPenalty = Math.floor(totalPollution / totalTiles);
-
-  return Math.min(
-    ENVIRONMENT_SCORE_MAX,
-    Math.max(0, greenScore - pollutionPenalty)
-  );
-}
+// Environment scoring constants & functions moved to ./scoring (single source of truth).
 
 // PERF: Optimized service coverage grid creation
 // Uses typed arrays internally for faster operations
@@ -1986,26 +1964,18 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   expenses += Math.floor(budget.power.cost * budget.power.funding / 100);
   expenses += Math.floor(budget.water.cost * budget.water.funding / 100);
 
-  // Calculate ratings
-  const avgPoliceCoverage = calculateAverageCoverage(services.police);
-  const avgFireCoverage = calculateAverageCoverage(services.fire);
-  const avgHealthCoverage = calculateAverageCoverage(services.health);
-  const avgEducationCoverage = calculateAverageCoverage(services.education);
-
-  const safety = Math.min(100, avgPoliceCoverage * 0.7 + avgFireCoverage * 0.3);
-  const health = Math.min(100, avgHealthCoverage * 0.8 + (100 - totalPollution / (size * size)) * 0.2);
-  const education = Math.min(100, avgEducationCoverage);
-  const environment = calculateEnvironmentScore(treeCount, parkCount, totalPollution, playableTileCount);
-
-  const jobSatisfaction = jobs >= population ? 100 : (jobs / (population || 1)) * 100;
-  const happiness = Math.min(100, (
-    safety * 0.15 +
-    health * 0.2 +
-    education * 0.15 +
-    environment * 0.15 +
-    jobSatisfaction * 0.2 +
-    (100 - taxRate * 3) * 0.15
-  ));
+  // Calculate ratings — centralized in ./scoring (single source of truth)
+  const { safety, health, education, environment, happiness } = calculateRatings({
+    services,
+    treeCount,
+    parkCount,
+    totalPollution,
+    totalTiles: size * size,
+    playableTileCount,
+    jobs,
+    population,
+    taxRate,
+  });
 
   return {
     population,
@@ -2026,17 +1996,7 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   };
 }
 
-function calculateAverageCoverage(coverage: number[][]): number {
-  let total = 0;
-  let count = 0;
-  for (const row of coverage) {
-    for (const value of row) {
-      total += value;
-      count++;
-    }
-  }
-  return count > 0 ? total / count : 0;
-}
+// calculateAverageCoverage moved to ./scoring (single source of truth).
 
 // PERF: Update budget costs based on buildings - single pass through grid
 function updateBudgetCosts(grid: Tile[][], budget: Budget): Budget {

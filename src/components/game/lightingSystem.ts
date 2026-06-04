@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { WorldRenderState } from './types';
 import { renderLightingFrame } from './lightingRenderer';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 export interface LightingSystemConfig {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -59,7 +60,7 @@ export function useLightingSystem(config: LightingSystemConfig): void {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let ctx: CanvasRenderingContext2D | null;
+    let ctx: IsoRenderer | null;
     try {
       ctx = canvas.getContext('2d');
     } catch {

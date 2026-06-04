@@ -1,4 +1,5 @@
 import { WorldRenderState } from './types';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import {
   createDefaultWindVisualState,
   buildWindTreeRenderItem,
@@ -38,7 +39,7 @@ export function createWindSystem(
     });
   };
 
-  const drawWindTrees = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) => {
+  const drawWindTrees = (ctx: IsoRenderer) => {
     drawWindTreesFrame(
       {
         ctx,
@@ -49,7 +50,7 @@ export function createWindSystem(
     );
   };
 
-  const drawWindDust = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) => {
+  const drawWindDust = (ctx: IsoRenderer) => {
     drawWindDustFrame({
       ctx,
       worldState: worldStateRef.current,

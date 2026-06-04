@@ -23,6 +23,7 @@ import {
   findAdjacentWaterTileForMarina,
   isOverWater,
 } from './gridFinders';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 export interface BargeSystemRefs {
   bargesRef: React.MutableRefObject<Barge[]>;
@@ -332,7 +333,7 @@ export function createBargeSystem(
   };
 
   // Draw barges with wakes
-  const drawBarges = (ctx: CanvasRenderingContext2D) => {
+  const drawBarges = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;

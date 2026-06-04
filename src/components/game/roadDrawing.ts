@@ -22,6 +22,7 @@ import {
   drawRoadArrow,
 } from './trafficSystem';
 import { Tile } from '@/types/game';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Types
@@ -54,7 +55,7 @@ export interface RoadDrawingOptions {
  * Draw a sophisticated road tile with merged avenues/highways, traffic lights, and proper lane directions
  */
 export function drawRoad(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   gridX: number,

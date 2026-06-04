@@ -14,6 +14,7 @@ import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulati
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import {
   createPedestrian,
   updatePedestrianState,
@@ -1448,7 +1449,7 @@ export function createVehicleSystems(
     pedestriansRef.current = updatedPedestrians;
   };
 
-  const drawCars = (ctx: CanvasRenderingContext2D) => {
+  const drawCars = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1517,7 +1518,7 @@ export function createVehicleSystems(
     ctx.restore();
   };
 
-  const drawBuses = (ctx: CanvasRenderingContext2D) => {
+  const drawBuses = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1585,7 +1586,7 @@ export function createVehicleSystems(
     ctx.restore();
   };
 
-  const drawPedestrians = (ctx: CanvasRenderingContext2D) => {
+  const drawPedestrians = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1621,7 +1622,7 @@ export function createVehicleSystems(
   };
 
   // Draw recreation pedestrians on air canvas (above buildings, smooth animation every frame)
-  const drawRecreationPedestrians = (ctx: CanvasRenderingContext2D) => {
+  const drawRecreationPedestrians = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1655,7 +1656,7 @@ export function createVehicleSystems(
     ctx.restore();
   };
 
-  const drawEmergencyVehicles = (ctx: CanvasRenderingContext2D) => {
+  const drawEmergencyVehicles = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -1787,7 +1788,7 @@ export function createVehicleSystems(
 
   const incidentAnimTimeRef = { current: 0 };
 
-  const drawIncidentIndicators = (ctx: CanvasRenderingContext2D, delta: number) => {
+  const drawIncidentIndicators = (ctx: IsoRenderer, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = window.devicePixelRatio || 1;

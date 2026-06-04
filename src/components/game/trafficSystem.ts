@@ -11,6 +11,7 @@ import {
   MEDIAN_PLANTS_MIN_ZOOM,
   LANE_MARKINGS_MEDIAN_MIN_ZOOM,
 } from './constants';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
 // Types
@@ -365,7 +366,7 @@ export function canProceedThroughIntersection(
  * Draw a traffic light at an intersection
  */
 export function drawTrafficLight(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   lightState: TrafficLightState,
@@ -484,7 +485,7 @@ export function drawTrafficLight(
  * Draw avenue/highway median with optional plants or barriers
  */
 export function drawMedian(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   startX: number,
   startY: number,
   endX: number,
@@ -582,7 +583,7 @@ export function drawMedian(
  * Draw lane markings (white dashed or solid)
  */
 export function drawLaneMarkings(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   startX: number,
   startY: number,
   endX: number,
@@ -610,7 +611,7 @@ export function drawLaneMarkings(
  * Draw directional arrow on road surface
  */
 export function drawRoadArrow(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   direction: 'north' | 'south' | 'east' | 'west',
@@ -685,7 +686,7 @@ export function getTrafficFlowDirection(
  * Draw a merged road segment (avenue or highway)
  */
 export function drawMergedRoadSegment(
-  ctx: CanvasRenderingContext2D,
+  ctx: IsoRenderer,
   x: number,
   y: number,
   mergeInfo: MergedRoadInfo,
@@ -883,7 +884,7 @@ export function drawMergedRoadSegment(
 // ============================================================================
 
 export interface CrosswalkParams {
-  ctx: CanvasRenderingContext2D;
+  ctx: IsoRenderer;
   x: number;  // Screen x of tile top-left
   y: number;  // Screen y of tile top-left
   gridX: number;

@@ -7,6 +7,7 @@ import {
 } from './constants';
 import { getSceneLighting } from './sceneLighting';
 import { gridToScreen } from './utils';
+import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 export function pseudoRandom(seed: number, n: number): number {
   const s = Math.sin(seed + n * 12.9898) * 43758.5453;
@@ -28,7 +29,7 @@ export interface ColoredGlow {
 }
 
 export interface LightingFrameInput {
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  ctx: IsoRenderer;
   canvas: HTMLCanvasElement | OffscreenCanvas;
   worldState: Pick<WorldRenderState, 'grid' | 'gridSize' | 'cloudWeatherMode'>;
   visualHour: number;
@@ -98,7 +99,7 @@ export function collectLightSources(
 }
 
 export function drawLightCutouts(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  ctx: IsoRenderer,
   lightCutouts: LightCutout[],
   lightIntensity: number,
   isMobile: boolean
@@ -168,7 +169,7 @@ export function drawLightCutouts(
 }
 
 export function drawColoredGlows(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  ctx: IsoRenderer,
   coloredGlows: ColoredGlow[],
   lightIntensity: number
 ): void {
