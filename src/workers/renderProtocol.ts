@@ -55,6 +55,47 @@ export type RenderWorkerSpeedMessage = {
   speed: 0 | 1 | 2 | 3;
 };
 
+/**
+ * Step 8 transport — a per-frame snapshot of MOVING entities for the off-thread GPU
+ * path. Designed to be structured-clone / TRANSFER friendly: bulk numeric state lives
+ * in a single transferable `ArrayBuffer` of packed Float32 records, with `layout`
+ * describing how to decode it. The per-entity ENCODE (main thread) and DECODE + draw
+ * replay (worker) are the local runtime cutover; this defines the boundary they cross.
+ */
+export interface RenderWorkerEntityGroup {
+  /** Target GPU layer for this group's draws. */
+  layer: RenderWorkerCanvasId;
+  /** Entity kind discriminator (e.g. 'car', 'pedestrian', 'cloud'). */
+  kind: string;
+  /** Number of records in the group. */
+  count: number;
+  /** Float32 values per record (matches `RenderWorkerEntityLayout.fields`). */
+  stride: number;
+  /** Element offset of the group's first record within the packed buffer. */
+  offset: number;
+}
+
+export interface RenderWorkerEntityLayout {
+  /** Ordered groups packed into the buffer. */
+  groups: RenderWorkerEntityGroup[];
+  /** Field names per record, in packed order (e.g. ['x','y','angle','variant']). */
+  fields: string[];
+}
+
+export interface RenderWorkerEntityFrame {
+  frameId: number;
+  /** Interpolation factor in [0,1) from the fixed-timestep clock (render smoothing). */
+  alpha: number;
+  layout: RenderWorkerEntityLayout;
+  /** Packed Float32 records described by `layout`; transferred zero-copy. */
+  buffer: ArrayBuffer;
+}
+
+export type RenderWorkerEntityFrameMessage = {
+  type: 'entity-frame';
+  frame: RenderWorkerEntityFrame;
+};
+
 export type RenderWorkerTerminateMessage = {
   type: 'terminate';
 };
@@ -66,6 +107,7 @@ export type RenderWorkerMessage =
   | RenderWorkerToolMessage
   | RenderWorkerGridVersionMessage
   | RenderWorkerSpeedMessage
+  | RenderWorkerEntityFrameMessage
   | RenderWorkerTerminateMessage;
 
 export type RenderWorkerReadyResponse = {

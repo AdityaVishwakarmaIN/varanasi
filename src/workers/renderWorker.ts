@@ -5,12 +5,16 @@ import type {
   RenderWorkerCanvasMap,
   RenderWorkerLightingSnapshot,
   RenderWorkerMessage,
+  RenderWorkerEntityFrame,
   RenderWorkerResponse,
   RenderWorkerViewportState,
 } from './renderProtocol';
 
 let canvases: RenderWorkerCanvasMap = {};
 let lightingSnapshot: RenderWorkerLightingSnapshot | null = null;
+// Step 8: latest entity snapshot received from the main thread (decode + draw replay
+// onto the dynamic layers is the runtime cutover).
+let entityFrame: RenderWorkerEntityFrame | null = null;
 
 // ---- P6: off-thread GPU (PixiJS) backend hosted on an OffscreenCanvas ----
 // The 'gpu' canvas is transferred via transferControlToOffscreen and driven entirely
@@ -126,6 +130,13 @@ self.onmessage = (event: MessageEvent<RenderWorkerMessage>) => {
       case 'grid-version':
       case 'speed':
         return;
+
+      case 'entity-frame':
+        // Retain the latest snapshot; ensurePixi() + decode/replay across the dynamic
+        // layers is wired during local bring-up. Keeping the newest frame only (drop
+        // stale) avoids unbounded queueing if the GPU falls behind.
+        entityFrame = message.frame;
+        break;
 
       case 'terminate':
         if (pixiApp) pixiApp.destroy(true);

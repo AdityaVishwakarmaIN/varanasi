@@ -4,6 +4,7 @@ import { detectRenderWorkerSupport } from './renderSupport';
 import type {
   RenderWorkerCanvasMap,
   RenderWorkerLightingSnapshot,
+  RenderWorkerEntityFrame,
   RenderWorkerMessage,
   RenderWorkerResponse,
   RenderWorkerViewportState,
@@ -105,6 +106,17 @@ export class RenderWorkerManager {
     });
   }
 
+  /**
+   * Step 8: send a per-frame entity snapshot to the off-thread GPU path. The packed
+   * Float32 buffer is TRANSFERRED (zero-copy), so the caller must not reuse it after.
+   */
+  sendEntityFrame(frame: RenderWorkerEntityFrame): void {
+    this.postMessage({
+      type: 'entity-frame',
+      frame,
+    });
+  }
+
   terminate(): void {
     if (this.worker) {
       this.worker.postMessage({ type: 'terminate' } satisfies RenderWorkerMessage);
@@ -129,6 +141,8 @@ export class RenderWorkerManager {
     const transferList: Transferable[] = [];
     if (message.type === 'init') {
       transferList.push(...Object.values(message.canvases));
+    } else if (message.type === 'entity-frame') {
+      transferList.push(message.frame.buffer);
     }
     this.worker.postMessage(message, transferList);
   }

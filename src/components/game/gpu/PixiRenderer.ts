@@ -1,33 +1,52 @@
 /**
  * PixiRenderer — a GPU backend that implements the {@link IsoRenderer} contract.
  *
- * STRATEGY: immediate-mode-over-retained. The game redraws the whole world every
- * frame, so each frame we rebuild a pooled Pixi display list rather than diffing a
- * retained scene graph. The Canvas2D-style calls the draw code already makes
- * (paths, fills, strokes, gradients, sprites, text) are translated on the fly into
- * pooled `Graphics` / `Sprite` / `Text` nodes added to the active layer container.
+ * STRATEGY: immediate-mode-over-retained. The game redraws each layer by replaying
+ * Canvas2D-style calls (paths, fills, strokes, gradients, sprites, text), which are
+ * translated on the fly into pooled `Graphics` / `Sprite` / `Text` nodes on the active
+ * layer container.
  *
- * COORDINATE MODEL: the world (pan/zoom/dpr) transform lives on the layer stack
- * (see camera.ts / layers.ts). This renderer tracks only the LOCAL transform built
- * by the draw code's save/translate/rotate/scale calls, and bakes it into each
- * node via `setFromMatrix`. Canvas2D transforms post-multiply, so we compose with
- * `Matrix.append` (which computes this = this * m).
+ * FRAME TOPOLOGY (mirrors the Canvas2D loops; see layers.ts):
+ *  - DYNAMIC layers (cars/wind/air/ambient/airHigh) are cleared & redrawn every frame
+ *    by the continuous effects loop: call `beginFrame()` (clears dynamic layers only),
+ *    then `setLayer(name)` + the IsoRenderer-typed draw fns, then `pixiApp.render()`.
+ *  - RETAINED layers (base/buildings/lighting/hover) are redrawn ON DEMAND when their
+ *    source state changes, via `redrawLayer(name, () => draw(this))`. They persist
+ *    between effects frames (the effects loop's render() composites them).
+ * Each layer owns its OWN pool, so a retained-layer redraw (a separate rAF) never
+ * clobbers the in-flight dynamic frame's pool cursors.
  *
- * FIDELITY GAPS (documented, to revisit at cutover P7):
+ * COORDINATE MODEL: the world (pan/zoom/dpr) transform lives on the layer stack root
+ * (camera.ts / layers.ts). This renderer tracks only the LOCAL transform built by the
+ * draw code's save/translate/rotate/scale calls and bakes it into each node via
+ * `setFromMatrix`. Canvas2D transforms post-multiply, so we compose with `Matrix.append`.
+ *
+ * FIDELITY GAPS (documented, to revisit at local cutover):
  *  - shadowBlur/shadowColor: core Pixi has no per-shape drop shadow (DropShadowFilter
  *    is in pixi-filters). State is tracked but not rendered here.
  *  - ellipse(): Pixi's GraphicsContext.ellipse takes only (x,y,rx,ry) — no rotation
  *    or start/end angle. Partial-arc / rotated ellipses render as full ellipses.
  *  - setLineDash: tracked but not rendered (core Pixi strokes are solid).
- *  - clearRect: per-rect clearing is a no-op; clearing happens per-layer at frame start.
+ *  - clearRect: per-rect clearing is a no-op; clearing happens per-layer.
  *  - createPattern (CanvasPattern) fills are unsupported -> fall back to opaque white.
- *  - filter='blur(px)' (e.g. the composited cloud layer) is applied as a Pixi
- *    BlurFilter on the drawn node in place(); the px radius is parsed from the
- *    Canvas2D filter string. Non-blur CSS filters are ignored.
+ *  - per-cloud filter='blur(px)' is applied as a Pixi BlurFilter on the drawn node in
+ *    place(); a whole-layer blur is available via setLayerBlur() (cheaper for clouds).
  */
-import { BlurFilter, Container, FillGradient, Graphics, Matrix, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import {
+  BitmapFont,
+  BitmapText,
+  BlurFilter,
+  Container,
+  FillGradient,
+  Graphics,
+  Matrix,
+  Rectangle,
+  Sprite,
+  Text,
+  Texture,
+} from 'pixi.js';
 import type { IsoImageSource, IsoRenderer } from './IsoRenderer';
-import { LayerStack, type LayerName } from './layers';
+import { LayerStack, DYNAMIC_LAYERS, type LayerName } from './layers';
 import { worldMatrix, type CameraState } from './camera';
 import { TextureCache } from './textures';
 
@@ -38,6 +57,7 @@ type PathOp = (g: Graphics) => void;
 interface StateFrame {
   matrix: Matrix;
   layer: Container;
+  layerName: LayerName;
   fillStyle: Paint;
   strokeStyle: Paint;
   lineWidth: number;
@@ -57,6 +77,18 @@ interface StateFrame {
   lineDash: number[];
 }
 
+/** Per-layer pool of reusable display objects (reset when its layer is (re)drawn). */
+interface LayerPool {
+  gfx: Graphics[];
+  gfxCursor: number;
+  sprite: Sprite[];
+  spriteCursor: number;
+  text: Text[];
+  textCursor: number;
+  bmtext: BitmapText[];
+  bmCursor: number;
+}
+
 const COMPOSITE_TO_BLEND: Partial<Record<GlobalCompositeOperation, string>> = {
   'source-over': 'normal',
   lighter: 'add',
@@ -65,6 +97,9 @@ const COMPOSITE_TO_BLEND: Partial<Record<GlobalCompositeOperation, string>> = {
   overlay: 'overlay',
   'destination-out': 'erase',
 };
+
+/** Name of the installed BitmapFont used by the opt-in BitmapText label path (Step 7). */
+const BITMAP_FONT = 'iso-label';
 
 export class PixiRenderer implements IsoRenderer {
   // ---- IsoRenderer paint/line/text state (public, mirror Canvas2D) ----
@@ -94,25 +129,25 @@ export class PixiRenderer implements IsoRenderer {
   private matrix = new Matrix();
   private stack: StateFrame[] = [];
   private activeLayer: Container;
+  private activeLayerName: LayerName = 'base';
 
   // ---- current path (replayed onto pooled Graphics at fill/stroke) ----
   private path: PathOp[] = [];
   private lineDash: number[] = [];
 
-  // ---- per-type display-object pools (reset each frame) ----
-  private gfxPool: Graphics[] = [];
-  private gfxCursor = 0;
-  private spritePool: Sprite[] = [];
-  private spriteCursor = 0;
-  private textPool: Text[] = [];
-  private textCursor = 0;
+  // ---- per-layer display-object pools (keyed by layer name) ----
+  private readonly pools = new Map<LayerName, LayerPool>();
 
   // sub-rect texture cache for drawImage 9-arg overload
   private readonly subTexCache = new WeakMap<object, Map<string, Texture>>();
 
-  // Shared blur filter for filter='blur(px)' draws (e.g. the composited cloud layer).
-  // The game issues at most one blurred draw per frame, so a single reused instance is enough.
+  // Shared blur filter for per-node filter='blur(px)' draws.
   private readonly blurFilter = new BlurFilter({ strength: 0, quality: 4 });
+
+  // Opt-in: render fillText/strokeText via BitmapText (Step 7). Default off — keeps the
+  // dynamic Text path until bitmap-font legibility is verified locally.
+  private useBitmapText = false;
+  private bitmapFontReady = false;
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, layers?: LayerStack) {
     this.canvas = canvas;
@@ -127,20 +162,71 @@ export class PixiRenderer implements IsoRenderer {
     this.layers.applyCamera(worldMatrix(state));
   }
 
-  /** Reset pools + state and clear all layers; call once before drawing a frame. */
+  /**
+   * Begin a per-frame pass for the DYNAMIC layers: clear them, reset their pools and
+   * the draw state. Retained layers (base/buildings/lighting/hover) are untouched —
+   * redraw those via {@link redrawLayer}.
+   */
   beginFrame(): void {
-    this.layers.clearAll();
-    this.gfxCursor = 0;
-    this.spriteCursor = 0;
-    this.textCursor = 0;
+    this.layers.clearDynamic();
+    for (const name of DYNAMIC_LAYERS) this.resetPool(name);
+    this.resetState();
+  }
+
+  /** Select the layer that subsequent draw calls target. */
+  setLayer(name: LayerName): void {
+    this.activeLayerName = name;
+    this.activeLayer = this.layers.get(name);
+  }
+
+  /**
+   * Redraw a single RETAINED layer (base/buildings/lighting/hover) on demand. Clears
+   * just that layer + its pool, resets draw state, runs `draw` (which issues the usual
+   * IsoRenderer calls against this renderer), and leaves the result in place until the
+   * next redraw. Does NOT call render() — the effects loop composites the scene.
+   */
+  redrawLayer(name: LayerName, draw: () => void): void {
+    this.layers.clear(name);
+    this.resetPool(name);
+    this.resetState();
+    this.setLayer(name);
+    draw();
+  }
+
+  /** Apply (or clear, with 0) a single GPU blur over a whole layer (e.g. clouds). */
+  setLayerBlur(name: LayerName, strengthPx: number): void {
+    this.layers.setLayerBlur(name, strengthPx);
+  }
+
+  /** Enable the BitmapText label path (Step 7); installs the bitmap font on first use. */
+  enableBitmapText(enabled = true): void {
+    this.useBitmapText = enabled;
+    if (enabled) this.ensureBitmapFont();
+  }
+
+  private resetState(): void {
     this.matrix.identity();
     this.stack.length = 0;
     this.path.length = 0;
   }
 
-  /** Select the layer that subsequent draw calls target. */
-  setLayer(name: LayerName): void {
-    this.activeLayer = this.layers.get(name);
+  private resetPool(name: LayerName): void {
+    const p = this.pools.get(name);
+    if (p) {
+      p.gfxCursor = 0;
+      p.spriteCursor = 0;
+      p.textCursor = 0;
+      p.bmCursor = 0;
+    }
+  }
+
+  private getPool(name: LayerName): LayerPool {
+    let p = this.pools.get(name);
+    if (!p) {
+      p = { gfx: [], gfxCursor: 0, sprite: [], spriteCursor: 0, text: [], textCursor: 0, bmtext: [], bmCursor: 0 };
+      this.pools.set(name, p);
+    }
+    return p;
   }
 
   // ============================ transform ============================
@@ -149,6 +235,7 @@ export class PixiRenderer implements IsoRenderer {
     this.stack.push({
       matrix: this.matrix.clone(),
       layer: this.activeLayer,
+      layerName: this.activeLayerName,
       fillStyle: this.fillStyle,
       strokeStyle: this.strokeStyle,
       lineWidth: this.lineWidth,
@@ -174,6 +261,7 @@ export class PixiRenderer implements IsoRenderer {
     if (!s) return;
     this.matrix = s.matrix;
     this.activeLayer = s.layer;
+    this.activeLayerName = s.layerName;
     this.fillStyle = s.fillStyle;
     this.strokeStyle = s.strokeStyle;
     this.lineWidth = s.lineWidth;
@@ -296,7 +384,7 @@ export class PixiRenderer implements IsoRenderer {
     this.place(g);
   }
 
-  // No-op: clearing is per-layer at frame start (documented gap).
+  // No-op: clearing is per-layer (documented gap).
   clearRect(_x: number, _y: number, _w: number, _h: number): void {}
 
   // ============================== clip ==============================
@@ -313,6 +401,8 @@ export class PixiRenderer implements IsoRenderer {
     this.activeLayer.addChild(mask);
     this.activeLayer.addChild(scope);
     scope.mask = mask;
+    // Keep activeLayerName (pool namespace) — only the container changes. Pooled nodes
+    // drawn into the scope are reclaimed when the layer is cleared/redrawn.
     this.activeLayer = scope;
   }
 
@@ -346,13 +436,10 @@ export class PixiRenderer implements IsoRenderer {
     let dx: number, dy: number, dw: number, dh: number;
     let texture = base;
     if (c === undefined) {
-      // (image, dx, dy)
       dx = a; dy = b; dw = base.width; dh = base.height;
     } else if (e === undefined) {
-      // (image, dx, dy, dw, dh)
       dx = a; dy = b; dw = c; dh = d as number;
     } else {
-      // (image, sx, sy, sw, sh, dx, dy, dw, dh)
       const sx = a, sy = b, sw = c, sh = d as number;
       dx = e; dy = f as number; dw = g as number; dh = h as number;
       texture = this.subTexture(image as IsoImageSource, base, sx, sy, sw, sh);
@@ -369,11 +456,11 @@ export class PixiRenderer implements IsoRenderer {
   // ============================== text ==============================
 
   fillText(text: string, x: number, y: number, _maxWidth?: number): void {
-    this.drawText(text, x, y, false);
+    this.drawText(text, x, y);
   }
 
   strokeText(text: string, x: number, y: number, _maxWidth?: number): void {
-    this.drawText(text, x, y, true);
+    this.drawText(text, x, y);
   }
 
   // ============================ line dash ============================
@@ -416,41 +503,56 @@ export class PixiRenderer implements IsoRenderer {
   // ============================== internals ==========================
 
   private acquireGraphics(): Graphics {
-    let g = this.gfxPool[this.gfxCursor];
+    const pool = this.getPool(this.activeLayerName);
+    let g = pool.gfx[pool.gfxCursor];
     if (!g) {
       g = new Graphics();
-      this.gfxPool[this.gfxCursor] = g;
+      pool.gfx[pool.gfxCursor] = g;
     }
-    this.gfxCursor++;
+    pool.gfxCursor++;
     g.clear();
     g.visible = true;
     return g;
   }
 
   private acquireSprite(): Sprite {
-    let sp = this.spritePool[this.spriteCursor];
+    const pool = this.getPool(this.activeLayerName);
+    let sp = pool.sprite[pool.spriteCursor];
     if (!sp) {
       sp = new Sprite();
       sp.anchor.set(0, 0);
-      this.spritePool[this.spriteCursor] = sp;
+      pool.sprite[pool.spriteCursor] = sp;
     }
-    this.spriteCursor++;
+    pool.spriteCursor++;
     sp.visible = true;
     return sp;
   }
 
   private acquireText(): Text {
-    let t = this.textPool[this.textCursor];
+    const pool = this.getPool(this.activeLayerName);
+    let t = pool.text[pool.textCursor];
     if (!t) {
       t = new Text();
-      this.textPool[this.textCursor] = t;
+      pool.text[pool.textCursor] = t;
     }
-    this.textCursor++;
+    pool.textCursor++;
     t.visible = true;
     return t;
   }
 
-  /** Apply alpha + blend mode and attach a node to the active layer. */
+  private acquireBitmapText(): BitmapText {
+    const pool = this.getPool(this.activeLayerName);
+    let t = pool.bmtext[pool.bmCursor];
+    if (!t) {
+      t = new BitmapText({ text: '', style: { fontFamily: BITMAP_FONT } });
+      pool.bmtext[pool.bmCursor] = t;
+    }
+    pool.bmCursor++;
+    t.visible = true;
+    return t;
+  }
+
+  /** Apply alpha + blend mode + optional per-node blur, and attach to the active layer. */
   private place(node: Container): void {
     node.alpha = this.globalAlpha;
     const blend = COMPOSITE_TO_BLEND[this.globalCompositeOperation];
@@ -460,7 +562,7 @@ export class PixiRenderer implements IsoRenderer {
       this.blurFilter.strength = blurPx;
       node.filters = [this.blurFilter];
     } else {
-      node.filters = null;
+      node.filters = [];
     }
     if (!(node instanceof Sprite)) node.setFromMatrix(this.matrix);
     this.activeLayer.addChild(node);
@@ -481,22 +583,53 @@ export class PixiRenderer implements IsoRenderer {
     return { ...base, color: '#ffffff' };
   }
 
-  private drawText(text: string, x: number, y: number, _stroke: boolean): void {
+  private drawText(text: string, x: number, y: number): void {
+    const { size, family, weight, italic } = parseFont(this.font);
+    const fill = this.fillStyle;
+    const fillColor = fill instanceof FillGradient ? fill : typeof fill === 'string' ? fill : '#000000';
+    const ax = anchorX(this.textAlign);
+    const ay = anchorY(this.textBaseline);
+    const m = this.matrix.clone();
+    m.append(new Matrix().set(1, 0, 0, 1, x, y));
+
+    if (this.useBitmapText && this.bitmapFontReady) {
+      const t = this.acquireBitmapText();
+      t.text = text;
+      t.style.fontFamily = BITMAP_FONT;
+      t.style.fontSize = size;
+      t.anchor.set(ax, ay);
+      t.tint = typeof fillColor === 'string' ? fillColor : 0xffffff;
+      t.setFromMatrix(m);
+      t.alpha = this.globalAlpha;
+      this.activeLayer.addChild(t);
+      return;
+    }
+
     const t = this.acquireText();
     t.text = text;
-    const { size, family, weight, italic } = parseFont(this.font);
     t.style.fontFamily = family;
     t.style.fontSize = size;
     t.style.fontWeight = weight;
     t.style.fontStyle = italic ? 'italic' : 'normal';
-    const fill = this.fillStyle;
-    t.style.fill = fill instanceof FillGradient ? fill : typeof fill === 'string' ? fill : '#000000';
-    t.anchor.set(anchorX(this.textAlign), anchorY(this.textBaseline));
-    const m = this.matrix.clone();
-    m.append(new Matrix().set(1, 0, 0, 1, x, y));
+    t.style.fill = fillColor;
+    t.anchor.set(ax, ay);
     t.setFromMatrix(m);
     t.alpha = this.globalAlpha;
     this.activeLayer.addChild(t);
+  }
+
+  private ensureBitmapFont(): void {
+    if (this.bitmapFontReady) return;
+    try {
+      BitmapFont.install({
+        name: BITMAP_FONT,
+        style: { fontFamily: 'sans-serif', fontSize: 24, fill: '#ffffff' },
+      });
+      this.bitmapFontReady = true;
+    } catch {
+      // BitmapFont.install needs a GPU/DOM context; if unavailable, keep the Text path.
+      this.bitmapFontReady = false;
+    }
   }
 
   private subTexture(source: IsoImageSource, base: Texture, sx: number, sy: number, sw: number, sh: number): Texture {
@@ -540,11 +673,11 @@ function parseFont(font: string): { size: number; family: string; weight: 'bold'
 function anchorX(align: CanvasTextAlign): number {
   if (align === 'center') return 0.5;
   if (align === 'right' || align === 'end') return 1;
-  return 0; // start / left
+  return 0;
 }
 
 function anchorY(baseline: CanvasTextBaseline): number {
   if (baseline === 'middle') return 0.5;
   if (baseline === 'top' || baseline === 'hanging') return 0;
-  return 1; // alphabetic / ideographic / bottom (approx)
+  return 1;
 }
