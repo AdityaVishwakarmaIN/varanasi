@@ -66,7 +66,7 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: {children: React.ReactNode;}) {
   return (
-  <html className={`dark ${playfair.variable} ${dmSans.variable}`} lang={await getLocale()}>
+  <html className={`dark ${playfair.variable} ${dmSans.variable}`} lang={await getLocale()} suppressHydrationWarning>
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/assets/buildings/residential.png" />

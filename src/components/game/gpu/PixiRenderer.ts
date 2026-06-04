@@ -433,8 +433,9 @@ export class PixiRenderer implements IsoRenderer {
     h?: number,
   ): void {
     const base = this.textures.get(image as IsoImageSource);
+    if (!base) return; // Source not ready for GPU upload
     let dx: number, dy: number, dw: number, dh: number;
-    let texture = base;
+    let texture: Texture = base;
     if (c === undefined) {
       dx = a; dy = b; dw = base.width; dh = base.height;
     } else if (e === undefined) {
@@ -571,7 +572,7 @@ export class PixiRenderer implements IsoRenderer {
   private fillInput(): string | FillGradient {
     const s = this.fillStyle;
     if (s instanceof FillGradient) return s;
-    if (typeof s === 'string') return s;
+    if (typeof s === 'string') return normalizePixiColor(s);
     return '#ffffff'; // CanvasPattern unsupported (documented gap)
   }
 
@@ -579,7 +580,7 @@ export class PixiRenderer implements IsoRenderer {
     const s = this.strokeStyle;
     const base = { width: this.lineWidth, cap: this.lineCap, join: this.lineJoin };
     if (s instanceof FillGradient) return { ...base, fill: s };
-    if (typeof s === 'string') return { ...base, color: s };
+    if (typeof s === 'string') return { ...base, color: normalizePixiColor(s) };
     return { ...base, color: '#ffffff' };
   }
 
@@ -655,6 +656,21 @@ function parseBlurPx(filter: string): number {
   if (!filter || filter === 'none') return 0;
   const m = filter.match(/blur\(\s*([\d.]+)px\s*\)/i);
   return m ? parseFloat(m[1]) : 0;
+}
+
+function normalizePixiColor(color: string): string {
+  const rgba = color.match(/^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*\)$/i);
+  if (!rgba) return color;
+  const r = Math.round(clampNumber(parseFloat(rgba[1]), 0, 255));
+  const g = Math.round(clampNumber(parseFloat(rgba[2]), 0, 255));
+  const b = Math.round(clampNumber(parseFloat(rgba[3]), 0, 255));
+  const alpha = clampNumber(parseFloat(rgba[4]), 0, 1);
+  return `rgba(${r}, ${g}, ${b}, ${Number(alpha.toFixed(4))})`;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
 function parseFont(font: string): { size: number; family: string; weight: 'bold' | 'normal'; italic: boolean } {

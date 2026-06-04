@@ -1,7 +1,8 @@
 /**
  * PixiApp.ts — bootstraps a Pixi v8 Application for the isometric renderer.
  *
- * Prefers WebGPU and automatically falls back to WebGL2 (Pixi's auto-detect).
+ * Uses WebGL because Pixi's WebGPU image upload path can reject otherwise valid
+ * canvas/image sources with `copyExternalImageToTexture` at runtime.
  * Antialiasing is OFF and texture sampling is nearest (set per-texture in
  * textures.ts) so the pixel-art sprites stay crisp, matching the Canvas2D path's
  * `imageSmoothingEnabled = false`. Background is transparent so the page/cloud
@@ -33,7 +34,7 @@ export async function createPixiApp(opts: PixiAppOptions): Promise<Application> 
     width: opts.width,
     height: opts.height,
     antialias: false,
-    preference: 'webgpu',
+    preference: 'webgl',
     resolution: opts.resolution ?? 1,
     autoDensity: false,
     backgroundAlpha: 0,

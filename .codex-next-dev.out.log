@@ -5,21 +5,16 @@
 ▲ Next.js 16.1.1 (Turbopack)
 - Local:         http://localhost:3000
 - Network:       http://192.168.29.43:3000
+- Environments: .env.local
 - Experiments (use with caution):
   ✓ rootParams
   · swcPlugins
 
 ✓ Starting...
-✓ Ready in 6.5s
+✓ Ready in 1234ms
 ○ Compiling / ...
- GET / 200 in 24.2s (compile: 20.9s, proxy.ts: 974ms, render: 2.3s)
- GET / 200 in 188ms (compile: 14ms, proxy.ts: 50ms, render: 125ms)
- GET / 200 in 283ms (compile: 34ms, proxy.ts: 24ms, render: 225ms)
- GET / 200 in 444ms (compile: 50ms, proxy.ts: 25ms, render: 369ms)
- GET / 200 in 173ms (compile: 8ms, proxy.ts: 10ms, render: 156ms)
- GET / 200 in 693ms (compile: 75ms, proxy.ts: 181ms, render: 437ms)
- GET / 200 in 316ms (compile: 20ms, proxy.ts: 113ms, render: 183ms)
- GET / 200 in 324ms (compile: 89ms, proxy.ts: 115ms, render: 120ms)
- GET / 200 in 171ms (compile: 6ms, proxy.ts: 29ms, render: 136ms)
- GET / 200 in 194ms (compile: 10ms, proxy.ts: 13ms, render: 172ms)
- GET / 200 in 194ms (compile: 112ms, proxy.ts: 11ms, render: 71ms)
+ GET / 200 in 16.9s (compile: 14.6s, proxy.ts: 50ms, render: 2.3s)
+ GET / 200 in 261ms (compile: 17ms, proxy.ts: 59ms, render: 185ms)
+✓ Compiled in 424ms
+✓ Compiled in 16.1s
+ GET / 200 in 3.7s (compile: 1810ms, proxy.ts: 32ms, render: 1883ms)

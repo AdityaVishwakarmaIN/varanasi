@@ -186,6 +186,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const hudRef = useRef<HTMLDivElement>(null);
   const fpsFrameCountRef = useRef(0);
   const fpsLastSampleRef = useRef(0);
+  const lastSlowFrameLogRef = useRef(0);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -2919,6 +2920,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const delta = Math.min((time - lastTime) / 1000, 0.3);
       lastTime = time;
       lastRenderTime = time;
+      const profileFrame = GPU_RENDERER_ENABLED && time - lastSlowFrameLogRef.current > 2000;
+      const profileStart = profileFrame ? performance.now() : 0;
+      let profileAfterUpdates = profileStart;
+      let profileAfterCanvas = profileStart;
+      let profileAfterGpuDraw = profileStart;
+      let profileAfterPixiRender = profileStart;
 
       if (GPU_RENDERER_ENABLED) {
         fpsFrameCountRef.current++;
@@ -2990,13 +2997,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
         }
       }
+      if (profileFrame) profileAfterUpdates = performance.now();
       // PERF: Skip drawing animated elements during mobile panning/zooming for better performance
       const skipAnimatedElements = isMobile && (isPanningRef.current || isPinchZoomingRef.current);
       // PERF: Skip small elements (boats, helis, smog) on desktop when panning while very zoomed out
       const skipSmallElements = !isMobile && isPanningRef.current && zoomRef.current < SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD;
       
-      if (skipAnimatedElements) {
-        // Clear the canvases but don't draw anything - hides all animated elements while panning/zooming
+      if (skipAnimatedElements || GPU_RENDERER_ENABLED) {
+        // In GPU mode Pixi owns animated entities; keep legacy CPU layers empty to avoid double work.
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         clearWindCanvas();
@@ -3036,43 +3044,78 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         drawClouds(ambientCtx, visualHour); // Draw atmospheric clouds on the ambient layer
         drawAirplanes(airHighCtx); // Draw airplanes above clouds (air-high layer)
         drawFireworks(airHighCtx); // Draw fireworks above everything (air-high layer)
+      }
+      if (profileFrame) profileAfterCanvas = performance.now();
 
-        // P4: optionally drive the GPU backend with the same IsoRenderer-typed draw
-        // passes. The world transform (dpr.zoom scale + offset translate) is applied
-        // INSIDE each draw fn via save/scale/translate, so it is baked per node here;
-        // applyCamera/worldMatrix are reserved for the OffscreenCanvas worker path (P6).
-        const pixi = pixiRendererRef.current;
-        const pixiApp = pixiAppRef.current;
-        if (pixi && pixiApp) {
-          // Step 6: advance the fixed-timestep clock (alpha drives per-entity render
-          // interpolation during local bring-up; foundation wired here).
-          gpuClockRef.current.advance(performance.now());
-          pixi.beginFrame();
-          pixi.setLayer('cars');
-          drawCars(pixi);
-          drawBuses(pixi);
-          if (!skipSmallElements) drawBoats(pixi);
-          drawBarges(pixi);
-          drawTrainsCallback(pixi);
-          if (!skipSmallElements) drawSmog(pixi);
-          drawPedestrians(pixi);
-          drawEmergencyVehicles(pixi);
-          pixi.setLayer('wind');
-          drawWindTrees(pixi);
-          pixi.setLayer('air');
-          drawIncidentIndicators(pixi, delta);
-          drawRecreationPedestrians(pixi);
-          if (!skipSmallElements) {
-            drawHelicopters(pixi);
-            drawSeaplanes(pixi);
-          }
-          pixi.setLayer('ambient');
-          drawWindDust(pixi);
-          drawClouds(pixi, visualHour);
-          pixi.setLayer('airHigh');
-          drawAirplanes(pixi);
-          drawFireworks(pixi);
-          pixiApp.render();
+      // P4: optionally drive the GPU backend with the same IsoRenderer-typed draw
+      // passes. The world transform (dpr.zoom scale + offset translate) is applied
+      // INSIDE each draw fn via save/scale/translate, so it is baked per node here;
+      // applyCamera/worldMatrix are reserved for the OffscreenCanvas worker path (P6).
+      const pixi = pixiRendererRef.current;
+      const pixiApp = pixiAppRef.current;
+      if (!skipAnimatedElements && pixi && pixiApp) {
+        // Step 6: advance the fixed-timestep clock (alpha drives per-entity render
+        // interpolation during local bring-up; foundation wired here).
+        gpuClockRef.current.advance(performance.now());
+        pixi.beginFrame();
+        pixi.setLayer('cars');
+        drawCars(pixi);
+        drawBuses(pixi);
+        if (!skipSmallElements) drawBoats(pixi);
+        drawBarges(pixi);
+        drawTrainsCallback(pixi);
+        if (!skipSmallElements) drawSmog(pixi);
+        drawPedestrians(pixi);
+        drawEmergencyVehicles(pixi);
+        pixi.setLayer('wind');
+        drawWindTrees(pixi);
+        pixi.setLayer('air');
+        drawIncidentIndicators(pixi, delta);
+        drawRecreationPedestrians(pixi);
+        if (!skipSmallElements) {
+          drawHelicopters(pixi);
+          drawSeaplanes(pixi);
+        }
+        pixi.setLayer('ambient');
+        drawWindDust(pixi);
+        drawClouds(pixi, visualHour);
+        pixi.setLayer('airHigh');
+        drawAirplanes(pixi);
+        drawFireworks(pixi);
+        if (profileFrame) profileAfterGpuDraw = performance.now();
+        pixiApp.render();
+        if (profileFrame) profileAfterPixiRender = performance.now();
+      } else if (profileFrame) {
+        profileAfterGpuDraw = performance.now();
+        profileAfterPixiRender = profileAfterGpuDraw;
+      }
+
+      if (profileFrame) {
+        const total = profileAfterPixiRender - profileStart;
+        if (total > 32) {
+          const phases = {
+            updates: profileAfterUpdates - profileStart,
+            canvasClearOrDraw: profileAfterCanvas - profileAfterUpdates,
+            gpuDrawCommands: profileAfterGpuDraw - profileAfterCanvas,
+            pixiRender: profileAfterPixiRender - profileAfterGpuDraw,
+          };
+          const culprit = Object.entries(phases).sort((a, b) => b[1] - a[1])[0];
+          console.warn('[GPU PERF] slow animation frame', {
+            totalMs: Number(total.toFixed(1)),
+            culprit: `${culprit[0]} ${culprit[1].toFixed(1)}ms`,
+            phases: Object.fromEntries(Object.entries(phases).map(([key, value]) => [key, Number(value.toFixed(1))])),
+            counts: {
+              cars: carsRef.current.length,
+              buses: busesRef.current.length,
+              pedestrians: pedestriansRef.current.length,
+              trains: trainsRef.current.length,
+              boats: boatsRef.current.length,
+              barges: bargesRef.current.length,
+              clouds: cloudsRef.current.length,
+            },
+            zoom: Number(zoomRef.current.toFixed(2)),
+          });
+          lastSlowFrameLogRef.current = time;
         }
       }
     };
@@ -3429,7 +3472,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
   }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning]);
   
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     
     const rect = containerRef.current?.getBoundingClientRect();
@@ -3479,13 +3522,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [zoom, offset, clampOffset]);
 
   // Touch handlers for mobile
-  const getTouchDistance = useCallback((touch1: React.Touch, touch2: React.Touch) => {
+  const getTouchDistance = useCallback((touch1: React.Touch | Touch, touch2: React.Touch | Touch) => {
     const dx = touch1.clientX - touch2.clientX;
     const dy = touch1.clientY - touch2.clientY;
     return Math.sqrt(dx * dx + dy * dy);
   }, []);
 
-  const getTouchCenter = useCallback((touch1: React.Touch, touch2: React.Touch) => {
+  const getTouchCenter = useCallback((touch1: React.Touch | Touch, touch2: React.Touch | Touch) => {
     return {
       x: (touch1.clientX + touch2.clientX) / 2,
       y: (touch1.clientY + touch2.clientY) / 2,
@@ -3511,7 +3554,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
   }, [offset, zoom, getTouchDistance, getTouchCenter]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
     if (e.touches.length === 1 && isPanning && !initialPinchDistanceRef.current) {
@@ -3613,6 +3656,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
   }, [zoom, offset, gridSize, selectedTool, placeAtTile, setSelectedTile, findBuildingOrigin]);
   
+
+  // Attach wheel and touchmove with { passive: false } so preventDefault() works.
+  // React synthetic events are passive by default in modern browsers.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [handleWheel, handleTouchMove]);
+
   return (
     <div
       ref={containerRef}
@@ -3627,9 +3684,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       onContextMenu={(e) => {
         e.preventDefault();
       }}
-      onWheel={handleWheel}
       onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
     >
