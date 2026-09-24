@@ -437,7 +437,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               controlsRef={controlsRef}
             />
             {showOverlayPanel && (
-              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
+              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}
             {showMinimap && (
               <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} onViewportSubscribe={subscribeMiniMapViewport} />

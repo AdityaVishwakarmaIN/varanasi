@@ -396,7 +396,7 @@ tourismIncome   = Σ ghatIncome
   desktop overlay panel can be hidden. On mobile the chip sits in the second (R/C/I) row; the tile-info "Effect on Ganga" is an
   extra line under the mobile tile row. A home only partly covered by an STP shows "Partly treated by STP" next to its untreated
   sewage. In the screenshot session the Ganga overlay tinted catchment land red/green as expected, but the **river water tiles did not
-  visibly change colour** by Ganga Health: check how `getGangaRiverColor` fills are drawn for water tiles in `CanvasIsometricGrid.tsx`.
+  visibly change colour** by Ganga Health. *Fixed:* the tint was drawn, but `Game.tsx` did not pass `mapId` to `OverlayModeToggle` (no Ganga button, no active state), and at alpha 0.55 mid-range health was too subtle; the river tint alpha is now 0.7.
 - The new tile-info and chip strings are plain English (TileInfoPanel was already untranslated); wrap them in `msg()` when the panels are translated.
 - **S2-T11 step 1:** the three Ganga tips run inside the existing 5-second tip check. `ganga_falling` and `needs_stp` read a context
   that `useTipSystem` refreshes once per in-game day (a counter of consecutive "down" days, and sewageLoad vs netLoad from

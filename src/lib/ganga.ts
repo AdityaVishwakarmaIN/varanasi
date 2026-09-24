@@ -180,7 +180,8 @@ export function computeGangaTileEffects(
 }
 
 /** River colour for Ganga Health: 0 = brown, 50 = murky green, 100 = clean blue. */
-export function getGangaRiverColor(gangaHealth: number, alpha = 0.55): string {
+/** Default alpha is strong enough that mid-range health (murky green) reads clearly over the water sprite. */
+export function getGangaRiverColor(gangaHealth: number, alpha = 0.7): string {
   const stops = [
     { h: 0, c: [0x6b, 0x4f, 0x2a] },
     { h: 50, c: [0x5f, 0x7f, 0x5a] },
