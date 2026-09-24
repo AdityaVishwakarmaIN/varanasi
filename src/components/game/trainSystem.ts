@@ -38,7 +38,7 @@ import {
 } from './railSystem';
 import { gridToScreen } from './utils';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
-import { getRenderDpr } from '@/lib/graphicsSettings';
+import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 
 // ============================================================================
 // Curve Interpolation Helpers
@@ -941,7 +941,7 @@ function updateTrainSmoke(
     return;
   }
   
-  const maxParticles = isMobile ? TRAIN_SMOKE_MAX_PARTICLES_MOBILE : TRAIN_SMOKE_MAX_PARTICLES;
+  const maxParticles = Math.floor((isMobile ? TRAIN_SMOKE_MAX_PARTICLES_MOBILE : TRAIN_SMOKE_MAX_PARTICLES) * getActivePreset().particleFraction);
   const spawnInterval = isMobile ? TRAIN_SMOKE_SPAWN_INTERVAL_MOBILE : TRAIN_SMOKE_SPAWN_INTERVAL;
   
   // Get smokestack position

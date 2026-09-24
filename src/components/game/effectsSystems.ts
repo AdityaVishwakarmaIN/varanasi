@@ -63,7 +63,7 @@ import { getCachedImage } from './imageLoader';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
-import { getRenderDpr } from '@/lib/graphicsSettings';
+import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 
 const CLOUD_SPRITE_BLUR_PX = 2.5;
 
@@ -206,7 +206,8 @@ export function createEffectsSystems(
 
     // Spawn timer
     fireworkSpawnTimerRef.current -= delta;
-    if (fireworkSpawnTimerRef.current <= 0) {
+    // S1-T7: Low quality launches no new fireworks (particleFraction 0)
+    if (fireworkSpawnTimerRef.current <= 0 && getActivePreset().particleFraction > 0) {
       // Pick a random building to launch from
       const building = fireworkBuildings[Math.floor(Math.random() * fireworkBuildings.length)];
       
@@ -462,7 +463,14 @@ export function createEffectsSystems(
     const adjustedDelta = delta * speedMultiplier;
     
     // Mobile performance optimizations
-    const maxParticles = isMobile ? SMOG_MAX_PARTICLES_PER_FACTORY_MOBILE : SMOG_MAX_PARTICLES_PER_FACTORY;
+    const maxParticles = Math.floor(
+      (isMobile ? SMOG_MAX_PARTICLES_PER_FACTORY_MOBILE : SMOG_MAX_PARTICLES_PER_FACTORY) * getActivePreset().particleFraction
+    );
+    if (maxParticles <= 0) {
+      factorySmogRef.current = [];
+      smogLastGridVersionRef.current = -1; // rebuild the factory list when quality rises again
+      return;
+    }
     const particleMaxAge = isMobile ? SMOG_PARTICLE_MAX_AGE_MOBILE : SMOG_PARTICLE_MAX_AGE;
     const spawnMultiplier = isMobile ? SMOG_SPAWN_INTERVAL_MOBILE_MULTIPLIER : 1;
     
@@ -992,14 +1000,15 @@ export function createEffectsSystems(
 
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
 
-    if (!weatherConfig.showClouds || zoom < CLOUD_MIN_ZOOM) {
+    const preset = getActivePreset();
+    if (!preset.clouds || !weatherConfig.showClouds || zoom < CLOUD_MIN_ZOOM) {
       cloudsRef.current = [];
       lightningStrikeRef.current = null;
       lightningCooldownRef.current = 0;
       return;
     }
 
-    const maxClouds = Math.max(1, Math.floor((isMobile ? CLOUD_MAX_COUNT_MOBILE : CLOUD_MAX_COUNT) * weatherConfig.cloudCountMultiplier));
+    const maxClouds = Math.max(1, Math.floor((isMobile ? CLOUD_MAX_COUNT_MOBILE : CLOUD_MAX_COUNT) * weatherConfig.cloudCountMultiplier * preset.weatherParticleFraction));
     const spawnInterval = (isMobile ? CLOUD_SPAWN_INTERVAL_MOBILE : CLOUD_SPAWN_INTERVAL) * weatherConfig.spawnIntervalMultiplier;
 
     // Spawn new clouds (type varies by time of day). Sometimes spawn in pairs for natural cloud banks/groups.

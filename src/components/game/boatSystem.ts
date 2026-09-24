@@ -14,7 +14,8 @@ import {
 import { gridToScreen } from './utils';
 import { findMarinasAndPiers, findAdjacentWaterTile, isOverWater, generateTourWaypoints } from './gridFinders';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
-import { getRenderDpr } from '@/lib/graphicsSettings';
+import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
+import { deviceValue } from '@/lib/qualityConfig';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import {
   GHAT_BOAT_CONFIG,
@@ -212,10 +213,15 @@ export function createBoatSystem(
 
     // Calculate max boats based on number of docks - lower on mobile for performance
     const boatsPerDock = isMobile ? BOATS_PER_DOCK_MOBILE : BOATS_PER_DOCK;
-    const maxBoatsLimit = isMobile ? MAX_BOATS_MOBILE : MAX_BOATS;
+    // S1-T8: the quality preset caps all boats together (marina and ghat)
+    const presetBoatCap = deviceValue(getActivePreset().maxBoats, isMobile);
+    if (boatsRef.current.length > presetBoatCap) {
+      boatsRef.current.length = presetBoatCap;
+    }
+    const maxBoatsLimit = Math.min(isMobile ? MAX_BOATS_MOBILE : MAX_BOATS, presetBoatCap);
     const maxBoats = Math.min(maxBoatsLimit, Math.floor(docks.length * boatsPerDock));
     const maxGhatBoats = ghatNetwork && ghatDocks >= 2
-      ? getMaxGhatBoats(ghatNetwork.ghatCount, isMobile ? GHAT_BOAT_CONFIG.maxBoatsMobile : GHAT_BOAT_CONFIG.maxBoats)
+      ? Math.min(presetBoatCap, getMaxGhatBoats(ghatNetwork.ghatCount, isMobile ? GHAT_BOAT_CONFIG.maxBoatsMobile : GHAT_BOAT_CONFIG.maxBoats))
       : 0;
     let marinaBoatCount = 0;
     let ghatBoatCount = 0;
@@ -223,13 +229,14 @@ export function createBoatSystem(
       if (boat.ghatRoute) ghatBoatCount++;
       else marinaBoatCount++;
     }
+    const boatRoomLeft = () => marinaBoatCount + ghatBoatCount < presetBoatCap;
 
     // Speed multiplier based on game speed
     const speedMultiplier = currentSpeed === 1 ? 1 : currentSpeed === 2 ? 1.5 : 2;
 
     // Spawn timer
     boatSpawnTimerRef.current -= delta;
-    if (ghatNetwork && ghatBoatCount < maxGhatBoats && boatSpawnTimerRef.current <= 0 &&
+    if (ghatNetwork && ghatBoatCount < maxGhatBoats && boatRoomLeft() && boatSpawnTimerRef.current <= 0 &&
         (docks.length === 0 || marinaBoatCount >= maxBoats || Math.random() < 0.5)) {
       // S2-T10: a new boat leaves a random ghat for another ghat along the Ganga
       const boat: Boat = {
@@ -254,7 +261,7 @@ export function createBoatSystem(
       }
       boatSpawnTimerRef.current = GHAT_BOAT_CONFIG.spawnIntervalMin + Math.random() * GHAT_BOAT_CONFIG.spawnIntervalRange;
     }
-    if (docks.length > 0 && marinaBoatCount < maxBoats && boatSpawnTimerRef.current <= 0) {
+    if (docks.length > 0 && marinaBoatCount < maxBoats && boatRoomLeft() && boatSpawnTimerRef.current <= 0) {
       // Pick a random dock as home base
       const homeDock = docks[Math.floor(Math.random() * docks.length)];
       
