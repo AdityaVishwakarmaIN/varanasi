@@ -120,3 +120,75 @@ export function getGhatPlacement(
   if (!waterEast && !waterSouth && !isWater(x - 1, y) && !isWater(x, y - 1)) return null;
   return { flipped: !waterEast && waterSouth };
 }
+
+/** Per-tile effect on the Ganga, for the Ganga overlay and tile info (S2-T8). */
+export const GANGA_TILE_EFFECT = { neutral: 0, hurts: 1, cleans: 2 } as const;
+
+export interface GangaTileEffects {
+  /** Per tile (index y * gridSize + x): one of GANGA_TILE_EFFECT. Only catchment land tiles are non-neutral. */
+  effect: Uint8Array;
+  /** Per tile: population whose sewage is treated by an STP. */
+  treated: Float32Array;
+}
+
+/**
+ * Which catchment tiles hurt the river (pollution or untreated sewage) and which clean it
+ * (riverside greenery, or homes whose sewage is fully treated). Same rules as gatherGangaInputs.
+ */
+export function computeGangaTileEffects(
+  grid: Tile[][],
+  gridSize: number,
+  stps: readonly { x: number; y: number }[]
+): GangaTileEffects {
+  const catchment = getGangaCatchment(gridSize, GANGA.catchmentRadius);
+  const { zone } = getRiverZoneArrays(gridSize);
+  const effect = new Uint8Array(gridSize * gridSize);
+  const treatedOut = new Float32Array(gridSize * gridSize);
+  const remaining = new Float64Array(catchment.length);
+  for (let i = 0; i < catchment.length; i++) {
+    const idx = catchment[i];
+    const tile = grid[(idx / gridSize) | 0]?.[idx % gridSize];
+    if (tile && tile.building.type !== 'water' && producesSewage(tile)) remaining[i] = tile.building.population;
+  }
+  const r2 = GANGA.stpRadius * GANGA.stpRadius;
+  for (const stp of stps) {
+    const tile = grid[stp.y]?.[stp.x];
+    if (!tile || !isWorkingStp(tile)) continue;
+    let capacity = GANGA.stpCapacity;
+    for (let i = 0; i < catchment.length && capacity > 0; i++) {
+      if (remaining[i] <= 0) continue;
+      const idx = catchment[i];
+      const dx = (idx % gridSize) - stp.x;
+      const dy = ((idx / gridSize) | 0) - stp.y;
+      if (dx * dx + dy * dy > r2) continue;
+      const treated = Math.min(remaining[i], capacity);
+      remaining[i] -= treated;
+      capacity -= treated;
+      treatedOut[idx] += treated;
+    }
+  }
+  for (let i = 0; i < catchment.length; i++) {
+    const idx = catchment[i];
+    const tile = grid[(idx / gridSize) | 0]?.[idx % gridSize];
+    if (!tile || tile.building.type === 'water') continue;
+    if (tile.pollution > 0 || remaining[i] > 0) effect[idx] = GANGA_TILE_EFFECT.hurts;
+    else if (treatedOut[idx] > 0 || (GANGA_GREEN_TYPES.has(tile.building.type) && RIVERSIDE_ZONE_CODES.has(zone[idx]))) {
+      effect[idx] = GANGA_TILE_EFFECT.cleans;
+    }
+  }
+  return { effect, treated: treatedOut };
+}
+
+/** River colour for Ganga Health: 0 = brown, 50 = murky green, 100 = clean blue. */
+export function getGangaRiverColor(gangaHealth: number, alpha = 0.55): string {
+  const stops = [
+    { h: 0, c: [0x6b, 0x4f, 0x2a] },
+    { h: 50, c: [0x5f, 0x7f, 0x5a] },
+    { h: 100, c: [0x3a, 0x7b, 0xd5] },
+  ];
+  const h = Math.min(100, Math.max(0, gangaHealth));
+  const [a, b] = h <= 50 ? [stops[0], stops[1]] : [stops[1], stops[2]];
+  const t = (h - a.h) / (b.h - a.h);
+  const mix = a.c.map((v, i) => Math.round(v + (b.c[i] - v) * t));
+  return `rgba(${mix[0]}, ${mix[1]}, ${mix[2]}, ${alpha})`;
+}

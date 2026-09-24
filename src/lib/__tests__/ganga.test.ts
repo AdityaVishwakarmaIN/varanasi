@@ -87,3 +87,39 @@ describe('gatherGangaInputs', () => {
     expect(gatherGangaInputs(grid, size, [stp]).treatedPopulation).toBe(0);
   });
 });
+
+describe('Ganga overlay helpers', () => {
+  it('river colour goes from brown to blue', async () => {
+    const { getGangaRiverColor } = await import('@/lib/ganga');
+    expect(getGangaRiverColor(0, 1)).toBe('rgba(107, 79, 42, 1)');
+    expect(getGangaRiverColor(50, 1)).toBe('rgba(95, 127, 90, 1)');
+    expect(getGangaRiverColor(100, 1)).toBe('rgba(58, 123, 213, 1)');
+  });
+
+  it('marks polluting catchment tiles as hurting and treated homes as cleaning', async () => {
+    const { computeGangaTileEffects, GANGA_TILE_EFFECT } = await import('@/lib/ganga');
+    const size = 60;
+    const grid = generateVaranasiTerrain(size, createRng(3), makeTile).grid;
+    let home: { x: number; y: number } | null = null;
+    let factory: { x: number; y: number } | null = null;
+    for (let y = 0; y < size && (!home || !factory); y++) {
+      for (let x = 0; x < size; x++) {
+        if (getRiverZone(x, y, size, 'varanasi') !== 'westBank' || getDistanceToGanga(x, y, size, 'varanasi') > 4) continue;
+        if (!home) home = { x, y };
+        else if (!factory && Math.abs(x - home.x) + Math.abs(y - home.y) > 3) factory = { x, y };
+      }
+    }
+    grid[home!.y][home!.x].zone = 'residential';
+    grid[home!.y][home!.x].building = { ...grid[home!.y][home!.x].building, type: 'house_small', population: 50 };
+    grid[factory!.y][factory!.x].pollution = 40;
+    const before = computeGangaTileEffects(grid, size, []);
+    expect(before.effect[home!.y * size + home!.x]).toBe(GANGA_TILE_EFFECT.hurts);
+    expect(before.effect[factory!.y * size + factory!.x]).toBe(GANGA_TILE_EFFECT.hurts);
+
+    const stp = { x: home!.x, y: home!.y + 1 < size ? home!.y + 1 : home!.y - 1 };
+    grid[stp.y][stp.x].building = { ...grid[stp.y][stp.x].building, type: 'sewage_treatment_plant', powered: true };
+    const after = computeGangaTileEffects(grid, size, [stp]);
+    expect(after.effect[home!.y * size + home!.x]).toBe(GANGA_TILE_EFFECT.cleans);
+    expect(after.treated[home!.y * size + home!.x]).toBe(50);
+  });
+});

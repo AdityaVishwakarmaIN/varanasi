@@ -60,6 +60,8 @@ import {
 } from '@/components/game/drawing';
 import {
   getOverlayFillStyle,
+  getGangaOverlayContext,
+  getOverlayBaseRadius,
   OVERLAY_TO_BUILDING_TYPES,
   OVERLAY_CIRCLE_COLORS,
   OVERLAY_CIRCLE_FILL_COLORS,
@@ -1254,6 +1256,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const baseTileQueue = queues.baseTileQueue;
     const greenBaseTileQueue = queues.greenBaseTileQueue;
     const overlayQueue = queues.overlayQueue;
+    const gangaOverlay = overlayMode === 'ganga'
+      ? getGangaOverlayContext(grid, gridSize, state.mapId, state.stats.gangaHealth)
+      : undefined;
     
     // PERF: Insertion sort for nearly-sorted arrays (O(n) vs O(n log n) for .sort())
     // Since tiles are iterated in diagonal order, queues are already nearly sorted
@@ -1955,7 +1960,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // For other overlays, show buildings only
         const showOverlay =
           overlayMode !== 'none' &&
-          (overlayMode === 'subway' 
+          (overlayMode === 'ganga'
+            ? true // Ganga overlay tints the river and every catchment tile (the fill style decides)
+            : overlayMode === 'subway' 
             ? tile.building.type !== 'water'  // For subway mode, show all non-water tiles
             : (tile.building.type !== 'grass' &&
                tile.building.type !== 'water' &&
@@ -2266,7 +2273,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             education: state.services.education[tile.y][tile.x],
           };
           
-          const fillStyle = getOverlayFillStyle(overlayMode, tile, coverage);
+          const fillStyle = getOverlayFillStyle(overlayMode, tile, coverage, gangaOverlay);
           // Only draw if there's actually a color to show
           if (fillStyle !== 'rgba(0, 0, 0, 0)') {
             buildingsCtx.fillStyle = fillStyle;
@@ -2300,12 +2307,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               if (tile.building.abandoned) continue;
               
               // Get service config for this building type
-              const config = SERVICE_CONFIG[tile.building.type as keyof typeof SERVICE_CONFIG];
-              if (!config || !('range' in config)) continue;
+              const baseRange = getOverlayBaseRadius(tile.building.type, SERVICE_CONFIG);
+              if (baseRange === null) continue;
               
               // Calculate effective range based on building level (linear increase per level)
               // Level 1: 100%, Level 2: 120%, Level 3: 140%, Level 4: 160%, Level 5: 180%
-              const baseRange = config.range;
               const effectiveRange = baseRange * (1 + (tile.building.level - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
               const range = Math.floor(effectiveRange);
               
@@ -2506,7 +2512,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               health: state.services.health[tile.y][tile.x],
               education: state.services.education[tile.y][tile.x],
             };
-            const fillStyle = getOverlayFillStyle(overlayMode, tile, coverage);
+            const fillStyle = getOverlayFillStyle(overlayMode, tile, coverage, gangaOverlay);
             if (fillStyle !== 'rgba(0, 0, 0, 0)') {
               gpuMain.fillStyle = fillStyle;
               gpuMain.beginPath();
@@ -2529,9 +2535,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 if (!serviceBuildingTypes.includes(tile.building.type)) continue;
                 if (tile.building.constructionProgress !== undefined && tile.building.constructionProgress < 100) continue;
                 if (tile.building.abandoned) continue;
-                const config = SERVICE_CONFIG[tile.building.type as keyof typeof SERVICE_CONFIG];
-                if (!config || !('range' in config)) continue;
-                const effectiveRange = config.range * (1 + (tile.building.level - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
+                const baseRange = getOverlayBaseRadius(tile.building.type, SERVICE_CONFIG);
+                if (baseRange === null) continue;
+                const effectiveRange = baseRange * (1 + (tile.building.level - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
                 const range = Math.floor(effectiveRange);
                 const { screenX: bldgScreenX, screenY: bldgScreenY } = gridToScreen(xx, yy, 0, 0);
                 const centerX = bldgScreenX + halfTileWidth;

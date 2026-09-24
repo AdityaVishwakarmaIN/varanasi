@@ -14,9 +14,11 @@ import {
   HealthIcon,
   EducationIcon,
   SubwayIcon,
+  RiverIcon,
 } from '@/components/ui/Icons';
 import { OverlayMode } from './types';
-import { OVERLAY_CONFIG, getOverlayButtonClass } from './overlays';
+import { OVERLAY_CONFIG, getOverlayButtonClass, getOverlayModesForMap } from './overlays';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // ============================================================================
 // Types
@@ -25,6 +27,8 @@ import { OVERLAY_CONFIG, getOverlayButtonClass } from './overlays';
 export interface OverlayModeToggleProps {
   overlayMode: OverlayMode;
   setOverlayMode: (mode: OverlayMode) => void;
+  /** Map-specific overlays (the Ganga) only show on their map. */
+  mapId?: MapId;
 }
 
 // ============================================================================
@@ -41,6 +45,7 @@ const OVERLAY_ICONS: Record<OverlayMode, React.ReactNode> = {
   health: <HealthIcon size={14} />,
   education: <EducationIcon size={14} />,
   subway: <SubwayIcon size={14} />,
+  ganga: <RiverIcon size={14} />,
 };
 
 // ============================================================================
@@ -61,6 +66,7 @@ const VIEW_OVERLAY_LABEL = msg('View Overlay');
 export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   overlayMode,
   setOverlayMode,
+  mapId,
 }: OverlayModeToggleProps) {
   const m = useMessages();
   
@@ -70,7 +76,7 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
         {m(VIEW_OVERLAY_LABEL)}
       </div>
       <div className="flex gap-1">
-        {(Object.keys(OVERLAY_CONFIG) as OverlayMode[]).map((mode) => {
+        {getOverlayModesForMap(mapId).map((mode) => {
           const config = OVERLAY_CONFIG[mode];
           const isActive = overlayMode === mode;
           

@@ -4,6 +4,9 @@
  */
 
 import { Tile } from '@/types/game';
+import type { MapId } from '@/games/isocity/maps/varanasi';
+import { GANGA_TILE_EFFECT, computeGangaTileEffects, getGangaRiverColor } from '@/lib/ganga';
+import { SCORING_CONFIG } from '@/lib/scoring';
 import { OverlayMode } from './types';
 
 // ============================================================================
@@ -84,7 +87,29 @@ export const OVERLAY_CONFIG: Record<OverlayMode, OverlayConfig> = {
     activeColor: 'bg-yellow-500',
     hoverColor: 'hover:bg-yellow-600',
   },
+  ganga: {
+    label: 'Ganga',
+    title: 'Ganga Health: red tiles pollute the river, green tiles clean it',
+    activeColor: 'bg-cyan-600',
+    hoverColor: 'hover:bg-cyan-700',
+  },
 };
+
+/** Overlays that only make sense on the Varanasi map. */
+const VARANASI_ONLY_OVERLAYS: ReadonlySet<OverlayMode> = new Set<OverlayMode>(['ganga']);
+
+/** Overlay modes available on a map, in display / Tab-cycling order. */
+export function getOverlayModesForMap(mapId: MapId | undefined): OverlayMode[] {
+  return OVERLAY_MODES.filter((mode) => mapId === 'varanasi' || !VARANASI_ONLY_OVERLAYS.has(mode));
+}
+
+/** Extra per-frame context for overlays that depend on more than a single tile (Ganga). */
+export interface OverlayRiverContext {
+  gangaHealth: number;
+  /** Per-tile GANGA_TILE_EFFECT codes (index y * gridSize + x). */
+  effect: Uint8Array;
+  gridSize: number;
+}
 
 /** Map of building tools to their corresponding overlay mode */
 export const TOOL_TO_OVERLAY_MAP: Record<string, OverlayMode> = {
@@ -97,6 +122,8 @@ export const TOOL_TO_OVERLAY_MAP: Record<string, OverlayMode> = {
   university: 'education',
   subway_station: 'subway',
   subway: 'subway',
+  ghat: 'ganga',
+  sewage_treatment_plant: 'ganga',
 };
 
 /** Get the button class name for an overlay button */
@@ -142,7 +169,8 @@ const NO_OVERLAY = 'rgba(0, 0, 0, 0)';
 export function getOverlayFillStyle(
   mode: OverlayMode,
   tile: Tile,
-  coverage: ServiceCoverage
+  coverage: ServiceCoverage,
+  river?: OverlayRiverContext
 ): string {
   // Only show warning on tiles that have buildings needing coverage
   const needsCoverage = tileNeedsCoverage(tile);
@@ -184,11 +212,25 @@ export function getOverlayFillStyle(
         ? 'rgba(245, 158, 11, 0.7)'  // Bright amber for existing subway
         : 'rgba(40, 30, 20, 0.4)';   // Dark brown tint for "underground" view
 
+    case 'ganga': {
+      if (!river) return NO_OVERLAY;
+      if (tile.building.type === 'water') return getGangaRiverColor(river.gangaHealth);
+      const effect = river.effect[tile.y * river.gridSize + tile.x];
+      if (effect === GANGA_TILE_EFFECT.hurts) return GANGA_HURTS;
+      if (effect === GANGA_TILE_EFFECT.cleans) return GANGA_CLEANS;
+      return NO_OVERLAY;
+    }
+
     case 'none':
     default:
       return NO_OVERLAY;
   }
 }
+
+/** Ganga overlay: land that adds pollution or untreated sewage. */
+const GANGA_HURTS = 'rgba(220, 38, 38, 0.45)';
+/** Ganga overlay: riverside greenery and homes whose sewage is treated. */
+const GANGA_CLEANS = 'rgba(34, 197, 94, 0.4)';
 
 /**
  * Get the overlay mode that should be shown for a given tool.
@@ -200,7 +242,7 @@ export function getOverlayForTool(tool: string): OverlayMode {
 
 /** List of all overlay modes (for iteration) */
 export const OVERLAY_MODES: OverlayMode[] = [
-  'none', 'power', 'water', 'fire', 'police', 'health', 'education', 'subway'
+  'none', 'power', 'water', 'fire', 'police', 'health', 'education', 'subway', 'ganga'
 ];
 
 // ============================================================================
@@ -217,6 +259,7 @@ export const OVERLAY_TO_BUILDING_TYPES: Record<OverlayMode, string[]> = {
   health: ['hospital'],
   education: ['school', 'university'],
   subway: ['subway_station'],
+  ganga: ['sewage_treatment_plant'],
 };
 
 /** Overlay circle stroke colors (light/visible colors) */
@@ -229,6 +272,7 @@ export const OVERLAY_CIRCLE_COLORS: Record<OverlayMode, string> = {
   health: 'rgba(134, 239, 172, 0.8)',  // Light green
   education: 'rgba(196, 181, 253, 0.8)', // Light purple
   subway: 'rgba(253, 224, 71, 0.8)',   // Yellow
+  ganga: 'rgba(34, 211, 238, 0.85)',   // Cyan
 };
 
 /** Building highlight glow colors */
@@ -241,6 +285,7 @@ export const OVERLAY_HIGHLIGHT_COLORS: Record<OverlayMode, string> = {
   health: 'rgba(34, 197, 94, 1)',      // Green
   education: 'rgba(168, 85, 247, 1)',  // Purple
   subway: 'rgba(234, 179, 8, 1)',      // Yellow
+  ganga: 'rgba(6, 182, 212, 1)',       // Cyan
 };
 
 /** Overlay circle fill colors (subtle, for area visibility) */
@@ -253,4 +298,54 @@ export const OVERLAY_CIRCLE_FILL_COLORS: Record<OverlayMode, string> = {
   health: 'rgba(134, 239, 172, 0.12)',
   education: 'rgba(196, 181, 253, 0.12)',
   subway: 'rgba(253, 224, 71, 0.12)',
+  ganga: 'rgba(34, 211, 238, 0.1)',
 };
+
+// ============================================================================
+// Ganga overlay context (S2-T8)
+// ============================================================================
+
+const gangaContextCache = new WeakMap<Tile[][], { gangaHealth: number; context: OverlayRiverContext }>();
+
+/**
+ * Per-grid Ganga overlay context. Cached by grid identity (a new grid comes with each tick or edit), so the
+ * catchment is evaluated at most once per simulation step, not once per frame.
+ */
+export function getGangaOverlayContext(
+  grid: Tile[][],
+  gridSize: number,
+  mapId: MapId | undefined,
+  gangaHealth: number | undefined
+): OverlayRiverContext | undefined {
+  if (mapId !== 'varanasi') return undefined;
+  const health = gangaHealth ?? 75;
+  const cached = gangaContextCache.get(grid);
+  if (cached && cached.gangaHealth === health) return cached.context;
+  const stps: { x: number; y: number }[] = [];
+  for (let y = 0; y < gridSize; y++) {
+    const row = grid[y];
+    for (let x = 0; x < gridSize; x++) {
+      if (row[x].building.type === 'sewage_treatment_plant') stps.push({ x, y });
+    }
+  }
+  const context: OverlayRiverContext = {
+    gangaHealth: health,
+    effect: computeGangaTileEffects(grid, gridSize, stps).effect,
+    gridSize,
+  };
+  gangaContextCache.set(grid, { gangaHealth: health, context });
+  return context;
+}
+
+/**
+ * Base radius (tiles, before level scaling) drawn for a building on its overlay, or null if it has none.
+ * Sewage Treatment Plants are not a SERVICE_CONFIG service; their radius comes from the Ganga config.
+ */
+export function getOverlayBaseRadius(
+  buildingType: string,
+  serviceConfig: Record<string, { range?: number } | undefined>
+): number | null {
+  if (buildingType === 'sewage_treatment_plant') return SCORING_CONFIG.ganga.stpRadius;
+  const config = serviceConfig[buildingType];
+  return config && typeof config.range === 'number' ? config.range : null;
+}

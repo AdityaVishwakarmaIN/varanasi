@@ -103,6 +103,17 @@ export function PowerIcon({ size = 18, className }: IconProps) {
   );
 }
 
+/** A river with waves: used for the Ganga overlay and Ganga Health. */
+export function RiverIcon({ size = 18, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+      <path {...baseStroke} d="M3 8c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
+      <path {...baseStroke} d="M3 13c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
+      <path {...baseStroke} d="M3 18c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
+    </svg>
+  );
+}
+
 export function WaterIcon({ size = 18, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
