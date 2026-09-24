@@ -14,6 +14,7 @@ import { GameProvider } from '@/context/GameContext';
 import { MultiplayerContextProvider } from '@/context/MultiplayerContext';
 import Game from '@/components/Game';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
+import { FEATURES } from '@/lib/features';
 import { useMobile } from '@/hooks/useMobile';
 import { getSpritePack, getSpriteCoords, DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 import { SavedCityMeta, GameState } from '@/types/game';
@@ -251,7 +252,7 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
           <h3 className="text-white font-medium truncate group-hover:text-white/90 text-sm flex-1">
             {city.cityName}
           </h3>
-          {city.roomCode && (
+          {FEATURES.coop && city.roomCode && (
             <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded shrink-0">
               Co-op
             </span>
@@ -260,7 +261,7 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
         <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
           <span>Pop: {city.population.toLocaleString()}</span>
           <span>${city.money.toLocaleString()}</span>
-          {city.roomCode && <span className="text-blue-400/60">{city.roomCode}</span>}
+          {FEATURES.coop && city.roomCode && <span className="text-blue-400/60">{city.roomCode}</span>}
         </div>
       </button>
       {onDelete && (
@@ -344,6 +345,8 @@ export default function HomePage() {
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
   const hasResettableProgress = hasSaved;
+  // Co-op cities live in a remote room; hide them while co-op is off (the index entries are kept).
+  const visibleSavedCities = FEATURES.coop ? savedCities : savedCities.filter(c => !c.roomCode);
 
   // Check for saved game and room code in URL after mount
   useEffect(() => {
@@ -355,7 +358,7 @@ export default function HomePage() {
       // Check for room code in URL (legacy format) - redirect to new format
       const params = new URLSearchParams(window.location.search);
       const roomCode = params.get('room');
-      if (roomCode && roomCode.length === 5) {
+      if (FEATURES.coop && roomCode && roomCode.length === 5) {
         // Redirect to new /coop/XXXXX format
         window.location.replace(`/coop/${roomCode.toUpperCase()}`);
         return;
@@ -394,7 +397,7 @@ export default function HomePage() {
   // Load a saved city
   const loadSavedCity = (city: SavedCityMeta) => {
     // If it's a multiplayer city, navigate to the room
-    if (city.roomCode) {
+    if (FEATURES.coop && city.roomCode) {
       window.history.replaceState({}, '', `/coop/${city.roomCode}`);
       setPendingRoomCode(city.roomCode);
       setShowCoopModal(true);
@@ -529,13 +532,15 @@ export default function HomePage() {
               {hasSaved ? <T>Continue</T> : <T>New Game</T>}
             </Button>
 
-            <Button
-              onClick={() => setShowCoopModal(true)}
-              variant="outline"
-              className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
-            >
-              <T>Co-op</T>
-            </Button>
+            {FEATURES.coop && (
+              <Button
+                onClick={() => setShowCoopModal(true)}
+                variant="outline"
+                className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
+              >
+                <T>Co-op</T>
+              </Button>
+            )}
 
             <Button
               onClick={async () => {
@@ -589,7 +594,7 @@ export default function HomePage() {
           </div>
           
           {/* Saved Cities - scrollable area takes remaining space */}
-          {savedCities.length > 0 && (
+          {visibleSavedCities.length > 0 && (
             <div className="w-full max-w-xs mt-3 sm:mt-4 flex-1 min-h-0 flex flex-col">
               <h2 className="text-xs font-medium text-white/40 uppercase tracking-wider mb-2 flex-shrink-0">
                 <T>Saved Cities</T>
@@ -598,7 +603,7 @@ export default function HomePage() {
                 className="flex flex-col gap-2 flex-1 overflow-y-auto overscroll-y-contain"
                 style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
               >
-                {savedCities.slice(0, 5).map((city) => (
+                {visibleSavedCities.slice(0, 5).map((city) => (
                   <SavedCityCard
                     key={city.id}
                     city={city}
@@ -614,12 +619,14 @@ export default function HomePage() {
           <div className="flex-shrink-0 h-2" />
           
           {/* Co-op Modal */}
-          <CoopModal
-            open={showCoopModal}
-            onOpenChange={setShowCoopModal}
-            onStartGame={handleCoopStart}
-            pendingRoomCode={pendingRoomCode}
-          />
+          {FEATURES.coop && (
+            <CoopModal
+              open={showCoopModal}
+              onOpenChange={setShowCoopModal}
+              onStartGame={handleCoopStart}
+              pendingRoomCode={pendingRoomCode}
+            />
+          )}
           <ResetGameDialog
             open={showResetDialog}
             onOpenChange={setShowResetDialog}
@@ -651,13 +658,15 @@ export default function HomePage() {
               >
                 {hasSaved ? <T>Continue</T> : <T>New Game</T>}
               </Button>
-              <Button
-                onClick={() => setShowCoopModal(true)}
-                variant="outline"
-                className="w-64 py-8 text-2xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
-              >
-                <T>Co-op</T>
-              </Button>
+              {FEATURES.coop && (
+                <Button
+                  onClick={() => setShowCoopModal(true)}
+                  variant="outline"
+                  className="w-64 py-8 text-2xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
+                >
+                  <T>Co-op</T>
+                </Button>
+              )}
               <Button
                 onClick={async () => {
                   // Clear any room code from URL to prevent multiplayer conflicts
@@ -710,7 +719,7 @@ export default function HomePage() {
             </div>
             
             {/* Saved Cities */}
-            {savedCities.length > 0 && (
+            {visibleSavedCities.length > 0 && (
               <div className="w-64">
                 <h2 className="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">
                   <T>Saved Cities</T>
@@ -719,7 +728,7 @@ export default function HomePage() {
                   className="flex flex-col gap-2 max-h-64 overflow-y-auto overscroll-y-contain"
                   style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                 >
-                  {savedCities.slice(0, 5).map((city) => (
+                  {visibleSavedCities.slice(0, 5).map((city) => (
                     <SavedCityCard
                       key={city.id}
                       city={city}
@@ -739,12 +748,14 @@ export default function HomePage() {
         </div>
         
         {/* Co-op Modal */}
-        <CoopModal
-          open={showCoopModal}
-          onOpenChange={setShowCoopModal}
-          onStartGame={handleCoopStart}
-          pendingRoomCode={pendingRoomCode}
-        />
+        {FEATURES.coop && (
+          <CoopModal
+            open={showCoopModal}
+            onOpenChange={setShowCoopModal}
+            onStartGame={handleCoopStart}
+            pendingRoomCode={pendingRoomCode}
+          />
+        )}
         <ResetGameDialog
           open={showResetDialog}
           onOpenChange={setShowResetDialog}

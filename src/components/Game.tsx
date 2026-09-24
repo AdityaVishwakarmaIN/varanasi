@@ -24,6 +24,7 @@ import { useMultiplayerSync } from '@/hooks/useMultiplayerSync';
 import { useCopyRoomLink } from '@/hooks/useCopyRoomLink';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 import { ShareModal } from '@/components/multiplayer/ShareModal';
+import { FEATURES } from '@/lib/features';
 import { Copy, Check } from 'lucide-react';
 
 // Import game components
@@ -308,12 +309,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             selectedTile={selectedTile && state.selectedTool === 'select' ? state.grid[selectedTile.y][selectedTile.x] : null}
             services={state.services}
             onCloseTile={() => setSelectedTile(null)}
-            onShare={() => setShowShareModal(true)}
+            onShare={FEATURES.coop ? () => setShowShareModal(true) : undefined}
             onExit={onExit}
           />
           
           {/* Share Modal for mobile co-op */}
-          {multiplayer && (
+          {FEATURES.coop && multiplayer && (
             <ShareModal
               open={showShareModal}
               onOpenChange={setShowShareModal}

@@ -1,6 +1,7 @@
 // Supabase Realtime multiplayer provider with database-backed state persistence
 
-import { createClient, RealtimeChannel } from '@supabase/supabase-js';
+import { RealtimeChannel } from '@supabase/supabase-js';
+import { getSupabaseClient } from './supabaseClient';
 import {
   GameAction,
   GameActionInput,
@@ -18,14 +19,6 @@ import {
   CitySizeLimitError,
 } from './database';
 import { msg } from 'gt-next';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-// Lazy init: only create client when Supabase is configured
-const supabase = supabaseUrl && supabaseKey 
-  ? createClient(supabaseUrl, supabaseKey) 
-  : null;
 
 // Throttle state saves to avoid excessive database writes
 const STATE_SAVE_INTERVAL = 3000; // Save state every 3 seconds max
@@ -61,6 +54,7 @@ export class MultiplayerProvider {
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: MultiplayerProviderOptions) {
+    const supabase = getSupabaseClient();
     if (!supabase) {
       throw new Error('Multiplayer requires Supabase configuration');
     }
@@ -316,7 +310,7 @@ export class MultiplayerProvider {
     }
     
     this.channel.unsubscribe();
-    supabase?.removeChannel(this.channel);
+    getSupabaseClient()?.removeChannel(this.channel);
   }
 }
 

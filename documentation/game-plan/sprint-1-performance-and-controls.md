@@ -74,7 +74,7 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [ ] S1-T9: Reliable saves (IndexedDB)
 - [ ] S1-T10: Desktop controls
 - [ ] S1-T11: Touch controls
-- [ ] S1-T12: Hide multiplayer
+- [x] S1-T12: Hide multiplayer
 - [ ] S1-T13: Final measurement and sprint sign-off
 
 ---
@@ -484,3 +484,8 @@ mis-tap on an expensive building asks for confirmation.
 ## 7. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+- **S1-T12:** with co-op off, no Supabase client is created and no Supabase network request is made, but the
+  `@supabase/supabase-js` library code is still bundled and downloaded (it is imported statically by
+  `MultiplayerContext` → `supabaseProvider`). Loading it with a dynamic `import()` only when `FEATURES.coop` is on
+  would shrink the start-up bundle. Co-op entries in the saved-cities index are hidden (not deleted) while the flag is off.
