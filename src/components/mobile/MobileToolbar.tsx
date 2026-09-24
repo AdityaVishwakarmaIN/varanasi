@@ -26,6 +26,9 @@ import {
   EducationIcon,
   SafetyIcon,
 } from '@/components/ui/Icons';
+import { getToolDisplay, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import type { MapId } from '@/games/isocity/maps/varanasi';
+import { formatINR } from '@/lib/format';
 
 // Tool category icons
 const CategoryIcons: Record<string, React.ReactNode> = {
@@ -198,6 +201,7 @@ const QuickToolIcons: Partial<Record<Tool, React.ReactNode>> = {
 
 // Category labels for translation
 const CATEGORY_LABELS: Record<string, unknown> = {
+  RIVERFRONT: msg('Riverfront'),
   'TOOLS': msg('Tools'),
   'ZONES': msg('Zones'),
   'EXPAND_CITY': msg('Expand City'),
@@ -243,6 +247,15 @@ const toolCategories = {
   'COMMUNITY': ['community_center', 'animal_pens_farm', 'office_building_small'] as Tool[],
   'SPECIAL': ['stadium', 'museum', 'airport', 'space_program', 'city_hall', 'amusement_park'] as Tool[],
 };
+
+/** Menu categories for this map: Riverfront first on Varanasi, tools hidden per map (S3-T1). */
+function getMapToolCategories(mapId: MapId | undefined): [string, Tool[]][] {
+  const base: [string, Tool[]][] = Object.entries(toolCategories);
+  const withRiverfront: [string, Tool[]][] = mapId === 'varanasi' ? [['RIVERFRONT', [...RIVERFRONT_TOOLS]], ...base] : base;
+  return withRiverfront
+    .map(([category, tools]): [string, Tool[]] => [category, visibleTools(tools, mapId)])
+    .filter(([, tools]) => tools.length > 0);
+}
 
 type OverlayMode = import('@/components/game/types').OverlayMode;
 
@@ -306,11 +319,11 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
           {selectedTool && TOOL_INFO[selectedTool] && (
             <div className="flex items-center justify-between px-4 py-1.5 border-b border-sidebar-border/50 bg-secondary/30 text-xs">
               <span className="text-foreground font-medium">
-                {m(TOOL_INFO[selectedTool].name)}
+                {m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name)}
               </span>
               {TOOL_INFO[selectedTool].cost > 0 && (
                 <span className={`font-mono ${stats.money >= TOOL_INFO[selectedTool].cost ? 'text-green-400' : 'text-red-400'}`}>
-                  ${TOOL_INFO[selectedTool].cost}
+                  {formatINR(TOOL_INFO[selectedTool].cost)}
                 </span>
               )}
             </div>
@@ -539,10 +552,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
               <div className="p-2 space-y-1 pb-4">
                 {/* Category buttons */}
-                {Object.entries(toolCategories).map(([category, tools]) => (
+                {getMapToolCategories(state.mapId).map(([category, tools]) => (
                   <div key={category}>
                     {/* Expand City section - appears before ZONING */}
-                    {category === 'ZONING' && (
+                    {category === 'ZONING' && state.mapId !== 'varanasi' && (
                       <div className="mb-1">
                         <Button
                           variant={expandCityExpanded ? 'secondary' : 'ghost'}
@@ -604,8 +617,8 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     {expandedCategory === category && (
                       <div className="pl-4 py-1 space-y-0.5">
                         {tools.map((tool) => {
-                          const info = TOOL_INFO[tool];
-                          if (!info) return null;
+                          if (!TOOL_INFO[tool]) return null;
+                          const info = getToolDisplay(tool, TOOL_INFO[tool], state.mapId);
                           const canAfford = stats.money >= info.cost;
 
                           return (
@@ -619,7 +632,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                               <span className="flex-1 text-left">{m(info.name)}</span>
                               {info.cost > 0 && (
                                 <span className={`text-xs font-mono ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
-                                  ${info.cost}
+                                  {formatINR(info.cost)}
                                 </span>
                               )}
                             </Button>

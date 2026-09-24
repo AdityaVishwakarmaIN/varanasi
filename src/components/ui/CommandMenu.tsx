@@ -11,6 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { formatINR } from '@/lib/format';
+import { getToolDisplay, isToolVisible, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Global callback to open the command menu
 let openCommandMenuCallback: (() => void) | null = null;
@@ -37,6 +39,7 @@ const MENU_CATEGORIES = [
   { key: 'tools', label: msg('Tools') },
   { key: 'zones', label: msg('Zones') },
   { key: 'zoning', label: msg('Zoning') },
+  { key: 'riverfront', label: msg('Riverfront') },
   { key: 'services', label: msg('Services') },
   { key: 'parks', label: msg('Parks') },
   { key: 'sports', label: msg('Sports') },
@@ -244,6 +247,31 @@ function buildMenuItems(): MenuItem[] {
 
 const ALL_MENU_ITEMS = buildMenuItems();
 
+/** Riverfront tools exist only on the Varanasi map (S2-T5). */
+const RIVERFRONT_ITEMS: MenuItem[] = RIVERFRONT_TOOLS.map((tool) => ({
+  id: tool,
+  type: 'tool' as const,
+  tool,
+  name: TOOL_INFO[tool].name,
+  description: TOOL_INFO[tool].description,
+  cost: TOOL_INFO[tool].cost,
+  category: 'riverfront',
+  keywords: [tool.replace(/_/g, ' '), 'ganga', 'river', 'riverfront', 'ghat', 'sewage'],
+}));
+
+/** Menu items for a map: hidden tools removed, Varanasi names applied, Riverfront added (S3-T1). */
+function getMenuItemsForMap(mapId: MapId | undefined): MenuItem[] {
+  const items = mapId === 'varanasi' ? [...RIVERFRONT_ITEMS, ...ALL_MENU_ITEMS] : ALL_MENU_ITEMS;
+  return items
+    .filter((item) => !item.tool || isToolVisible(item.tool, mapId))
+    .map((item) => {
+      if (!item.tool || mapId !== 'varanasi') return item;
+      const display = getToolDisplay(item.tool, TOOL_INFO[item.tool], mapId);
+      if (display === TOOL_INFO[item.tool]) return item;
+      return { ...item, name: display.name, description: display.description };
+    });
+}
+
 export function CommandMenu() {
   const { isMobileDevice } = useMobile();
   const { state, setTool, setActivePanel } = useGame();
@@ -281,11 +309,12 @@ export function CommandMenu() {
   }, [handleOpenChange]);
 
   // Filter items based on search
+  const mapItems = useMemo(() => getMenuItemsForMap(state.mapId), [state.mapId]);
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return ALL_MENU_ITEMS;
+    if (!search.trim()) return mapItems;
 
     const searchLower = search.toLowerCase().trim();
-    return ALL_MENU_ITEMS.filter(item => {
+    return mapItems.filter(item => {
       // Check name (decode translation for search)
       const name = String(m(item.name as Parameters<typeof m>[0]));
       if (name.toLowerCase().includes(searchLower)) return true;
@@ -298,7 +327,7 @@ export function CommandMenu() {
       if (item.category.includes(searchLower)) return true;
       return false;
     });
-  }, [search, m]);
+  }, [search, m, mapItems]);
 
   // Group filtered items by category
   const groupedItems = useMemo(() => {

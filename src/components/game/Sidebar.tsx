@@ -20,6 +20,7 @@ const CATEGORY_LABELS: Record<string, unknown> = {
   community: msg('Community'),
   utilities: msg('Utilities'),
   special: msg('Special'),
+  riverfront: msg('Riverfront'),
 };
 
 // UI labels for translation
@@ -51,6 +52,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatINR } from '@/lib/format';
+import { getToolDisplay, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -61,6 +64,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   money,
   onSelectTool,
   forceOpenUpward = false,
+  mapId,
 }: {
   label: unknown; // Message object from msg() for translation
   tools: Tool[];
@@ -68,6 +72,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   money: number;
   onSelectTool: (tool: Tool) => void;
   forceOpenUpward?: boolean;
+  mapId?: MapId;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, buttonHeight: 0, openUpward: false });
@@ -228,8 +233,8 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           </div>
           <div className="p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
             {tools.map(tool => {
-              const info = TOOL_INFO[tool];
-              if (!info) return null;
+              if (!TOOL_INFO[tool]) return null;
+              const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
               const isSelected = selectedTool === tool;
               const canAfford = money >= info.cost;
               
@@ -525,7 +530,11 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   ], [expandCity, shrinkCity]);
   
   // Submenu categories (hover to expand) - includes all new assets from main
+  const mapId = state.mapId;
   const submenuCategories = useMemo(() => [
+    ...(mapId === 'varanasi'
+      ? [{ key: 'riverfront', label: CATEGORY_LABELS.riverfront, tools: [...RIVERFRONT_TOOLS] as Tool[], forceOpenUpward: false }]
+      : []),
     { 
       key: 'services', 
       label: CATEGORY_LABELS.services, 
@@ -563,7 +572,9 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
       tools: ['stadium', 'museum', 'airport', 'space_program', 'city_hall', 'amusement_park'] as Tool[],
       forceOpenUpward: true
     },
-  ], []);
+  ]
+    .map((c) => ({ ...c, tools: visibleTools(c.tools, mapId) }))
+    .filter((c) => c.tools.length > 0), [mapId]);
   
   return (
     <div className="w-56 bg-sidebar border-r border-sidebar-border flex flex-col h-screen fixed left-0 top-0 z-40">
@@ -634,8 +645,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
             </div>
             <div className="px-2 flex flex-col gap-0.5">
               {tools.map(tool => {
-                const info = TOOL_INFO[tool];
-                if (!info) return null;
+                if (!TOOL_INFO[tool]) return null;
+                const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
                 const isSelected = selectedTool === tool;
                 const canAfford = stats.money >= info.cost;
                 
@@ -658,7 +669,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 );
               })}
               {/* Expand City submenu - appears after TOOLS category */}
-              {category === 'TOOLS' && (
+              {category === 'TOOLS' && mapId !== 'varanasi' && (
                 <ActionSubmenu
                   key="expandCity"
                   label={CATEGORY_LABELS.expandCity}
@@ -674,6 +685,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                   selectedTool={selectedTool}
                   money={stats.money}
                   onSelectTool={setTool}
+                  mapId={mapId}
                 />
               )}
             </div>
@@ -699,6 +711,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               money={stats.money}
               onSelectTool={setTool}
               forceOpenUpward={forceOpenUpward}
+              mapId={mapId}
             />
           ))}
         </div>
