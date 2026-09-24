@@ -52,6 +52,13 @@ import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, RIVERFRONT_CONFIG } from '@/lib/ganga';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
+import {
+  POWER_CONFIG, WATER_CONFIG, calculatePowerSupply, calculatePowerDemand, calculateWaterSupply, calculateWaterDemand,
+  supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
+} from '@/lib/utilities';
+import { getFeederIndex } from '@/lib/feederZones';
+import { applyFeederCuts } from '@/lib/utilityCuts';
+import type { UtilitySupplyStats } from '@/games/isocity/types/economy';
 import type { CloudWeatherMode } from '@/components/game/types';
 
 // Default grid size for new random games. Pure logic must not look at the device (README rule 7),
@@ -2094,6 +2101,23 @@ interface GridTotals {
   /** Origin tiles of ghats and Sewage Treatment Plants (Varanasi riverfront, S2). */
   ghats: { x: number; y: number }[];
   stps: { x: number; y: number }[];
+  /** Power and water capacity inputs (S3-T7/T8). Only filled when scanGridTotals gets the uncut coverage. */
+  utility?: UtilityTotals;
+}
+
+interface UtilityTotals {
+  plants: UtilityBuilding[];
+  tanks: UtilityBuilding[];
+  powerPopulation: number;
+  powerJobs: number;
+  waterPopulation: number;
+  powerFeeders: number[];
+  waterFeeders: number[];
+  /** Population in covered tiles that are cut this tick. */
+  powerCutPopulation: number;
+  waterCutPopulation: number;
+  /** Commercial jobs in covered tiles that are without power this tick. */
+  powerCutCommercialJobs: number;
 }
 
 /**
@@ -2105,7 +2129,20 @@ interface PollutionCapture {
   reducerIndices: number[];
 }
 
-function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture): GridTotals {
+function scanGridTotals(
+  grid: Tile[][],
+  size: number,
+  capture?: PollutionCapture,
+  coverage?: ServiceCoverage
+): GridTotals {
+  const utility: UtilityTotals | undefined = coverage
+    ? {
+        plants: [], tanks: [], powerPopulation: 0, powerJobs: 0, waterPopulation: 0, powerFeeders: [],
+        waterFeeders: [], powerCutPopulation: 0, waterCutPopulation: 0, powerCutCommercialJobs: 0,
+      }
+    : undefined;
+  const powerFeederSeen = utility ? new Set<number>() : null;
+  const waterFeederSeen = utility ? new Set<number>() : null;
   let population = 0;
   let jobs = 0;
   let totalPollution = 0;
@@ -2201,11 +2238,42 @@ function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture
         case 'sewage_treatment_plant': stps.push({ x, y }); break;
       }
 
+      // --- power and water capacity (S3-T7/T8) ---
+      let inPowerCoverage = building.powered;
+      let inWaterCoverage = building.watered;
+      if (utility && coverage) {
+        inPowerCoverage = coverage.power[y][x];
+        inWaterCoverage = coverage.water[y][x];
+        if (type === 'power_plant' || type === 'water_tower') {
+          const working = isComplete && !building.abandoned && !building.onFire;
+          (type === 'power_plant' ? utility.plants : utility.tanks).push({ level: building.level, working });
+        }
+        const pop = building.population;
+        if (pop > 0 || jobsFromTile > 0) {
+          const feeder = getFeederIndex(x, y, size);
+          if (inPowerCoverage) {
+            utility.powerPopulation += pop;
+            utility.powerJobs += jobsFromTile;
+            if (!powerFeederSeen!.has(feeder)) { powerFeederSeen!.add(feeder); utility.powerFeeders.push(feeder); }
+            if (!building.powered) {
+              utility.powerCutPopulation += pop;
+              if (zone === 'commercial') utility.powerCutCommercialJobs += jobsFromTile;
+            }
+          }
+          if (inWaterCoverage && pop > 0) {
+            utility.waterPopulation += pop;
+            if (!waterFeederSeen!.has(feeder)) { waterFeederSeen!.add(feeder); utility.waterFeeders.push(feeder); }
+            if (!building.watered) utility.waterCutPopulation += pop;
+          }
+        }
+      }
+
       // --- advisor messages ---
-      // Only count zoned buildings (not grass)
+      // Only count zoned buildings (not grass). Tiles inside coverage that are only cut for this hour
+      // are not "lacking" power or water; the rolling-cut advisor covers them.
       if (zone !== 'none' && type !== 'grass') {
-        if (!building.powered) unpoweredBuildings++;
-        if (!building.watered) unwateredBuildings++;
+        if (!inPowerCoverage) unpoweredBuildings++;
+        if (!inWaterCoverage) unwateredBuildings++;
       }
       if (building.abandoned) {
         abandonedBuildings++;
@@ -2221,7 +2289,7 @@ function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture
     railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount, museumCount,
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings, abandonedResidential,
-    abandonedCommercial, abandonedIndustrial, ghats, stps,
+    abandonedCommercial, abandonedIndustrial, ghats, stps, utility,
   };
 }
 
@@ -2253,7 +2321,8 @@ function calculateStats(
   effectiveTaxRate: number,
   services: ServiceCoverage,
   totals: GridTotals = scanGridTotals(grid, size),
-  river?: RiverContext
+  river?: RiverContext,
+  cuts?: { power: number[]; water: number[] }
 ): Stats {
   const {
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
@@ -2325,7 +2394,10 @@ function calculateStats(
   const industrialDemand = Math.min(100, Math.max(-100, industrialWithBonuses * taxMultiplier + taxAdditiveModifier * 0.5));
 
   // Calculate income and expenses
-  const taxIncome = calculateTaxIncome(population, jobs, taxRate);
+  // Commercial tiles earn half while their power is cut (S3-T7)
+  const utility = totals.utility;
+  const cutJobLoss = utility ? utility.powerCutCommercialJobs * (1 - POWER_CONFIG.cutCommercialIncomeFactor) : 0;
+  const taxIncome = calculateTaxIncome(population, jobs - cutJobLoss, taxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
   let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
@@ -2354,7 +2426,7 @@ function calculateStats(
   expenses += Math.floor(budget.water.cost * budget.water.funding / 100);
 
   // Calculate ratings — centralized in ./scoring (single source of truth)
-  const { safety, health, education, environment, happiness } = calculateRatings({
+  const ratings = calculateRatings({
     services,
     coverageAverages: getCoverageAverages(services),
     treeCount,
@@ -2368,6 +2440,37 @@ function calculateStats(
     ganga: gangaRatingsInput,
   });
 
+  const { safety, education, environment } = ratings;
+  let { health, happiness } = ratings;
+
+  // Power and water capacity (S3-T7/T8): supply, demand and the cost of rotating cuts
+  let utilityStats: Pick<Stats, 'power' | 'water'> = {};
+  if (utility) {
+    const powerSupply = calculatePowerSupply(utility.plants);
+    const powerDemand = calculatePowerDemand(utility.powerPopulation, utility.powerJobs);
+    const waterSupply = calculateWaterSupply(utility.tanks);
+    const waterDemand = calculateWaterDemand(utility.waterPopulation);
+    const sortNum = (a: number, b: number) => a - b;
+    utilityStats = {
+      power: {
+        supply: powerSupply, demand: powerDemand, ratio: supplyRatio(powerSupply, powerDemand),
+        feeders: utility.powerFeeders.slice().sort(sortNum), cut: cuts?.power ?? [],
+      },
+      water: {
+        supply: waterSupply, demand: waterDemand, ratio: supplyRatio(waterSupply, waterDemand),
+        feeders: utility.waterFeeders.slice().sort(sortNum), cut: cuts?.water ?? [],
+      },
+    };
+    if (population > 0) {
+      const powerCutShare = utility.powerCutPopulation / population;
+      const waterCutShare = utility.waterCutPopulation / population;
+      happiness -= POWER_CONFIG.cutHappinessPenalty * powerCutShare + WATER_CONFIG.cutHappinessPenalty * waterCutShare;
+      health -= WATER_CONFIG.noWaterHealthPenalty * waterCutShare;
+      happiness = Math.max(0, Math.min(100, happiness));
+      health = Math.max(0, Math.min(100, health));
+    }
+  }
+
   return {
     population,
     jobs,
@@ -2375,6 +2478,7 @@ function calculateStats(
     income,
     taxIncome,
     ...gangaStats,
+    ...utilityStats,
     expenses,
     happiness,
     health,
@@ -2445,6 +2549,24 @@ function generateAdvisorMessages(
       icon: 'water',
       messages: [`${unwateredBuildings} buildings lack water. Build water towers!`],
       priority: unwateredBuildings > 10 ? 'high' : 'medium',
+    });
+  }
+
+  // Rolling cuts (S3-T7/T8)
+  if (stats.power && stats.power.ratio < 1) {
+    messages.push({
+      name: 'Power Advisor',
+      icon: 'power',
+      messages: [POWER_CONFIG.advisorMessage],
+      priority: stats.power.ratio < POWER_CONFIG.redBelow ? 'high' : 'medium',
+    });
+  }
+  if (stats.water && stats.water.ratio < 1) {
+    messages.push({
+      name: 'Water Advisor',
+      icon: 'water',
+      messages: [WATER_CONFIG.advisorMessage],
+      priority: stats.water.ratio < WATER_CONFIG.redBelow ? 'high' : 'medium',
     });
   }
 
@@ -2534,7 +2656,9 @@ function generateAdvisorMessages(
 
 export function recalculateDerivedState(state: GameState): GameState {
   const services = calculateServiceCoverage(state.grid, state.gridSize, state.budget);
-  const totals = scanGridTotals(state.grid, state.gridSize);
+  const totals = scanGridTotals(
+    state.grid, state.gridSize, undefined, utilityCapacityEnabled ? services : undefined
+  );
   const budget = updateBudgetCosts(state.grid, state.budget, totals);
   const stats = calculateStats(
     state.grid,
@@ -2690,6 +2814,29 @@ class CopyOnWriteGrid {
 }
 
 // Main simulation tick
+/** Ticks since the start of 2024 (30-tick days, 30-day months). Drives the day/night hour and cut rotation. */
+function getTotalTicks(t: { year: number; month: number; day: number; tick: number }): number {
+  return ((t.year - 2024) * 12 * 30 * 30) + ((t.month - 1) * 30 * 30) + ((t.day - 1) * 30) + t.tick;
+}
+
+const NO_CUT: ReadonlySet<number> = new Set();
+
+let utilityCapacityEnabled = true;
+
+/**
+ * Turn power/water capacity and rolling cuts (S3-T7/T8) on or off. Tests use this to check that the
+ * rest of the simulation still matches the pre-S3 golden fingerprints.
+ */
+export function setUtilityCapacityEnabled(enabled: boolean): void {
+  utilityCapacityEnabled = enabled;
+}
+
+/** Feeder blocks cut this hour for a utility, from the previous tick's supply stats. */
+function getUtilityCut(stats: UtilitySupplyStats | undefined, rotationHour: number): ReadonlySet<number> {
+  if (!stats || !(stats.ratio < 1) || stats.feeders.length === 0) return NO_CUT;
+  return getCutFeeders(stats.ratio, stats.feeders, rotationHour);
+}
+
 export function simulateTick(
   state: GameState,
   cloudWeatherMode: CloudWeatherMode = 'clear'
@@ -2699,7 +2846,13 @@ export function simulateTick(
   // Pre-calculate service coverage once (read-only operation on original grid). The same scan counts
   // burning tiles: with none, fire cannot spread, so the neighbour checks below can be skipped.
   const burningInputTiles = collectActiveServiceBuildings(state.grid, size, scratchServiceList);
-  const services = serviceCoverageForList(scratchServiceList, size, state.budget);
+  const baseServices = serviceCoverageForList(scratchServiceList, size, state.budget);
+  // Rolling power and water cuts (S3-T7/T8): last tick's supply ratio decides how many feeder blocks
+  // go without this in-game hour, and a rotation decides which. Applied on top of the cached coverage.
+  const rotationHour = getRotationHour(getTotalTicks(state));
+  const powerCut = utilityCapacityEnabled ? getUtilityCut(state.stats.power, rotationHour) : NO_CUT;
+  const waterCut = utilityCapacityEnabled ? getUtilityCut(state.stats.water, rotationHour) : NO_CUT;
+  const services = applyFeederCuts(baseServices, powerCut, waterCut, size);
   // Upper bound of burning tiles per row (input fires plus fires started this tick). Buildings are
   // only ever put out or replaced during the tick otherwise, so the bound stays valid; when rows
   // y-1, y and y+1 are all 0 the neighbour count is 0 without looking at the tiles.
@@ -2996,7 +3149,9 @@ export function simulateTick(
   // pollution into a typed array and lists the green pollution reducers for the cleanup.
   const cleanupScratch = getPollutionCleanupScratch(size * size);
   const pollutionCapture: PollutionCapture = { pollution: cleanupScratch.pollution, reducerIndices: [] };
-  const gridTotals = scanGridTotals(newGrid, size, pollutionCapture);
+  const gridTotals = scanGridTotals(
+    newGrid, size, pollutionCapture, utilityCapacityEnabled ? baseServices : undefined
+  );
 
   // Green amenities clean up nearby pollution after all buildings have updated.
   // S1-T5: runs on the pollution array instead of the tile objects. Reducers are still processed in
@@ -3052,7 +3207,10 @@ export function simulateTick(
   const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, getRiverContext(state));
+  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, getRiverContext(state), {
+    power: Array.from(powerCut).sort((a, b) => a - b),
+    water: Array.from(waterCut).sort((a, b) => a - b),
+  });
   newStats.money = state.stats.money;
 
   // Smooth demand to prevent flickering in large cities
@@ -3075,7 +3233,7 @@ export function simulateTick(
   // Calculate visual hour for day/night cycle (much slower than game time)
   // One full day/night cycle = 15 game days (450 ticks)
   // This makes the cycle atmospheric rather than jarring
-  const totalTicks = ((state.year - 2024) * 12 * 30 * 30) + ((state.month - 1) * 30 * 30) + ((state.day - 1) * 30) + newTick;
+  const totalTicks = getTotalTicks({ ...state, tick: newTick });
   const cycleLength = 450; // ticks per visual day (15 game days)
   const newHour = Math.floor((totalTicks % cycleLength) / cycleLength * 24);
 
@@ -3917,6 +4075,75 @@ export function placeLandTerraform(state: GameState, x: number, y: number): Game
 }
 
 // Generate a random advanced city state with developed zones, infrastructure, and buildings
+/** Pre-built cities get enough plants and tanks that they do not start with rolling cuts (S3-T7/T8). */
+export const UTILITY_TOPUP_CONFIG = {
+  /** Supply the top-up aims for, as a multiple of demand (headroom so the city can grow a little). */
+  margin: 1.25,
+  /** Most buildings added per utility, so a malformed city cannot loop for long. */
+  maxAdditions: 60,
+} as const;
+
+function isFreeSite(grid: Tile[][], size: number, x: number, y: number, w: number, h: number): boolean {
+  if (x + w > size || y + h > size) return false;
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const t = grid[y + dy][x + dx];
+      if (t.zone !== 'none' || (t.building.type !== 'grass' && t.building.type !== 'tree')) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Adds finished power plants and water tanks, nearest free sites to the map centre first, until supply
+ * covers demand with UTILITY_TOPUP_CONFIG.margin headroom. Used for pre-built random cities, whose
+ * generator predates capacity limits. Deterministic: no random numbers are drawn.
+ */
+export function ensureUtilityCapacity(state: GameState): GameState {
+  let current = recalculateDerivedState(state);
+  if (!utilityCapacityEnabled) return current;
+  const size = current.gridSize;
+  const centre = (size - 1) / 2;
+  const sites: { x: number; y: number }[] = [];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) sites.push({ x, y });
+  sites.sort((a, b) => ((a.x - centre) ** 2 + (a.y - centre) ** 2) - ((b.x - centre) ** 2 + (b.y - centre) ** 2));
+
+  const utilities: { type: BuildingType; stat: 'power' | 'water'; capacity: number }[] = [
+    { type: 'power_plant', stat: 'power', capacity: POWER_CONFIG.plantCapacity },
+    { type: 'water_tower', stat: 'water', capacity: WATER_CONFIG.tankCapacity },
+  ];
+  for (const { type, stat, capacity } of utilities) {
+    const { width, height } = getBuildingSize(type);
+    let siteIndex = 0;
+    let added = 0;
+    // Place the estimated shortfall in one batch, then re-measure: new coverage can add demand.
+    while (added < UTILITY_TOPUP_CONFIG.maxAdditions) {
+      const supply = current.stats[stat];
+      if (!supply) break;
+      const shortfall = supply.demand * UTILITY_TOPUP_CONFIG.margin - supply.supply;
+      if (shortfall <= 0) break;
+      const batch = Math.min(UTILITY_TOPUP_CONFIG.maxAdditions - added, Math.ceil(shortfall / capacity));
+      let grid = current.grid;
+      let placedInBatch = 0;
+      for (; siteIndex < sites.length && placedInBatch < batch; siteIndex++) {
+        const { x, y } = sites[siteIndex];
+        if (!isFreeSite(grid, size, x, y, width, height)) continue;
+        const next = placeBuilding({ ...current, grid }, x, y, type, null);
+        if (next.grid === grid || next.grid[y][x].building.type !== type) continue;
+        grid = next.grid.slice();
+        const row = grid[y].slice();
+        row[x] = { ...row[x], building: { ...row[x].building, constructionProgress: 100 } };
+        grid[y] = row;
+        placedInBatch++;
+      }
+      if (placedInBatch === 0) break;
+      added += placedInBatch;
+      current = recalculateDerivedState({ ...current, grid });
+    }
+  }
+  return current;
+}
+
 export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cityName: string = 'Metropolis', rng: Rng = Math.random): GameState {
   // Start with a base state (terrain generation)
   const baseState = createInitialGameState(size, cityName, rng);

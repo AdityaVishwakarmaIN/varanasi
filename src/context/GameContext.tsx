@@ -30,6 +30,7 @@ import {
   placeLandTerraform,
   checkForDiscoverableCities,
   generateRandomAdvancedCity,
+  ensureUtilityCapacity,
   createBridgesOnPath,
   recalculateDerivedState,
   upgradeServiceBuilding,
@@ -1316,7 +1317,7 @@ export function GameProvider({
   const generateRandomCity = useCallback(() => {
     clearGameState(); // Clear saved state when generating a new city
     cloudWeatherModeRef.current = 'clear';
-    replaceCity(generateRandomAdvancedCity(DEFAULT_GRID_SIZE), latestStateRef.current);
+    replaceCity(ensureUtilityCapacity(generateRandomAdvancedCity(DEFAULT_GRID_SIZE)), latestStateRef.current);
   }, [replaceCity]);
 
   // Expand the city grid by 15 tiles on each side (30x30 total increase)

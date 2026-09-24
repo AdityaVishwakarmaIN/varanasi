@@ -12,13 +12,14 @@
  *    re-record with `PRINT_SIM_FINGERPRINTS=1 npx vitest run src/lib/__tests__/simulateTick.test.ts`.
  */
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRng } from '@/lib/rng';
 import {
   bulldozeTile,
   generateRandomAdvancedCity,
   placeBuilding,
   setServiceCoverageCacheEnabled,
+  setUtilityCapacityEnabled,
   simulateTick,
   upgradeServiceBuilding,
 } from '@/lib/simulation';
@@ -29,13 +30,20 @@ import type { GameState, Tile } from '@/types/game';
  * Fields added AFTER the goldens were recorded (new features, not behaviour changes). They are left out of the
  * fingerprint so the goldens keep proving that pre-existing behaviour is unchanged.
  * - `mapId` (S2-T2), `taxIncome` (S2-T9)
+ * - `stats.power` / `stats.water` (S3-T7/T8). Only under `stats`: `services.power` / `services.water` are old.
  */
 const FIELDS_ADDED_AFTER_GOLDENS = new Set(['mapId', 'taxIncome']);
+const STATS_FIELDS_ADDED_AFTER_GOLDENS = new Set(['power', 'water']);
 
 /** Canonical JSON: sorted keys, `undefined` dropped, random ids removed. */
 function canonical(value: unknown): string {
   return JSON.stringify(value, function replacer(key, v) {
     if (key === 'id' || FIELDS_ADDED_AFTER_GOLDENS.has(key)) return undefined;
+    if (key === 'stats' && v && typeof v === 'object') {
+      const stats = { ...(v as Record<string, unknown>) };
+      for (const k of STATS_FIELDS_ADDED_AFTER_GOLDENS) delete stats[k];
+      v = stats;
+    }
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       const sorted: Record<string, unknown> = {};
       for (const k of Object.keys(v).sort()) sorted[k] = (v as Record<string, unknown>)[k];
@@ -212,8 +220,14 @@ function runScenario(scenario: Scenario, seed: number): { final: GameState; perT
   }
 }
 
+// The goldens predate power/water capacity (S3-T7/T8); cuts are tested in utilityCuts.test.ts.
+beforeEach(() => {
+  setUtilityCapacityEnabled(false);
+});
+
 afterEach(() => {
   setServiceCoverageCacheEnabled(true);
+  setUtilityCapacityEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {
