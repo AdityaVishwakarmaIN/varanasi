@@ -42,6 +42,7 @@ import {
   PEDESTRIAN_MAT_COLORS,
 } from './constants';
 import { isRoadTile, getDirectionOptions, findPathOnRoads, getDirectionToTile, findNearestRoadToBuilding } from './utils';
+import { PILGRIM_CONFIG, pickPilgrimClothing } from '@/lib/pilgrims';
 
 // Building types that are recreational (pedestrians do activities here)
 const RECREATION_BUILDINGS: BuildingType[] = [
@@ -250,8 +251,12 @@ export function handleArrivalAtDestination(
   
   const buildingType = tile.building.type;
   
+  // Pilgrims sit or stand at the ghat (S3-T10)
+  if (ped.destType === 'ghat' && buildingType === 'ghat') {
+    startGhatVisit(ped, 0);
+  }
   // Check if this is a recreational area
-  if (isRecreationalBuilding(buildingType)) {
+  else if (isRecreationalBuilding(buildingType)) {
     // Start a recreational activity
     const activity = getActivityForBuilding(buildingType);
     ped.state = 'at_recreation';
@@ -1235,4 +1240,92 @@ export function spawnPedestrianAtBeach(
  */
 export function isBeachPedestrian(ped: Pedestrian): boolean {
   return ped.state === 'at_beach';
+}
+
+// ============================================================================
+// Pilgrims at the ghats (S3-T10)
+// ============================================================================
+
+/** What pilgrims do at a ghat: sit on the steps or stand looking at the river. */
+const GHAT_ACTIVITIES: PedestrianActivity[] = ['sitting_bench', 'watching_game'];
+
+/** Whether a pedestrian is a pilgrim at, or on the way to, a ghat (not one heading home). */
+export function isActivePilgrim(ped: Pedestrian): boolean {
+  return ped.destType === 'ghat' && !ped.returningHome;
+}
+
+/** Dresses a pedestrian as a pilgrim: saffron, white or orange, no shopping bag or dog. */
+function dressAsPilgrim(ped: Pedestrian): void {
+  ped.destType = 'ghat';
+  ped.shirtColor = pickPilgrimClothing(Math.random);
+  ped.pantsColor = pickPilgrimClothing(Math.random);
+  ped.hasBag = false;
+  ped.hasDog = false;
+  ped.hasHat = false;
+}
+
+/** Starts a pilgrim's stay at the ghat it is heading for; they linger longer than at other destinations. */
+function startGhatVisit(ped: Pedestrian, alreadyDone: number): void {
+  ped.state = 'at_recreation';
+  ped.activity = GHAT_ACTIVITIES[Math.floor(Math.random() * GHAT_ACTIVITIES.length)];
+  ped.activityProgress = alreadyDone;
+  ped.activityDuration = PILGRIM_CONFIG.lingerMultiplier *
+    (PEDESTRIAN_MIN_ACTIVITY_TIME + Math.random() * (PEDESTRIAN_MAX_ACTIVITY_TIME - PEDESTRIAN_MIN_ACTIVITY_TIME));
+  // Spread along the steps; the upper half of the tile keeps them out of the water
+  const offset = getRandomActivityOffset();
+  ped.activityOffsetX = offset.x;
+  ped.activityOffsetY = offset.y * 0.6 - 2;
+  ped.maxAge = Math.max(ped.maxAge, ped.age + ped.activityDuration * (1 - alreadyDone) + 60);
+}
+
+/** Ends a pilgrim's stay early (the crowd thins out after the dawn and dusk peaks). */
+export function endGhatVisit(ped: Pedestrian): void {
+  if (ped.state === 'at_recreation') ped.activityProgress = 1;
+}
+
+/** A pilgrim already at a ghat, partway through their stay. */
+export function spawnPilgrimAtGhat(
+  id: number,
+  ghatX: number,
+  ghatY: number,
+  grid: Tile[][],
+  gridSize: number,
+  homeX: number,
+  homeY: number
+): Pedestrian | null {
+  const roadTile = findNearestRoadToBuilding(grid, gridSize, ghatX, ghatY);
+  if (!roadTile) return null;
+  const path = findPathOnRoads(grid, gridSize, roadTile.x, roadTile.y, homeX, homeY);
+  if (!path || path.length === 0) return null;
+  const ped = createPedestrian(id, homeX, homeY, ghatX, ghatY, 'ghat', path, 0, 'south');
+  dressAsPilgrim(ped);
+  startGhatVisit(ped, Math.random() * 0.5);
+  ped.tileX = ghatX;
+  ped.tileY = ghatY;
+  return ped;
+}
+
+/** A pilgrim walking from home to a ghat, somewhere along the way. */
+export function spawnPilgrimWalking(
+  id: number,
+  ghatX: number,
+  ghatY: number,
+  grid: Tile[][],
+  gridSize: number,
+  homeX: number,
+  homeY: number
+): Pedestrian | null {
+  const path = findPathOnRoads(grid, gridSize, homeX, homeY, ghatX, ghatY);
+  if (!path || path.length === 0) return null;
+  // Start in the second half of the walk, so arrivals are seen
+  const minStart = Math.floor(path.length * 0.5);
+  const startIndex = Math.min(path.length - 1, minStart + Math.floor(Math.random() * (path.length - minStart)));
+  let direction: CarDirection = 'south';
+  if (startIndex + 1 < path.length) {
+    const next = path[startIndex + 1];
+    direction = getDirectionToTile(path[startIndex].x, path[startIndex].y, next.x, next.y) ?? direction;
+  }
+  const ped = createPedestrian(id, homeX, homeY, ghatX, ghatY, 'ghat', path, startIndex, direction);
+  dressAsPilgrim(ped);
+  return ped;
 }

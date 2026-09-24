@@ -213,7 +213,9 @@ export type EmergencyVehicle = {
 };
 
 // Pedestrian types, destinations, and behaviors
-export type PedestrianDestType = 'school' | 'commercial' | 'industrial' | 'park' | 'beach' | 'home';
+export type PedestrianDestType = 'school' | 'commercial' | 'industrial' | 'park' | 'beach' | 'home'
+  // Varanasi (append only): pilgrims heading for a ghat (S3-T10)
+  | 'ghat';
 
 // Pedestrian behavioral states
 export type PedestrianState =

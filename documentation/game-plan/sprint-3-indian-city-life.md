@@ -56,7 +56,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [x] S3-T7: Power capacity and rolling power cuts
 - [x] S3-T8: Water capacity, the Jal Sansthan water works and shortages
 - [x] S3-T9: Informal settlements
-- [ ] S3-T10: Pilgrim crowds at the ghats
+- [x] S3-T10: Pilgrim crowds at the ghats
 - [ ] S3-T11: Balance pass and sign-off
 
 ---

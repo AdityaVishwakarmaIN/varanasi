@@ -492,7 +492,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     state: {
       services: state.services,
       stats: state.stats,
+      mapId: state.mapId,
     },
+    visualHour,
     isMobile,
   };
 

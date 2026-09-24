@@ -16,7 +16,13 @@ export const PILGRIM_CONFIG = {
   rampHours: 2,
   /** Crowd factor outside the peaks (midday and night). */
   quietFactor: 0.2,
-  /** Pilgrims at the ghats per ₹1 of tourism income per tick, before the time-of-day factor (starting value). */
+  /** Share of new pilgrims who walk to the ghat nearest their home; the rest start at a ghat near the view. */
+  walkingShare: 0.3,
+  /** Pilgrims never take more than this share of the quality preset's pedestrian cap. */
+  maxShareOfPedestrians: 0.6,
+  /** Pilgrims who end their stay per frame once the crowd is above target (a gradual thinning). */
+  maxLeavingPerFrame: 1,
+  /** Pilgrims at the ghats per ₹1 of monthly tourism income, before the time-of-day factor (starting value). */
   pilgrimsPerTourismRupee: 0.5,
   /** Clothing colours: saffron, white, orange, marigold, cream, deep saffron. */
   clothingColors: ['#FF9933', '#F7F5EE', '#FF7F11', '#F4B400', '#EFE6D2', '#E25822'] as readonly string[],

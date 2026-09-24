@@ -25,7 +25,13 @@ import {
   findBeachTiles,
   getRandomBeachTile,
   spawnPedestrianAtBeach,
+  endGhatVisit,
+  isActivePilgrim,
+  spawnPilgrimAtGhat,
+  spawnPilgrimWalking,
 } from './pedestrianSystem';
+import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 import { ENTITY_CULL_CONFIG, deviceValue, scaledEntityLimit } from '@/lib/qualityConfig';
 import { buildCountPrefix, countInBounds, expandBounds, filterInBounds, isInBounds, randomTileInBounds, type TileBounds } from '@/lib/entityCulling';
@@ -74,8 +80,13 @@ export interface VehicleSystemState {
     };
     stats: {
       population: number;
+      /** Monthly tourism income (Varanasi): sizes the pilgrim crowds at the ghats (S3-T10). */
+      tourismIncome?: number;
     };
+    mapId?: MapId;
   };
+  /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
+  visualHour: number;
   isMobile: boolean;
 }
 
@@ -89,6 +100,7 @@ type FinderCache = {
   recreation?: ReturnType<typeof findRecreationAreas>;
   enterable?: ReturnType<typeof findEnterableBuildings>;
   beach?: ReturnType<typeof findBeachTiles>;
+  ghats?: { x: number; y: number }[];
   busStops?: { x: number; y: number }[];
 };
 let finderCache: FinderCache = { key: '' };
@@ -137,6 +149,7 @@ export function createVehicleSystems(
     cachedRoadTileCountRef,
     cachedIntersectionMapRef,
     state,
+    visualHour,
     isMobile,
   } = systemState;
   const spawnRandomCar = () => {
@@ -340,6 +353,52 @@ export function createVehicleSystems(
     return (cache.beach ??= findBeachTiles(currentGrid, currentGridSize));
   };
 
+  // Ghat tiles (S3-T10)
+  const findGhatsCallback = () => {
+    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
+    const cache = finders();
+    if (!cache.ghats) {
+      const ghats: { x: number; y: number }[] = [];
+      for (let y = 0; y < currentGridSize; y++) {
+        const row = currentGrid[y];
+        for (let x = 0; x < currentGridSize; x++) if (row[x].building.type === 'ghat') ghats.push({ x, y });
+      }
+      cache.ghats = ghats;
+    }
+    return cache.ghats;
+  };
+
+  /**
+   * A pilgrim (S3-T10): most are already at a ghat near the view, the rest walk from home to the ghat nearest to it.
+   * Returns false when there is no ghat near the view or no route.
+   */
+  const spawnPilgrim = (residentials: { x: number; y: number }[]): boolean => {
+    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
+    const ghats = spawnBounds ? filterInBounds(findGhatsCallback(), spawnBounds) : findGhatsCallback();
+    if (ghats.length === 0) return false;
+    const home = residentials[Math.floor(Math.random() * residentials.length)];
+    let ped: Pedestrian | null;
+    if (Math.random() < PILGRIM_CONFIG.walkingShare) {
+      let nearest = ghats[0];
+      let best = Infinity;
+      for (const g of ghats) {
+        const d = Math.abs(g.x - home.x) + Math.abs(g.y - home.y);
+        if (d < best) { best = d; nearest = g; }
+      }
+      ped = spawnPilgrimWalking(pedestrianIdRef.current++, nearest.x, nearest.y, currentGrid, currentGridSize, home.x, home.y);
+    } else {
+      const ghat = ghats[Math.floor(Math.random() * ghats.length)];
+      ped = spawnPilgrimAtGhat(pedestrianIdRef.current++, ghat.x, ghat.y, currentGrid, currentGridSize, home.x, home.y);
+    }
+    if (!ped) return false;
+    pedestriansRef.current.push(ped);
+    return true;
+  };
+
+  /** Pilgrims wanted at the ghats this frame, and how many there are (set once per update). */
+  let pilgrimTarget = 0;
+  let pilgrimCount = 0;
+
   const spawnPedestrian = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
@@ -354,6 +413,12 @@ export function createVehicleSystems(
     const destinations = near(findPedestrianDestinationsCallback());
     if (destinations.length === 0) {
       return false;
+    }
+    
+    // S3-T10: on Varanasi, a share of new pedestrians are pilgrims while the ghats want more people
+    if (pilgrimCount < pilgrimTarget && shouldBecomePilgrim(state.mapId, Math.random) && spawnPilgrim(residentials)) {
+      pilgrimCount++;
+      return true;
     }
     
     // Choose spawn type - more variety in pedestrian spawning
@@ -1437,6 +1502,23 @@ export function createVehicleSystems(
       if (pedestriansRef.current.length > maxPedestrians) pedestriansRef.current.length = maxPedestrians;
     }
     pedestrianSpawnTimerRef.current -= delta;
+    
+    // S3-T10: pilgrim crowd at the ghats follows tourism and the time of day; past a peak the extra pilgrims leave
+    pilgrimTarget = state.mapId === 'varanasi'
+      ? getGhatCrowdTarget(state.stats.tourismIncome ?? 0, maxPedestrians * PILGRIM_CONFIG.maxShareOfPedestrians, visualHour)
+      : 0;
+    pilgrimCount = 0;
+    for (const p of pedestriansRef.current) if (isActivePilgrim(p)) pilgrimCount++;
+    if (pilgrimCount > pilgrimTarget) {
+      let excess = Math.min(pilgrimCount - pilgrimTarget, PILGRIM_CONFIG.maxLeavingPerFrame);
+      for (const p of pedestriansRef.current) {
+        if (excess <= 0) break;
+        if (p.state === 'at_recreation' && isActivePilgrim(p)) {
+          endGhatVisit(p);
+          excess--;
+        }
+      }
+    }
     
     if (pedestriansRef.current.length < maxPedestrians && pedestrianSpawnTimerRef.current <= 0) {
       // Spawn pedestrians in batches - smaller batches on mobile
