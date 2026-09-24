@@ -14,6 +14,16 @@ import {
 import { gridToScreen } from './utils';
 import { findMarinasAndPiers, findAdjacentWaterTile, isOverWater, generateTourWaypoints } from './gridFinders';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import type { MapId } from '@/games/isocity/maps/varanasi';
+import {
+  GHAT_BOAT_CONFIG,
+  getGhatBoatNetwork,
+  getDestinationCandidates,
+  getDockRoute,
+  getMaxGhatBoats,
+  isRouteNavigable,
+  type GhatBoatNetwork,
+} from './ghatBoats';
 
 export interface BoatSystemRefs {
   boatsRef: React.MutableRefObject<Boat[]>;
@@ -25,6 +35,10 @@ export interface BoatSystemState {
   worldStateRef: React.MutableRefObject<WorldRenderState>;
   isMobile: boolean;
   visualHour: number;
+  /** S2-T10: on the Varanasi map, boats also travel between ghats. */
+  mapId?: MapId;
+  gameVersion?: number;
+  structureVersionRef?: React.MutableRefObject<number>;
 }
 
 export function createBoatSystem(
@@ -32,7 +46,7 @@ export function createBoatSystem(
   systemState: BoatSystemState
 ) {
   const { boatsRef, boatIdRef, boatSpawnTimerRef } = refs;
-  const { worldStateRef, isMobile, visualHour } = systemState;
+  const { worldStateRef, isMobile, visualHour, mapId, gameVersion, structureVersionRef } = systemState;
 
   // Find marinas and piers callback
   const findMarinasAndPiersCallback = () => {
@@ -58,6 +72,116 @@ export function createBoatSystem(
     return generateTourWaypoints(currentGrid, currentGridSize, startTileX, startTileY);
   };
 
+  // S2-T10: start a ghat boat on a trip from dock `from` to a random dock at least minRouteDistance away.
+  // Returns false if there is no reachable destination.
+  const startGhatTrip = (boat: Boat, network: GhatBoatNetwork, from: number): boolean => {
+    const candidates = getDestinationCandidates(network.docks, from, GHAT_BOAT_CONFIG.minRouteDistance);
+    // Try a few random candidates (landfill can cut a dock off from the rest of the river)
+    for (let attempt = 0; attempt < 3 && candidates.length > 0; attempt++) {
+      const to = candidates[Math.floor(Math.random() * candidates.length)];
+      const route = getDockRoute(network, from, to);
+      if (!route || route.poly.length < 4) continue;
+      boat.ghatRoute = {
+        tiles: route.tiles,
+        poly: route.poly,
+        length: route.length,
+        progress: 0,
+        segment: 0,
+        segmentStart: 0,
+        fromDock: from,
+        toDock: to,
+        revision: network.revision,
+        waitTime: GHAT_BOAT_CONFIG.dockWaitMin + Math.random() * GHAT_BOAT_CONFIG.dockWaitRange,
+      };
+      boat.x = route.poly[0];
+      boat.y = route.poly[1];
+      boat.angle = Math.atan2(route.poly[3] - route.poly[1], route.poly[2] - route.poly[0]);
+      boat.targetAngle = boat.angle;
+      boat.state = 'touring';
+      boat.age = 0;
+      boat.speed = GHAT_BOAT_CONFIG.speedMin + Math.random() * GHAT_BOAT_CONFIG.speedRange;
+      boat.originX = network.docks[from].x;
+      boat.originY = network.docks[from].y;
+      boat.destX = network.docks[to].x;
+      boat.destY = network.docks[to].y;
+      const last = route.poly.length - 2;
+      boat.destScreenX = route.poly[last];
+      boat.destScreenY = route.poly[last + 1];
+      boat.homeScreenX = route.poly[0];
+      boat.homeScreenY = route.poly[1];
+      return true;
+    }
+    return false;
+  };
+
+  // S2-T10: move a ghat boat along its route. Positions come straight from the polyline, so the boat never
+  // leaves the route's river tiles. Returns false when the boat should be removed.
+  const stepGhatBoat = (boat: Boat, network: GhatBoatNetwork, dt: number, overCap: boolean): boolean => {
+    const r = boat.ghatRoute!;
+    if (r.revision !== network.revision) {
+      // The map changed: drop boats whose route is no longer water; re-find the destination dock by its mooring tile
+      if (!isRouteNavigable(network, r.tiles)) return false;
+      const endTile = r.tiles[r.tiles.length - 1];
+      r.toDock = network.docks.findIndex((d) => d.waterIdx === endTile);
+      if (boat.state === 'docked') r.fromDock = r.toDock;
+      r.revision = network.revision;
+    }
+    if (boat.state === 'docked') {
+      if (boat.age < r.waitTime) return true;
+      if (overCap || r.fromDock < 0) return false;
+      if (!startGhatTrip(boat, network, r.fromDock)) boat.age = 0; // nowhere to go yet: wait again
+      return true;
+    }
+    const { easeDistance, easeMinFactor } = GHAT_BOAT_CONFIG;
+    const ease = Math.max(easeMinFactor, Math.min(1, Math.min(r.progress + 1, r.length - r.progress) / easeDistance));
+    r.progress += boat.speed * ease * dt;
+    const poly = r.poly;
+    if (r.progress >= r.length) {
+      boat.x = poly[poly.length - 2];
+      boat.y = poly[poly.length - 1];
+      boat.state = 'docked';
+      boat.age = 0;
+      boat.wake = [];
+      r.fromDock = r.toDock;
+      return true;
+    }
+    const lastSeg = poly.length / 2 - 2;
+    let segLen = Math.hypot(poly[r.segment * 2 + 2] - poly[r.segment * 2], poly[r.segment * 2 + 3] - poly[r.segment * 2 + 1]);
+    while (r.segment < lastSeg && r.segmentStart + segLen < r.progress) {
+      r.segmentStart += segLen;
+      r.segment++;
+      segLen = Math.hypot(poly[r.segment * 2 + 2] - poly[r.segment * 2], poly[r.segment * 2 + 3] - poly[r.segment * 2 + 1]);
+    }
+    const i = r.segment * 2;
+    const t = segLen > 0 ? Math.min(1, (r.progress - r.segmentStart) / segLen) : 1;
+    boat.x = poly[i] + (poly[i + 2] - poly[i]) * t;
+    boat.y = poly[i + 1] + (poly[i + 3] - poly[i + 1]) * t;
+    boat.targetAngle = Math.atan2(poly[i + 3] - poly[i + 1], poly[i + 2] - poly[i]);
+    let angleDiff = boat.targetAngle - boat.angle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    boat.angle += angleDiff * Math.min(1, dt * 4);
+    return true;
+  };
+
+  // Add a wake particle behind a moving boat (simpler on mobile)
+  const spawnWake = (boat: Boat, delta: number) => {
+    const wakeSpawnInterval = isMobile ? 0.08 : WAKE_SPAWN_INTERVAL;
+    boat.wakeSpawnProgress += delta;
+    if (boat.wakeSpawnProgress >= wakeSpawnInterval) {
+      boat.wakeSpawnProgress -= wakeSpawnInterval;
+
+      // Add single wake particle behind the boat
+      const behindBoat = -6; // Position behind the boat
+      boat.wake.push({
+        x: boat.x + Math.cos(boat.angle) * behindBoat,
+        y: boat.y + Math.sin(boat.angle) * behindBoat,
+        age: 0,
+        opacity: 1
+      });
+    }
+  };
+
   // Update boats - spawn, move, and manage lifecycle
   const updateBoats = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
@@ -75,9 +199,12 @@ export function createBoatSystem(
 
     // Find marinas and piers
     const docks = findMarinasAndPiersCallback();
-    
+    // S2-T10: ghat docks on the Varanasi map (cached; rebuilt only when the map's structure changes)
+    const ghatNetwork = getGhatBoatNetwork(currentGrid, currentGridSize, mapId, structureVersionRef?.current ?? 0, gameVersion ?? 0);
+    const ghatDocks = ghatNetwork ? ghatNetwork.docks.length : 0;
+
     // No boats if no docks
-    if (docks.length === 0) {
+    if (docks.length === 0 && ghatDocks === 0) {
       boatsRef.current = [];
       return;
     }
@@ -86,13 +213,47 @@ export function createBoatSystem(
     const boatsPerDock = isMobile ? BOATS_PER_DOCK_MOBILE : BOATS_PER_DOCK;
     const maxBoatsLimit = isMobile ? MAX_BOATS_MOBILE : MAX_BOATS;
     const maxBoats = Math.min(maxBoatsLimit, Math.floor(docks.length * boatsPerDock));
-    
+    const maxGhatBoats = ghatNetwork && ghatDocks >= 2
+      ? getMaxGhatBoats(ghatNetwork.ghatCount, isMobile ? GHAT_BOAT_CONFIG.maxBoatsMobile : GHAT_BOAT_CONFIG.maxBoats)
+      : 0;
+    let marinaBoatCount = 0;
+    let ghatBoatCount = 0;
+    for (const boat of boatsRef.current) {
+      if (boat.ghatRoute) ghatBoatCount++;
+      else marinaBoatCount++;
+    }
+
     // Speed multiplier based on game speed
     const speedMultiplier = currentSpeed === 1 ? 1 : currentSpeed === 2 ? 1.5 : 2;
 
     // Spawn timer
     boatSpawnTimerRef.current -= delta;
-    if (boatsRef.current.length < maxBoats && boatSpawnTimerRef.current <= 0) {
+    if (ghatNetwork && ghatBoatCount < maxGhatBoats && boatSpawnTimerRef.current <= 0 &&
+        (docks.length === 0 || marinaBoatCount >= maxBoats || Math.random() < 0.5)) {
+      // S2-T10: a new boat leaves a random ghat for another ghat along the Ganga
+      const boat: Boat = {
+        id: boatIdRef.current++,
+        x: 0, y: 0, angle: 0, targetAngle: 0,
+        state: 'touring',
+        speed: GHAT_BOAT_CONFIG.speedMin,
+        originX: 0, originY: 0, destX: 0, destY: 0, destScreenX: 0, destScreenY: 0,
+        age: 0,
+        color: BOAT_COLORS[Math.floor(Math.random() * BOAT_COLORS.length)],
+        wake: [],
+        wakeSpawnProgress: 0,
+        sizeVariant: Math.random() < 0.7 ? 0 : 1,
+        tourWaypoints: [],
+        tourWaypointIndex: 0,
+        homeScreenX: 0,
+        homeScreenY: 0,
+      };
+      if (startGhatTrip(boat, ghatNetwork, Math.floor(Math.random() * ghatDocks))) {
+        boatsRef.current.push(boat);
+        ghatBoatCount++;
+      }
+      boatSpawnTimerRef.current = GHAT_BOAT_CONFIG.spawnIntervalMin + Math.random() * GHAT_BOAT_CONFIG.spawnIntervalRange;
+    }
+    if (docks.length > 0 && marinaBoatCount < maxBoats && boatSpawnTimerRef.current <= 0) {
       // Pick a random dock as home base
       const homeDock = docks[Math.floor(Math.random() * docks.length)];
       
@@ -158,7 +319,20 @@ export function createBoatSystem(
       boat.wake = boat.wake
         .map(p => ({ ...p, age: p.age + delta, opacity: Math.max(0, 1 - p.age / wakeMaxAge) }))
         .filter(p => p.age < wakeMaxAge);
-      
+
+      // S2-T10: ghat boats follow their river route exactly
+      if (boat.ghatRoute) {
+        if (!ghatNetwork) continue;
+        if (!stepGhatBoat(boat, ghatNetwork, delta * speedMultiplier, ghatBoatCount > maxGhatBoats)) {
+          ghatBoatCount--;
+          continue;
+        }
+        if (boat.state !== 'docked') spawnWake(boat, delta);
+        updatedBoats.push(boat);
+        continue;
+      }
+      if (docks.length === 0) continue; // marina/pier boats need a marina or pier
+
       // Distance to destination
       const distToDest = Math.hypot(boat.x - boat.destScreenX, boat.y - boat.destScreenY);
       
@@ -328,20 +502,7 @@ export function createBoatSystem(
         boat.y = nextY;
         
         // Add wake particles when moving (simpler on mobile)
-        const wakeSpawnInterval = isMobile ? 0.08 : WAKE_SPAWN_INTERVAL;
-        boat.wakeSpawnProgress += delta;
-        if (boat.wakeSpawnProgress >= wakeSpawnInterval) {
-          boat.wakeSpawnProgress -= wakeSpawnInterval;
-
-          // Add single wake particle behind the boat
-          const behindBoat = -6; // Position behind the boat
-          boat.wake.push({
-            x: boat.x + Math.cos(boat.angle) * behindBoat,
-            y: boat.y + Math.sin(boat.angle) * behindBoat,
-            age: 0,
-            opacity: 1
-          });
-        }
+        spawnWake(boat, delta);
       }
       
       updatedBoats.push(boat);
@@ -475,6 +636,18 @@ export function createBoatSystem(
       ctx.closePath();
       ctx.fill();
       
+      // S2-T10: ghat boats carry a small lamp at dusk (two plain fills, no shadow blur)
+      if (boat.ghatRoute && visualHour >= GHAT_BOAT_CONFIG.duskLampStartHour && visualHour < GHAT_BOAT_CONFIG.duskLampEndHour) {
+        ctx.fillStyle = 'rgba(255, 170, 60, 0.28)';
+        ctx.beginPath();
+        ctx.arc(6, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffd98a';
+        ctx.beginPath();
+        ctx.arc(6, 0, 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Navigation lights at night (visualHour >= 20 || visualHour < 6)
       const isNight = visualHour >= 20 || visualHour < 6;
       if (isNight) {

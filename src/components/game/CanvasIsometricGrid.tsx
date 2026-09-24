@@ -89,6 +89,7 @@ import { useBuildingHelpers } from '@/components/game/buildingHelpers';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
 import { createBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
+import { getFloodplainSand } from '@/components/game/floodplainSand';
 import { createSeaplaneSystem, SeaplaneSystemRefs, SeaplaneSystemState } from '@/components/game/seaplaneSystem';
 import { createEffectsSystems, EffectsSystemRefs, EffectsSystemState } from '@/components/game/effectsSystems';
 import {
@@ -563,6 +564,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     worldStateRef,
     isMobile,
     visualHour,
+    mapId: state.mapId,
+    gameVersion,
+    structureVersionRef: gridVersionRef,
   };
 
   const {
@@ -1397,6 +1401,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       trafficLightTimer: trafficLightTimerRef.current,
     };
     const activePack = getActiveSpritePack();
+    // S2-T4: sandy east floodplain (Varanasi map only). Precomputed per map size; one typed-array read per tile.
+    const floodplainSand = getFloodplainSand(gridSize, state.mapId);
+    const floodplainSandScheme = (tile: Tile) => {
+      if (!floodplainSand || tile.zone !== 'none') return undefined;
+      const type = tile.building.type;
+      if (type !== 'grass' && type !== 'tree') {
+        if (type !== 'empty') return undefined;
+        // 'empty' tiles inside parks or multi-tile buildings keep their own base
+        const meta = getTileMetadata(tile.x, tile.y);
+        if (meta?.isPartOfParkBuilding || meta?.needsGreyBase) return undefined;
+      }
+      const sandIdx = floodplainSand.index[tile.y * gridSize + tile.x];
+      return sandIdx === 0 ? undefined : floodplainSand.palette[sandIdx - 1];
+    };
     
     
     // Draw isometric tile base
@@ -1454,6 +1472,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           topColor = '#6a4a2a';
         }
         strokeColor = '#f59e0b';
+      }
+      if (floodplainSand && !isPark && !hasGreyBase) {
+        const sand = floodplainSandScheme(tile);
+        if (sand) {
+          topColor = sand.top;
+          strokeColor = sand.stroke;
+        }
       }
       
       // Skip drawing green base for tiles adjacent to water (will be drawn later over water)
@@ -2119,7 +2144,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     insertionSortByDepth(greenBaseTileQueue);
     for (let i = 0; i < greenBaseTileQueue.length; i++) {
       const { tile, screenX, screenY } = greenBaseTileQueue[i];
-      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom);
+      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
     }
     
     // Draw roads (above water, needs full redraw including base tile)
@@ -2512,7 +2537,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
           for (let i = 0; i < greenBaseTileQueue.length; i++) {
             const { tile, screenX, screenY } = greenBaseTileQueue[i];
-            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom);
+            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
           }
           for (let i = 0; i < roadQueue.length; i++) {
             const { tile, screenX, screenY } = roadQueue[i];

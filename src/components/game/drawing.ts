@@ -174,9 +174,11 @@ export function drawGreenBaseTile(
   x: number,
   y: number,
   tile: Tile,
-  currentZoom: number
+  currentZoom: number,
+  /** Replaces the zone colours (e.g. the Varanasi floodplain sand, S2-T4). */
+  colorsOverride?: TileColorScheme
 ): void {
-  const colors = ZONE_COLORS[tile.zone];
+  const colors = colorsOverride ?? ZONE_COLORS[tile.zone];
 
   // Draw the base diamond with stroke only when zoomed in
   drawIsometricDiamond(ctx, x, y, colors, {
