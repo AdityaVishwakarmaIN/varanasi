@@ -69,6 +69,12 @@ import {
 } from '@/components/game/overlays';
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { drawPlaceholderBuilding } from '@/components/game/placeholders';
+import {
+  getProceduralSprite,
+  getProceduralSpriteDrawRect,
+  isVaranasiProceduralSprite,
+  pickProceduralVariant,
+} from '@/components/game/procedural/varanasiSprites';
 import { loadImage, loadSpriteImage, onImageLoaded, getCachedImage } from '@/components/game/imageLoader';
 import { TileInfoPanel } from '@/components/game/panels';
 import {
@@ -1614,6 +1620,37 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
       
+      // Varanasi buildings drawn in code (ghats, STP, landmarks…) until painted sheets exist (S3-T3)
+      if (isVaranasiProceduralSprite(buildingType)) {
+        const progress = tile.building.constructionProgress ?? 100;
+        const footprint = getBuildingSize(buildingType);
+        if (progress < 40) {
+          for (let dy = 0; dy < footprint.height; dy++) {
+            for (let dx = 0; dx < footprint.width; dx++) {
+              drawFoundationPlot(ctx, x + (dx - dy) * (w / 2), y + (dx + dy) * (h / 2), w, h, zoom);
+            }
+          }
+        } else {
+          const sprite = getProceduralSprite(
+            buildingType,
+            pickProceduralVariant(buildingType, tile.x, tile.y),
+            !!tile.building.flipped
+          );
+          if (sprite) {
+            const rect = getProceduralSpriteDrawRect(sprite, x, y, w);
+            const savedAlpha = ctx.globalAlpha;
+            // Under construction: fade in as it nears completion
+            if (progress < 100) ctx.globalAlpha = savedAlpha * (0.45 + 0.55 * (progress / 100));
+            ctx.drawImage(sprite.canvas, Math.round(rect.dx), Math.round(rect.dy), Math.round(rect.dw), Math.round(rect.dh));
+            ctx.globalAlpha = savedAlpha;
+          } else {
+            drawPlaceholderBuilding(ctx, x, y, buildingType, w, h);
+          }
+        }
+        if (tile.building.onFire) drawTileFireEffect(ctx, x, y);
+        return;
+      }
+
       // Check if this building type has a sprite in the tile renderer, parks sheet, or stations sheet
       const hasTileSprite = BUILDING_TO_SPRITE[buildingType] || 
         (activePack.parksBuildings && activePack.parksBuildings[buildingType]) ||
