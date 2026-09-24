@@ -126,7 +126,7 @@ export interface AdjacentCity {
 export interface WaterBody {
   id: string;
   name: string;
-  type: 'lake' | 'ocean';
+  type: 'lake' | 'ocean' | 'river';
   tiles: { x: number; y: number }[];
   centerX: number;
   centerY: number;
