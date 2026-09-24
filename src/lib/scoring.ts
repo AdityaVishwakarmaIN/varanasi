@@ -145,12 +145,14 @@ export interface HappinessInputs {
   environment: number;
   jobSatisfaction: number;
   taxRate: number;
+  /** Varanasi map only: Ganga Health joins the composite with weight `SCORING_CONFIG.ganga.happinessWeight`. */
+  gangaHealth?: number;
 }
 
 /** Happiness composite (0-100) — the headline score. */
 export function calculateHappiness(inputs: HappinessInputs): number {
   const taxScore = 100 - inputs.taxRate * HAPPINESS.taxRatePenaltyPerPoint;
-  return Math.min(
+  const base = Math.min(
     ENV.scoreMax,
     inputs.safety * HAPPINESS.safety +
       inputs.health * HAPPINESS.health +
@@ -159,6 +161,10 @@ export function calculateHappiness(inputs: HappinessInputs): number {
       inputs.jobSatisfaction * HAPPINESS.jobSatisfaction +
       taxScore * HAPPINESS.taxes
   );
+  if (inputs.gangaHealth === undefined) return base;
+  // Other weights are scaled down so all weights still sum to 1.
+  const w = SCORING_CONFIG.ganga.happinessWeight;
+  return Math.min(ENV.scoreMax, base * (1 - w) + Math.max(0, inputs.gangaHealth) * w);
 }
 
 /** Average coverage (0-100) of each percentage-based service grid. */
@@ -186,6 +192,11 @@ export interface RatingsInput {
   jobs: number;
   population: number;
   taxRate: number;
+  /**
+   * Varanasi map only (S2-T7): the river's effect on health and happiness.
+   * `catchmentPopulationShare` = share (0-1) of the city's population living in the Ganga catchment.
+   */
+  ganga?: { health: number; catchmentPopulationShare: number };
 }
 
 export interface Ratings {
@@ -209,7 +220,10 @@ export function calculateRatings(input: RatingsInput): Ratings {
     education: calculateAverageCoverage(input.services.education),
   };
   const safety = calculateSafetyScore(averages.police, averages.fire);
-  const health = calculateHealthScore(averages.health, input.totalPollution, input.totalTiles);
+  const healthCoverage = input.ganga
+    ? Math.max(0, averages.health - getGangaHealthCoveragePenalty(input.ganga.health, input.ganga.catchmentPopulationShare))
+    : averages.health;
+  const health = calculateHealthScore(healthCoverage, input.totalPollution, input.totalTiles);
   const education = calculateEducationScore(averages.education);
   const environment = calculateEnvironmentScore(
     input.treeCount,
@@ -225,6 +239,7 @@ export function calculateRatings(input: RatingsInput): Ratings {
     environment,
     jobSatisfaction,
     taxRate: input.taxRate,
+    gangaHealth: input.ganga?.health,
   });
 
   return { safety, health, education, environment, jobSatisfaction, happiness };
@@ -278,4 +293,10 @@ export function getGangaTrend(current: number, target: number): GangaTrend {
   if (target > current + GANGA.trendThreshold) return 'up';
   if (target < current - GANGA.trendThreshold) return 'down';
   return 'flat';
+}
+
+/** Health-coverage points lost city-wide when the river is below the low-health threshold (scaled by catchment share). */
+export function getGangaHealthCoveragePenalty(gangaHealth: number, catchmentPopulationShare: number): number {
+  if (gangaHealth >= GANGA.lowHealthThreshold) return 0;
+  return GANGA.lowHealthCoveragePenalty * Math.min(1, Math.max(0, catchmentPopulationShare));
 }

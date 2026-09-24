@@ -1,6 +1,7 @@
 /**
  * IsoCity Game State Types
  */
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 import { msg } from 'gt-next';
 import { Building } from './buildings';
@@ -23,7 +24,9 @@ export type Tool =
   | 'mini_golf_course' | 'bleachers_field' | 'go_kart_track' | 'amphitheater'
   | 'greenhouse_garden' | 'animal_pens_farm' | 'cabin_house' | 'campground'
   | 'marina_docks_small' | 'pier_large' | 'roller_coaster_small'
-  | 'community_garden' | 'pond_park' | 'park_gate' | 'mountain_lodge' | 'mountain_trailhead';
+  | 'community_garden' | 'pond_park' | 'park_gate' | 'mountain_lodge' | 'mountain_trailhead'
+  // Varanasi riverfront (append only)
+  | 'ghat' | 'sewage_treatment_plant';
 
 export interface ToolInfo {
   name: string;
@@ -92,6 +95,8 @@ export const TOOL_INFO: Record<Tool, ToolInfo> = {
   park_gate: { name: msg('Park Gate'), cost: 150, description: msg('Decorative park entrance'), size: 1 },
   mountain_lodge: { name: msg('Mountain Lodge'), cost: 1500, description: msg('Nature retreat lodge (2x2)'), size: 2 },
   mountain_trailhead: { name: msg('Trailhead'), cost: 400, description: msg('Hiking trail entrance (3x3)'), size: 3 },
+  ghat: { name: msg('Ghat'), cost: 800, description: msg('Stone steps to the Ganga. Draws pilgrims and tourists.'), size: 1 },
+  sewage_treatment_plant: { name: msg('Sewage Treatment Plant'), cost: 2500, description: msg('Cleans sewage before it reaches the Ganga. Treats a large area (2x2).'), size: 2 },
 };
 
 export interface Tile {
@@ -175,6 +180,8 @@ export interface GameState {
   structureVersion: number;
   roadNetworkVersion: number;
   cities: City[];
+  /** Which map this city was started on. Missing (old saves) means 'random'. */
+  mapId?: MapId;
 }
 
 export interface SavedCityMeta {

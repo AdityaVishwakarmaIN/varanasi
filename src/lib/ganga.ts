@@ -6,7 +6,8 @@
  */
 import type { BuildingType } from '@/games/isocity/types/buildings';
 import type { Tile } from '@/games/isocity/types/game';
-import { getGangaCatchment, getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
+import { getGangaCatchment, getRiverZone, getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 import { SCORING_CONFIG, type GangaLoadInput } from '@/lib/scoring';
 
 const GANGA = SCORING_CONFIG.ganga;
@@ -93,4 +94,29 @@ export function gatherGangaInputs(grid: Tile[][], gridSize: number, stps: readon
     catchmentPopulation,
     treatedPopulation,
   };
+}
+
+/** Riverfront building numbers that are not scores (S2-T5 / S2-T6). */
+export const RIVERFRONT_CONFIG = {
+  /** Monthly upkeep of each Sewage Treatment Plant, charged to the water budget line. */
+  stpUpkeepMonthly: 60,
+} as const;
+
+/**
+ * Ghat placement rule (S2-T5): only on the Ganga's west riverfront, with water on an edge the sprite can face.
+ * Sprites can face grid +x (default) or +y (flipped, mirrored). Returns null when a ghat can't go here.
+ */
+export function getGhatPlacement(
+  grid: Tile[][],
+  x: number,
+  y: number,
+  gridSize: number,
+  mapId: MapId | undefined
+): { flipped: boolean } | null {
+  if (getRiverZone(x, y, gridSize, mapId) !== 'westRiverfront') return null;
+  const isWater = (tx: number, ty: number) => grid[ty]?.[tx]?.building.type === 'water';
+  const waterEast = isWater(x + 1, y);
+  const waterSouth = isWater(x, y + 1);
+  if (!waterEast && !waterSouth && !isWater(x - 1, y) && !isWater(x, y - 1)) return null;
+  return { flipped: !waterEast && waterSouth };
 }

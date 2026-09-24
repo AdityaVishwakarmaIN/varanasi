@@ -13,6 +13,7 @@
  */
 import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
+import { getGhatPlacement } from '@/lib/ganga';
 import {
   bulldozeTile,
   getBuildingSize,
@@ -49,6 +50,7 @@ export const PLACEMENT_REASONS = {
   notWater: msg('Only works on water'),
   outsideMap: msg('Outside the map'),
   needsRoad: msg('Needs road access to grow'),
+  ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
 } as const;
 
 /** Tools that are not a building of the same name (mirrors `toolBuildingMap` in GameContext). */
@@ -143,6 +145,9 @@ function explainRefusal(state: GameState, tool: Tool, building: BuildingType | n
   if (building) {
     const size = getBuildingSize(building);
     if (x + size.width > state.gridSize || y + size.height > state.gridSize) return PLACEMENT_REASONS.outOfBounds;
+    if (building === 'ghat' && !getGhatPlacement(state.grid, x, y, state.gridSize, state.mapId)) {
+      return PLACEMENT_REASONS.ghatWestBank;
+    }
     if (requiresWaterAdjacency(building)) {
       const waterCheck = getWaterAdjacency(state.grid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) return PLACEMENT_REASONS.needsWater;

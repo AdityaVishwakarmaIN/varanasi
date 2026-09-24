@@ -18,6 +18,13 @@ export interface Stats {
     commercial: number;
     industrial: number;
   };
+  /** Varanasi map only (S2-T7): river health 0-100 (a slow stock) and where it is heading. */
+  gangaHealth?: number;
+  gangaHealthTarget?: number;
+  /** Varanasi map only (S2-T9): monthly tourism income, included in `income`. */
+  tourismIncome?: number;
+  /** Monthly tax income (the rest of `income`). */
+  taxIncome?: number;
 }
 
 export interface BudgetCategory {
@@ -52,4 +59,6 @@ export interface HistoryPoint {
   population: number;
   money: number;
   happiness: number;
+  /** Varanasi map only. */
+  gangaHealth?: number;
 }

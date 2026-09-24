@@ -25,10 +25,17 @@ import {
 import type { CloudWeatherMode } from '@/components/game/types';
 import type { GameState, Tile } from '@/types/game';
 
+/**
+ * Fields added AFTER the goldens were recorded (new features, not behaviour changes). They are left out of the
+ * fingerprint so the goldens keep proving that pre-existing behaviour is unchanged.
+ * - `mapId` (S2-T2), `taxIncome` (S2-T9)
+ */
+const FIELDS_ADDED_AFTER_GOLDENS = new Set(['mapId', 'taxIncome']);
+
 /** Canonical JSON: sorted keys, `undefined` dropped, random ids removed. */
 function canonical(value: unknown): string {
   return JSON.stringify(value, function replacer(key, v) {
-    if (key === 'id') return undefined;
+    if (key === 'id' || FIELDS_ADDED_AFTER_GOLDENS.has(key)) return undefined;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       const sorted: Record<string, unknown> = {};
       for (const k of Object.keys(v).sort()) sorted[k] = (v as Record<string, unknown>)[k];

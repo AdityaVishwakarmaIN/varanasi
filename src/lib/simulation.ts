@@ -47,6 +47,11 @@ import {
   type CoverageAverages,
 } from './scoring';
 import type { Rng } from '@/lib/rng';
+import type { MapId } from '@/games/isocity/maps/varanasi';
+import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
+import { gatherGangaInputs, getGhatPlacement, RIVERFRONT_CONFIG } from '@/lib/ganga';
+import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
+import { calculateTourismIncome } from '@/lib/tourism';
 import type { CloudWeatherMode } from '@/components/game/types';
 
 // Default grid size for new random games. Pure logic must not look at the device (README rule 7),
@@ -633,7 +638,8 @@ export function getConnectableCities(
 }
 
 // Generate terrain - grass with scattered trees, lakes, and oceans
-function generateTerrain(size: number, rng: Rng = Math.random): { grid: Tile[][]; waterBodies: WaterBody[] } {
+function generateTerrain(size: number, rng: Rng = Math.random, mapId: MapId = 'random'): { grid: Tile[][]; waterBodies: WaterBody[] } {
+  if (mapId === 'varanasi') return generateVaranasiTerrain(size, rng, createTile);
   const grid: Tile[][] = [];
   const seed = rng() * 1000;
 
@@ -1277,8 +1283,13 @@ function generateUUID(): string {
   });
 }
 
-export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityName: string = 'New City', rng: Rng = Math.random): GameState {
-  const { grid, waterBodies } = generateTerrain(size, rng);
+export function createInitialGameState(
+  size: number = DEFAULT_GRID_SIZE,
+  cityName: string = 'New City',
+  rng: Rng = Math.random,
+  mapId: MapId = 'random'
+): GameState {
+  const { grid, waterBodies } = generateTerrain(size, rng, mapId);
   const adjacentCities = generateAdjacentCities();
   let totalTiles = 0;
   let treeCount = 0;
@@ -1297,6 +1308,13 @@ export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityNam
 
   const initialStats = createInitialStats();
   initialStats.environment = calculateEnvironmentScore(treeCount, 0, 0, totalTiles);
+  if (mapId === 'varanasi') {
+    // The river starts at the target health of an empty map (only upstream load): not pristine, but healthy.
+    const start = calculateGangaTargetHealth(gatherGangaInputs(grid, size, [])).targetHealth;
+    initialStats.gangaHealth = start;
+    initialStats.gangaHealthTarget = start;
+    initialStats.tourismIncome = 0;
+  }
   
   // Create a default city covering the entire map
   const defaultCity: import('@/types/game').City = {
@@ -1347,6 +1365,7 @@ export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityNam
     structureVersion: 0,
     roadNetworkVersion: 0,
     cities: [defaultCity],
+    mapId,
   };
 }
 
@@ -2072,6 +2091,9 @@ interface GridTotals {
   abandonedResidential: number;
   abandonedCommercial: number;
   abandonedIndustrial: number;
+  /** Origin tiles of ghats and Sewage Treatment Plants (Varanasi riverfront, S2). */
+  ghats: { x: number; y: number }[];
+  stps: { x: number; y: number }[];
 }
 
 /**
@@ -2116,6 +2138,8 @@ function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture
   let abandonedIndustrial = 0;
   let lastCleanupType: BuildingType | null = null;
   let lastIsReducer = false;
+  const ghats: { x: number; y: number }[] = [];
+  const stps: { x: number; y: number }[] = [];
 
   for (let y = 0; y < size; y++) {
     const row = grid[y];
@@ -2173,6 +2197,8 @@ function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture
         case 'stadium': if (isComplete) stadiumCount++; break;
         case 'museum': if (isComplete) museumCount++; break;
         case 'amusement_park': if (isComplete) hasAmusementPark = true; break;
+        case 'ghat': if (isComplete && !building.abandoned) ghats.push({ x, y }); break;
+        case 'sewage_treatment_plant': stps.push({ x, y }); break;
       }
 
       // --- advisor messages ---
@@ -2195,8 +2221,20 @@ function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture
     railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount, museumCount,
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings, abandonedResidential,
-    abandonedCommercial, abandonedIndustrial,
+    abandonedCommercial, abandonedIndustrial, ghats, stps,
   };
+}
+
+/** What calculateStats needs to know about the river (Varanasi map only). */
+interface RiverContext {
+  mapId: MapId | undefined;
+  /** Current (slow-moving) Ganga Health carried over from the previous state. */
+  gangaHealth: number;
+}
+
+function getRiverContext(state: GameState): RiverContext | undefined {
+  if (state.mapId !== 'varanasi') return undefined;
+  return { mapId: state.mapId, gangaHealth: state.stats.gangaHealth ?? state.stats.gangaHealthTarget ?? 75 };
 }
 
 // Calculate city stats
@@ -2208,7 +2246,8 @@ function calculateStats(
   taxRate: number,
   effectiveTaxRate: number,
   services: ServiceCoverage,
-  totals: GridTotals = scanGridTotals(grid, size)
+  totals: GridTotals = scanGridTotals(grid, size),
+  river?: RiverContext
 ): Stats {
   const {
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
@@ -2280,7 +2319,23 @@ function calculateStats(
   const industrialDemand = Math.min(100, Math.max(-100, industrialWithBonuses * taxMultiplier + taxAdditiveModifier * 0.5));
 
   // Calculate income and expenses
-  const income = Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
+  const taxIncome = Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
+
+  // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
+  let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
+  let gangaRatingsInput: { health: number; catchmentPopulationShare: number } | undefined;
+  let tourismIncome = 0;
+  if (river && river.mapId === 'varanasi') {
+    const inputs = gatherGangaInputs(grid, size, totals.stps);
+    const target = calculateGangaTargetHealth(inputs).targetHealth;
+    tourismIncome = Math.floor(calculateTourismIncome(grid, size, totals.ghats, river.gangaHealth));
+    gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
+    gangaRatingsInput = {
+      health: river.gangaHealth,
+      catchmentPopulationShare: population > 0 ? inputs.catchmentPopulation / population : 0,
+    };
+  }
+  const income = taxIncome + tourismIncome;
   
   let expenses = 0;
   expenses += Math.floor(budget.police.cost * budget.police.funding / 100);
@@ -2304,6 +2359,7 @@ function calculateStats(
     jobs,
     population,
     taxRate,
+    ganga: gangaRatingsInput,
   });
 
   return {
@@ -2311,6 +2367,8 @@ function calculateStats(
     jobs,
     money: 0, // Will be updated from previous state
     income,
+    taxIncome,
+    ...gangaStats,
     expenses,
     happiness,
     health,
@@ -2346,7 +2404,7 @@ function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = 
   newBudget.transportation = { ...budget.transportation, cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 };
   newBudget.parks = { ...budget.parks, cost: parkCount * 10 };
   newBudget.power = { ...budget.power, cost: powerCount * 150 };
-  newBudget.water = { ...budget.water, cost: waterCount * 75 };
+  newBudget.water = { ...budget.water, cost: waterCount * 75 + totals.stps.length * RIVERFRONT_CONFIG.stpUpkeepMonthly };
 
   return newBudget;
 }
@@ -2479,7 +2537,8 @@ export function recalculateDerivedState(state: GameState): GameState {
     state.taxRate,
     state.effectiveTaxRate,
     services,
-    totals
+    totals,
+    getRiverContext(state)
   );
   stats.money = state.stats.money;
 
@@ -2987,7 +3046,7 @@ export function simulateTick(
   const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals);
+  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, getRiverContext(state));
   newStats.money = state.stats.money;
 
   // Smooth demand to prevent flickering in large cities
@@ -3017,6 +3076,10 @@ export function simulateTick(
   if (newTick >= 30) {
     newTick = 0;
     newDay++;
+    // Ganga Health is a slow stock: once per in-game day it moves a fixed share toward its target (S2-T7).
+    if (newStats.gangaHealth !== undefined && newStats.gangaHealthTarget !== undefined) {
+      newStats.gangaHealth = stepGangaHealth(newStats.gangaHealth, newStats.gangaHealthTarget);
+    }
     // Weekly income/expense (deposit every 7 days at 1/4 monthly rate)
     // Only deposit when day changes to a multiple of 7
     if (newDay % 7 === 0) {
@@ -3054,6 +3117,7 @@ export function simulateTick(
       population: newStats.population,
       money: newStats.money,
       happiness: newStats.happiness,
+      ...(newStats.gangaHealth !== undefined ? { gangaHealth: newStats.gangaHealth } : {}),
     });
     // Keep last 100 entries
     while (history.length > 100) {
@@ -3123,6 +3187,8 @@ const BUILDING_SIZES: Partial<Record<BuildingType, { width: number; height: numb
   mountain_trailhead: { width: 3, height: 3 },
   // Transportation
   rail_station: { width: 2, height: 2 },
+  // Varanasi riverfront
+  sewage_treatment_plant: { width: 2, height: 2 },
 };
 
 // Get the size of a building (how many tiles it spans)
@@ -3438,7 +3504,12 @@ export function placeBuilding(
     
     // Check water adjacency requirement for waterfront buildings (marina, pier)
     let shouldFlip = false;
-    if (requiresWaterAdjacency(buildingType)) {
+    if (buildingType === 'ghat') {
+      // Ghats only go on the Ganga's west riverfront, with the steps facing the water (S2-T5)
+      const ghat = getGhatPlacement(newGrid, x, y, state.gridSize, state.mapId);
+      if (!ghat) return state;
+      shouldFlip = ghat.flipped;
+    } else if (requiresWaterAdjacency(buildingType)) {
       const waterCheck = getWaterAdjacency(newGrid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) {
         return state; // Waterfront buildings must be placed next to water
