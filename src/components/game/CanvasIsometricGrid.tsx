@@ -145,6 +145,7 @@ import {
   type PinchStart,
 } from '@/lib/touchGestures';
 import { Check, X } from 'lucide-react';
+import { formatINR } from '@/lib/format';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
 // Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
@@ -3999,7 +4000,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             <div className="flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 pl-3 shadow-lg backdrop-blur-sm">
               <span className="text-xs font-medium text-foreground whitespace-nowrap">
                 {m(TOOL_INFO[tool].name)}{' '}
-                <span className="font-mono text-amber-500">${cost.toLocaleString()}</span>
+                <span className="font-mono text-amber-500">{formatINR(cost)}</span>
               </span>
               <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
                 <Check className="w-5 h-5" />
@@ -4045,8 +4046,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                   <div className="text-sm text-muted-foreground">
                     Connecting to <Var>{city.name}</Var> will establish a trade route, providing:
                     <ul className="mt-2 space-y-1 list-disc list-inside">
-                      <li>$5,000 one-time bonus</li>
-                      <li>$200/month additional income</li>
+                      <li>₹5,000 one-time bonus</li>
+                      <li>₹200/month additional income</li>
                     </ul>
                   </div>
                 </T>
@@ -4105,7 +4106,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                   return (
                     <>
                       {gt('{toolName} - {width}x{height} area', { toolName, width: areaWidth, height: areaHeight })}
-                      {TOOL_INFO[selectedTool].cost > 0 && ` - $${totalCost}`}
+                      {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(totalCost)}`}
                     </>
                   );
                 })()}
@@ -4113,13 +4114,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             ) : isPlacementInvalid && placementPreview?.reason ? (
               <>
                 {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
-                {TOOL_INFO[selectedTool].cost > 0 && ` - $${TOOL_INFO[selectedTool].cost}`}
+                {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
                 {' - '}<span className="font-semibold">{m(placementPreview.reason)}</span>
               </>
             ) : (
               <>
                 {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
-                {TOOL_INFO[selectedTool].cost > 0 && ` - $${TOOL_INFO[selectedTool].cost}`}
+                {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
                 {placementPreview?.warning && (
                   <span className="text-amber-500">{' - '}{m(placementPreview.warning)}</span>
                 )}

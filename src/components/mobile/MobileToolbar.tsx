@@ -222,6 +222,7 @@ const UI_LABELS = {
   health: msg('Health'),
   education: msg('Education'),
   subway: msg('Subway'),
+  ganga: msg('Ganga'),
   budget: msg('Budget'),
   statistics: msg('Statistics'),
   advisors: msg('Advisors'),
@@ -521,6 +522,16 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   >
                     {m(UI_LABELS.subway)}
                   </Button>
+                  {state.mapId === 'varanasi' && (
+                    <Button
+                      variant={overlayMode === 'ganga' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-11 w-full text-xs ${overlayMode === 'ganga' ? 'bg-cyan-600 hover:bg-cyan-700' : ''}`}
+                      onClick={() => setOverlayMode('ganga')}
+                    >
+                      {m(UI_LABELS.ganga)}
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

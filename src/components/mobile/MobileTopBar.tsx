@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
+import { formatINR, formatPopulation } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -171,13 +172,13 @@ export function MobileTopBar({
             </div>
             <div className="flex flex-col items-start">
               <span className="text-xs font-mono font-semibold text-foreground">
-                {stats.population >= 1000 ? `${(stats.population / 1000).toFixed(1)}k` : stats.population}
+                {formatPopulation(stats.population)}
               </span>
               <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.pop)}</span>
             </div>
             <div className="flex flex-col items-start">
               <span className={`text-xs font-mono font-semibold ${stats.money < 0 ? 'text-red-500' : stats.money < 1000 ? 'text-amber-500' : 'text-green-500'}`}>
-                ${stats.money >= 1000000 ? `${(stats.money / 1000000).toFixed(1)}M` : stats.money >= 1000 ? `${(stats.money / 1000).toFixed(0)}k` : stats.money}
+                {formatINR(stats.money)}
               </span>
               <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.funds)}</span>
             </div>
@@ -270,7 +271,7 @@ export function MobileTopBar({
 
           <div className="flex items-center gap-1">
             <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {stats.income - stats.expenses >= 0 ? '+' : ''}${(stats.income - stats.expenses).toLocaleString()}/mo
+              {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
             </span>
           </div>
         </div>
@@ -318,11 +319,11 @@ export function MobileTopBar({
             {selectedTile.building.population > 0 && (
               <div className="flex items-center gap-1 shrink-0">
                 <PopulationIcon size={10} className="text-muted-foreground" />
-                <span className="text-foreground font-mono">{selectedTile.building.population}</span>
+                <span className="text-foreground font-mono">{formatPopulation(selectedTile.building.population)}</span>
               </div>
             )}
             {selectedTile.building.jobs > 0 && (
-              <span className="text-foreground font-mono shrink-0">{selectedTile.building.jobs} {m(UI_LABELS.jobsLower)}</span>
+              <span className="text-foreground font-mono shrink-0">{formatPopulation(selectedTile.building.jobs)} {m(UI_LABELS.jobsLower)}</span>
             )}
             
             {/* Utilities */}
@@ -417,24 +418,24 @@ export function MobileTopBar({
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{m(UI_LABELS.population)}</span>
-                <span className="text-sm font-mono text-foreground">{stats.population.toLocaleString()}</span>
+                <span className="text-sm font-mono text-foreground">{formatPopulation(stats.population)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{m(UI_LABELS.jobs)}</span>
-                <span className="text-sm font-mono text-foreground">{stats.jobs.toLocaleString()}</span>
+                <span className="text-sm font-mono text-foreground">{formatPopulation(stats.jobs)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{m(UI_LABELS.monthlyIncome)}</span>
-                <span className="text-sm font-mono text-green-400">${stats.income.toLocaleString()}</span>
+                <span className="text-sm font-mono text-green-400">{formatINR(stats.income)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{m(UI_LABELS.monthlyExpenses)}</span>
-                <span className="text-sm font-mono text-red-400">${stats.expenses.toLocaleString()}</span>
+                <span className="text-sm font-mono text-red-400">{formatINR(stats.expenses)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{m(UI_LABELS.weeklyNet)}</span>
                 <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  ${Math.floor((stats.income - stats.expenses) / 4).toLocaleString()}
+                  {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
                 </span>
               </div>
             </div>

@@ -15,7 +15,7 @@ import {
   SERVICE_RANGE_INCREASE_PER_LEVEL,
   SERVICE_UPGRADE_COST_BASE,
 } from '@/lib/simulation';
-import { formatINR } from '@/lib/format';
+import { formatINR, formatPopulation } from '@/lib/format';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -130,11 +130,11 @@ export function TileInfoPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Population</span>
-          <span>{tile.building.population}</span>
+          <span>{formatPopulation(tile.building.population)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Jobs</span>
-          <span>{tile.building.jobs}</span>
+          <span>{formatPopulation(tile.building.jobs)}</span>
         </div>
         
         <Separator />
