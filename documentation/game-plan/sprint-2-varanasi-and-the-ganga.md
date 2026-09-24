@@ -398,3 +398,7 @@ tourismIncome   = Σ ghatIncome
   sewage. In the screenshot session the Ganga overlay tinted catchment land red/green as expected, but the **river water tiles did not
   visibly change colour** by Ganga Health: check how `getGangaRiverColor` fills are drawn for water tiles in `CanvasIsometricGrid.tsx`.
 - The new tile-info and chip strings are plain English (TileInfoPanel was already untranslated); wrap them in `msg()` when the panels are translated.
+- **S2-T11 step 1:** the three Ganga tips run inside the existing 5-second tip check. `ganga_falling` and `needs_stp` read a context
+  that `useTipSystem` refreshes once per in-game day (a counter of consecutive "down" days, and sewageLoad vs netLoad from
+  `gatherGangaInputs`); a day jump of more than 30 days (a loaded save) restarts the count. Thresholds are in `GANGA_TIPS_CONFIG`
+  (`src/lib/gangaTips.ts`). Steps 2–3 (45-minute playtest, Varanasi benchmark) are not done.
