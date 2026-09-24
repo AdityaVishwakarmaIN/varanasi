@@ -73,7 +73,7 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
 - [ ] S1-T9: Reliable saves (IndexedDB)
 - [x] S1-T10: Desktop controls
-- [ ] S1-T11: Touch controls
+- [x] S1-T11: Touch controls
 - [x] S1-T12: Hide multiplayer
 - [ ] S1-T13: Final measurement and sprint sign-off
 
@@ -515,7 +515,7 @@ mis-tap on an expensive building asks for confirmation.
 - **What is left in the tick** (after S1-T5): the per-tile work in the main loop (~4,000 of 25,600 tiles take
   the full path each tick), one full-grid scan for the coverage key, one for the totals, and GC for the tiles
   that really change. Further big wins need a typed-array grid rather than one JS object per tile.
-- **`hasRoadAccess` breaks on maps over 128×128.** Its reusable `roadAccessVisited` buffer is `128 * 128`; on a
+- **[fixed by the lead after the merge: the buffer now grows to the map size; golden fingerprints were unchanged]** **`hasRoadAccess` breaks on maps over 128×128.** Its reusable `roadAccessVisited` buffer is `128 * 128`; on a
   160 map, indexes past 16,383 are silently ignored, so the search revisits tiles (capped by its queue) and can
   give different answers than intended. Fix before/with S1-T8 (this changes results, so re-record the golden
   fingerprints in `src/lib/__tests__/simulateTick.test.ts`).
@@ -534,3 +534,20 @@ mis-tap on an expensive building asks for confirmation.
   renderer's per-tile loops the same way in S1-T7/S1-T8.
 - The old `simulateTick` sometimes wrote into the state it was given (building footprints reaching into rows it
   had not copied yet, tree growth, budget cost objects). Fixed in S1-T5; a test now checks it.
+
+- **S1-T11:** gesture helpers are pure in `src/lib/touchGestures.ts` (`classifyTouch`, `isDrawModeTool`, `needsTapConfirm`,
+  `computePinchPose`); thresholds in `TOUCH_CONFIG` (`controlsConfig.ts`). Draw mode reuses the desktop mouse-drag code
+  (`handleMouseDown/Move/Up` now take a minimal pointer shape), so road/rail/zone drawing rules exist once.
+- **S1-T11:** to fit 44×44 px targets on a 390 px top bar, the four speed buttons became **pause/resume + one speed
+  button that cycles 1× → 2× → 3×**. The speed it resumes at is only remembered for changes made with that button.
+  Radix slider thumbs (tax slider) were not resized.
+- **S1-T11:** render-loop skipping now uses one rule for pan, pinch and wheel zoom (`getInteractionSkips` in
+  `cameraMotion.ts`): small things (boats, smog, helicopters, seaplanes) are skipped while moving below
+  `SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD`; mobile still skips *all* animated entities while moving (existing perf choice).
+  The pan-inertia glide does not count as "moving". When `QUALITY_PRESETS` (S1-T7) lands, read the threshold from it.
+- **S1-T11:** the Controls help panel lists keyboard and mouse only; touch gestures could be added from the table in
+  `touchGestures.ts`. Draw-mode drags never ask for confirmation (only taps do). While drawing on touch, the bottom
+  placement label shows the desktop text ("Drag to place"). A second finger during a Draw-mode drag cancels an unfinished
+  zone rectangle (roads already laid stay). Water/land terraform is not a Draw-mode tool (50,000 per tile).
+- **S1-T11 (testing):** headless Chromium launched with the SwiftShader flags from `shot-helper.mjs` runs at 150–300 ms
+  per frame, which delays touch events enough to fire long-presses during drags. Launch with default args for touch tests.

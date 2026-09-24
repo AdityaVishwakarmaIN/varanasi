@@ -6,6 +6,8 @@ import { useGame } from '@/context/GameContext';
 import { Tool, TOOL_INFO } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Pencil } from 'lucide-react';
+import { isDrawModeTool } from '@/lib/touchGestures';
 import {
   CloseIcon,
   RoadIcon,
@@ -224,6 +226,8 @@ const UI_LABELS = {
   statistics: msg('Statistics'),
   advisors: msg('Advisors'),
   settings: msg('Settings'),
+  drawOn: msg('Draw: on'),
+  drawOff: msg('Draw: off'),
 };
 
 const toolCategories = {
@@ -245,9 +249,12 @@ interface MobileToolbarProps {
   onOpenPanel: (panel: 'budget' | 'statistics' | 'advisors' | 'settings') => void;
   overlayMode?: OverlayMode;
   setOverlayMode?: (mode: OverlayMode) => void;
+  /** S1-T11: touch Draw mode (one-finger drag draws instead of pans). */
+  drawMode?: boolean;
+  onDrawModeChange?: (on: boolean) => void;
 }
 
-export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode }: MobileToolbarProps) {
+export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode, drawMode = false, onDrawModeChange }: MobileToolbarProps) {
   const { state, setTool, expandCity, shrinkCity } = useGame();
   const { selectedTool, stats } = state;
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -280,6 +287,19 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
     <>
       {/* Bottom Toolbar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom">
+        {/* S1-T11: Draw mode toggle, only for tools that are drawn by dragging (road, rail, zones) */}
+        {onDrawModeChange && isDrawModeTool(selectedTool) && (
+          <Button
+            data-testid="draw-mode-toggle"
+            variant={drawMode ? 'default' : 'secondary'}
+            aria-pressed={drawMode}
+            className="absolute bottom-full right-2 mb-2 h-11 min-w-11 px-4 gap-2 rounded-full shadow-lg border border-border"
+            onClick={() => onDrawModeChange(!drawMode)}
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="text-xs">{drawMode ? m(UI_LABELS.drawOn) : m(UI_LABELS.drawOff)}</span>
+          </Button>
+        )}
         <Card className="rounded-none border-x-0 border-b-0 bg-card/95 backdrop-blur-sm">
           {/* Selected tool info - now above the toolbar */}
           {selectedTool && TOOL_INFO[selectedTool] && (
@@ -398,7 +418,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-full text-xs"
+                  className="h-11 w-full text-xs"
                   onClick={() => { onOpenPanel('budget'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.budget)}
@@ -406,7 +426,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-full text-xs"
+                  className="h-11 w-full text-xs"
                   onClick={() => { onOpenPanel('statistics'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.statistics)}
@@ -414,7 +434,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-full text-xs"
+                  className="h-11 w-full text-xs"
                   onClick={() => { onOpenPanel('advisors'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.advisors)}
@@ -422,7 +442,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-full text-xs"
+                  className="h-11 w-full text-xs"
                   onClick={() => { onOpenPanel('settings'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.settings)}
@@ -440,7 +460,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'none' ? 'default' : 'ghost'}
                     size="sm"
-                    className="h-10 w-full text-xs"
+                    className="h-11 w-full text-xs"
                     onClick={() => setOverlayMode('none')}
                   >
                     {m(UI_LABELS.none)}
@@ -448,7 +468,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'power' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'power' ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'power' ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
                     onClick={() => setOverlayMode('power')}
                   >
                     {m(UI_LABELS.power)}
@@ -456,7 +476,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'water' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'water' ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'water' ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
                     onClick={() => setOverlayMode('water')}
                   >
                     {m(UI_LABELS.water)}
@@ -464,7 +484,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'fire' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'fire' ? 'bg-red-500 hover:bg-red-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'fire' ? 'bg-red-500 hover:bg-red-600' : ''}`}
                     onClick={() => setOverlayMode('fire')}
                   >
                     {m(UI_LABELS.fire)}
@@ -472,7 +492,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'police' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'police' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'police' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                     onClick={() => setOverlayMode('police')}
                   >
                     {m(UI_LABELS.police)}
@@ -480,7 +500,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'health' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'health' ? 'bg-green-500 hover:bg-green-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'health' ? 'bg-green-500 hover:bg-green-600' : ''}`}
                     onClick={() => setOverlayMode('health')}
                   >
                     {m(UI_LABELS.health)}
@@ -488,7 +508,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'education' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'education' ? 'bg-purple-500 hover:bg-purple-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'education' ? 'bg-purple-500 hover:bg-purple-600' : ''}`}
                     onClick={() => setOverlayMode('education')}
                   >
                     {m(UI_LABELS.education)}
@@ -496,7 +516,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   <Button
                     variant={overlayMode === 'subway' ? 'default' : 'ghost'}
                     size="sm"
-                    className={`h-10 w-full text-xs ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}`}
+                    className={`h-11 w-full text-xs ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}`}
                     onClick={() => setOverlayMode('subway')}
                   >
                     {m(UI_LABELS.subway)}

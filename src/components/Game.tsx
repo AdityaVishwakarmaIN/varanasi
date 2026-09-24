@@ -86,6 +86,16 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const controlsRef = useRef<SharedControlsState>(createSharedControlsState());
   const [showControlsHelp, setShowControlsHelp] = useState(false);
   const openControlsHelp = useCallback(() => setShowControlsHelp(true), []);
+  // S1-T11 (touch): Draw mode makes a one-finger drag draw roads/rail/zones instead of panning.
+  const [touchDrawMode, setTouchDrawMode] = useState(false);
+  // S1-T11 (touch): a long-press inspects a tile with any tool. Remember the tool it was inspected
+  // with, so the tile info stays open for that tool and closes when the player switches tools.
+  const [selectedTileTool, setSelectedTileTool] = useState<Tool>('select');
+  const selectedToolForTile = state.selectedTool;
+  const selectTileOnMobile = useCallback((tile: { x: number; y: number } | null) => {
+    setSelectedTile(tile);
+    setSelectedTileTool(selectedToolForTile);
+  }, [selectedToolForTile]);
   
   // Cheat code system
   const {
@@ -300,7 +310,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <div className="w-full h-full overflow-hidden bg-background flex flex-col">
           {/* Mobile Top Bar */}
           <MobileTopBar 
-            selectedTile={selectedTile && state.selectedTool === 'select' ? state.grid[selectedTile.y][selectedTile.x] : null}
+            selectedTile={selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool) ? state.grid[selectedTile.y][selectedTile.x] : null}
             services={state.services}
             onCloseTile={() => setSelectedTile(null)}
             onShare={FEATURES.coop ? () => setShowShareModal(true) : undefined}
@@ -320,10 +330,11 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <CanvasIsometricGrid 
               overlayMode={overlayMode} 
               selectedTile={selectedTile} 
-              setSelectedTile={setSelectedTile}
+              setSelectedTile={selectTileOnMobile}
               isMobile={true}
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
+              touchDrawMode={touchDrawMode}
             />
             
             {/* Multiplayer Players Indicator - Mobile */}
@@ -368,6 +379,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onOpenPanel={(panel) => setActivePanel(panel)}
             overlayMode={overlayMode}
             setOverlayMode={setOverlayMode}
+            drawMode={touchDrawMode}
+            onDrawModeChange={setTouchDrawMode}
           />
           
           {/* Panels - render as fullscreen modals on mobile */}

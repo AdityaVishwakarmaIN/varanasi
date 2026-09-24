@@ -60,6 +60,9 @@ const UI_LABELS = {
   exitWithoutSaving: msg('Exit Without Saving'),
   saveAndExit: msg('Save & Exit'),
   zone: msg('Zone'),
+  pause: msg('Pause'),
+  resume: msg('Resume'),
+  speed: msg('Game speed'),
 };
 
 // Sun/Moon icon for time of day
@@ -124,6 +127,13 @@ export function MobileTopBar({
   const [showDetails, setShowDetails] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showTaxSlider, setShowTaxSlider] = useState(false);
+  // Speed to resume at after a pause (the speed button shows it while paused)
+  const [lastRunSpeed, setLastRunSpeed] = useState<1 | 2 | 3>(1);
+  const shownSpeed: 1 | 2 | 3 = speed === 0 ? lastRunSpeed : speed;
+  const changeSpeed = useCallback((next: 1 | 2 | 3) => {
+    setLastRunSpeed(next);
+    setSpeed(next);
+  }, [setSpeed]);
   const m = useMessages();
 
   const handleSaveAndExit = useCallback(() => {
@@ -143,10 +153,10 @@ export function MobileTopBar({
     <>
       {/* Main Top Bar */}
       <Card className="fixed top-0 left-0 right-0 z-40 rounded-none border-x-0 border-t-0 bg-card/95 backdrop-blur-sm safe-area-top">
-        <div className="flex items-center justify-between px-3 py-1.5">
+        <div className="flex items-center justify-between px-3 py-0">
           {/* Left: City name, date, Pop/Funds stats */}
           <button
-            className="flex items-center gap-3 min-w-0 active:opacity-70 p-0 m-0 mr-auto"
+            className="flex items-center gap-3 min-w-0 min-h-11 active:opacity-70 p-0 m-0 mr-auto"
             onClick={() => setShowDetails(!showDetails)}
           >
             <div className="flex flex-col items-start">
@@ -173,85 +183,65 @@ export function MobileTopBar({
             </div>
           </button>
 
-          {/* Speed controls and exit button */}
-          <div className="flex items-center gap-1">
-            <div className="flex items-center gap-0 bg-secondary rounded-sm h-6 overflow-hidden p-0 m-0">
-              <button
-                onClick={() => setSpeed(0)}
-                className={`h-6 w-6 min-w-6 p-0 m-0 flex items-center justify-center rounded-none ${
-                  speed === 0 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/20'
-                }`}
-                title="Pause"
-              >
-                <PauseIcon size={12} />
-              </button>
-              <button
-                onClick={() => setSpeed(1)}
-                className={`h-6 w-6 min-w-6 p-0 m-0 flex items-center justify-center rounded-none ${
-                  speed === 1 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/20'
-                }`}
-                title="Normal speed"
-              >
-                <PlayIcon size={12} />
-              </button>
-              <button
-                onClick={() => setSpeed(2)}
-                className={`h-6 w-6 min-w-6 p-0 m-0 flex items-center justify-center rounded-none ${
-                  speed === 2 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/20'
-                }`}
-                title="2x speed"
-              >
-                <div className="flex items-center -space-x-[5px]">
-                  <PlayIcon size={12} />
-                  <PlayIcon size={12} />
-                </div>
-              </button>
-              <button
-                onClick={() => setSpeed(3)}
-                className={`h-6 w-6 min-w-6 p-0 m-0 flex items-center justify-center rounded-none ${
-                  speed === 3 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/20'
-                }`}
-                title="3x speed"
-              >
-                <div className="flex items-center -space-x-[7px]">
-                  <PlayIcon size={12} />
-                  <PlayIcon size={12} />
-                  <PlayIcon size={12} />
-                </div>
-              </button>
-            </div>
+          {/* Speed controls and exit button. S1-T11: every button is a 44×44 px touch target;
+              the four speed buttons became pause/resume + a speed button that cycles 1× → 2× → 3×. */}
+          <div className="flex items-center -mr-2">
+            <button
+              onClick={() => (speed === 0 ? changeSpeed(shownSpeed) : setSpeed(0))}
+              className="h-11 w-11 p-0 m-0 flex items-center justify-center"
+              title={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
+              aria-label={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
+            >
+              <span className={`h-7 w-7 flex items-center justify-center rounded-sm ${
+                speed === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              }`}>
+                {speed === 0 ? <PlayIcon size={12} /> : <PauseIcon size={12} />}
+              </span>
+            </button>
+            <button
+              onClick={() => changeSpeed(speed === 0 ? shownSpeed : ((speed % 3) + 1) as 1 | 2 | 3)}
+              className="h-11 w-11 p-0 m-0 flex items-center justify-center"
+              title={m(UI_LABELS.speed)}
+              aria-label={m(UI_LABELS.speed)}
+            >
+              <span className={`h-7 w-8 flex items-center justify-center rounded-sm ${
+                speed !== 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              }`}>
+                <span className={`flex items-center ${shownSpeed === 3 ? '-space-x-[7px]' : '-space-x-[5px]'}`}>
+                  {Array.from({ length: shownSpeed }, (_, i) => <PlayIcon key={i} size={12} />)}
+                </span>
+              </span>
+            </button>
 
             {/* Language selector, Share, and Exit button group */}
-            <div className="flex items-center -space-x-0.5">
-              <LanguageSelector useDrawer iconSize={12} />
+            <LanguageSelector useDrawer iconSize={14} />
 
-              {onShare && (
-                <button
-                  onClick={onShare}
-                  className="h-6 w-4 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                  title="Invite Players"
-                >
-                  <Users className="w-3 h-3" />
-                </button>
-              )}
+            {onShare && (
+              <button
+                onClick={onShare}
+                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                title="Invite Players"
+              >
+                <Users className="w-3.5 h-3.5" />
+              </button>
+            )}
 
-              {onExit && (
-                <button
-                  onClick={() => setShowExitDialog(true)}
-                  className="h-6 w-4 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                  title="Exit to Main Menu"
+            {onExit && (
+              <button
+                onClick={() => setShowExitDialog(true)}
+                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                title="Exit to Main Menu"
+              >
+                <svg 
+                  className="w-3.5 h-3.5 -scale-x-100" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
                 >
-                  <svg 
-                    className="w-3 h-3 -scale-x-100" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </button>
-              )}
-            </div>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            )}
           </div>
 
         </div>
@@ -265,7 +255,7 @@ export function MobileTopBar({
           </div>
 
           <button
-            className="flex items-center gap-1 active:opacity-70"
+            className="flex items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-2 -my-3"
             onClick={() => {
               const newShowTaxSlider = !showTaxSlider;
               setShowTaxSlider(newShowTaxSlider);
@@ -300,7 +290,7 @@ export function MobileTopBar({
             <span className="font-mono text-foreground w-8 text-right shrink-0">{taxRate}%</span>
             <button 
               onClick={() => setShowTaxSlider(false)} 
-              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               <CloseIcon size={12} />
             </button>
@@ -369,7 +359,7 @@ export function MobileTopBar({
             {/* Close button */}
             <button 
               onClick={onCloseTile} 
-              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               <CloseIcon size={12} />
             </button>
@@ -487,13 +477,13 @@ export function MobileTopBar({
             <Button
               variant="outline"
               onClick={handleExitWithoutSaving}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto h-11"
             >
               {m(UI_LABELS.exitWithoutSaving)}
             </Button>
             <Button
               onClick={handleSaveAndExit}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto h-11"
             >
               {m(UI_LABELS.saveAndExit)}
             </Button>
