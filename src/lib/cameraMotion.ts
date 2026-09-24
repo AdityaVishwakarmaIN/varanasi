@@ -133,3 +133,35 @@ export function stepInertia(
   const stopped = Math.hypot(velocity.x, velocity.y) < CAMERA_CONFIG.panInertiaMinSpeed;
   return { delta, velocity, stopped };
 }
+
+/** What the player is doing with the camera right now (read by the render loop every frame). */
+export interface CameraInteraction {
+  isMobile: boolean;
+  /** One-finger / mouse drag-pan. */
+  panning: boolean;
+  /** Two-finger pinch (touch). */
+  pinching: boolean;
+  /** Mouse-wheel / trackpad zoom (desktop). */
+  wheelZooming: boolean;
+  zoom: number;
+}
+
+/**
+ * Which animated layers the render loop skips while the camera is being moved (S1-T11), so the
+ * rule is the same for pan, pinch and wheel zoom:
+ * - `skipSmall`: small animated things (boats, smog, helicopters, seaplanes) while moving and zoomed
+ *   out below `smallElementsZoomThreshold`.
+ * - Mobile skips all animated entities (drawing and updates) while moving, for frame rate.
+ */
+export function getInteractionSkips(
+  i: CameraInteraction,
+  smallElementsZoomThreshold: number,
+): { skipUpdates: boolean; skipAnimated: boolean; skipSmall: boolean } {
+  const moving = i.panning || i.pinching || i.wheelZooming;
+  const skipAll = i.isMobile && moving;
+  return {
+    skipUpdates: skipAll,
+    skipAnimated: skipAll,
+    skipSmall: moving && i.zoom < smallElementsZoomThreshold,
+  };
+}

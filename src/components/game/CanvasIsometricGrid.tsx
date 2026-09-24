@@ -129,10 +129,20 @@ import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
 import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/components/game/gpu';
 import type { Application } from 'pixi.js';
-import { CAMERA_CONFIG, SharedControlsState, setCameraControls } from '@/lib/controlsConfig';
-import { clampZoom, PanVelocityTracker } from '@/lib/cameraMotion';
+import { CAMERA_CONFIG, SharedControlsState, setCameraControls, TOUCH_CONFIG } from '@/lib/controlsConfig';
+import { clampZoom, getInteractionSkips, PanVelocityTracker, type CameraPose } from '@/lib/cameraMotion';
 import { useSmoothCamera } from '@/components/game/useSmoothCamera';
-import { getPlacementCheck } from '@/lib/placement';
+import { getPlacementCheck, getToolFootprint } from '@/lib/placement';
+import {
+  classifyTouch,
+  computePinchPose,
+  createPinchStart,
+  hasMovedBeyondTap,
+  isDrawModeTool,
+  needsTapConfirm,
+  type PinchStart,
+} from '@/lib/touchGestures';
+import { Check, X } from 'lucide-react';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
 // Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
@@ -150,10 +160,38 @@ export interface CanvasIsometricGridProps {
   onBargeDelivery?: (cargoValue: number, cargoType: number) => void;
   /** Shared keyboard state from useKeyboardControls (held pan keys, Space) and camera registration. */
   controlsRef?: React.MutableRefObject<SharedControlsState>;
+  /** S1-T11: touch Draw mode (mobile toolbar). While on, a one-finger drag draws with road/rail/zone tools. */
+  touchDrawMode?: boolean;
 }
 
+/** S1-T11: state of the current touch gesture (one per touch sequence, first finger down → all fingers up). */
+interface TouchGesture {
+  /** pending: not yet a tap / drag; done: long-press already handled. */
+  mode: 'pending' | 'pan' | 'draw' | 'pinch' | 'done';
+  startX: number;
+  startY: number;
+  startTime: number;
+  lastX: number;
+  lastY: number;
+  /** A second finger touched down at some point: the gesture can no longer be a tap. */
+  multiTouch: boolean;
+  longPressTimer: ReturnType<typeof setTimeout> | null;
+  pinch: PinchStart | null;
+}
+
+function clearLongPress(g: TouchGesture): void {
+  if (g.longPressTimer) {
+    clearTimeout(g.longPressTimer);
+    g.longPressTimer = null;
+  }
+}
+
+/** Minimal pointer input shared by mouse events and touch Draw mode (which reuses the mouse drag code). */
+type PointerDownInput = Pick<React.MouseEvent, 'button' | 'clientX' | 'clientY' | 'altKey' | 'preventDefault'>;
+type PointerMoveInput = Pick<React.MouseEvent, 'clientX' | 'clientY'>;
+
 // Canvas-based Isometric Grid - HIGH PERFORMANCE
-export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery, controlsRef }: CanvasIsometricGridProps) {
+export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery, controlsRef, touchDrawMode = false }: CanvasIsometricGridProps) {
   const {
     state,
     latestStateRef,
@@ -244,11 +282,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const pedestrianIdRef = useRef(0);
   const pedestrianSpawnTimerRef = useRef(0);
   
-  // Touch gesture state for mobile
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const initialPinchDistanceRef = useRef<number | null>(null);
-  const initialZoomRef = useRef<number>(zoom);
-  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null);
+  // Touch gesture state for mobile (S1-T11)
+  const touchGestureRef = useRef<TouchGesture | null>(null);
+  // Expensive tap waiting for the ✓ / ✗ confirm bubble
+  const [pendingPlacement, setPendingPlacement] = useState<{ x: number; y: number; tool: Tool; cost: number } | null>(null);
   
   // Airplane system refs
   const airplanesRef = useRef<Airplane[]>([]);
@@ -2938,7 +2975,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       
       // PERF: Skip ALL vehicle/entity updates during mobile panning/zooming (not just drawing)
       // This provides a massive performance boost for big cities on mobile
-      const skipMobileUpdates = isMobile && (isPanningRef.current || isPinchZoomingRef.current);
+      // S1-T11: one rule for pan, pinch and wheel zoom (see getInteractionSkips)
+      const interactionSkips = getInteractionSkips({
+        isMobile,
+        panning: isPanningRef.current,
+        pinching: isPinchZoomingRef.current,
+        wheelZooming: isWheelZoomingRef.current,
+        zoom: zoomRef.current,
+      }, SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD);
+      const skipMobileUpdates = interactionSkips.skipUpdates;
       
       if (delta > 0 && !skipMobileUpdates) {
         updateCars(delta);
@@ -2996,9 +3041,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
       if (profileFrame) profileAfterUpdates = performance.now();
       // PERF: Skip drawing animated elements during mobile panning/zooming for better performance
-      const skipAnimatedElements = isMobile && (isPanningRef.current || isPinchZoomingRef.current);
-      // PERF: Skip small elements (boats, helis, smog) on desktop when panning while very zoomed out
-      const skipSmallElements = !isMobile && isPanningRef.current && zoomRef.current < SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD;
+      const skipAnimatedElements = interactionSkips.skipAnimated;
+      // PERF: Skip small elements (boats, helis, smog) when panning/zooming while very zoomed out
+      const skipSmallElements = interactionSkips.skipSmall;
       
       if (skipAnimatedElements || GPU_RENDERER_ENABLED) {
         // In GPU mode Pixi owns animated entities; keep legacy CPU layers empty to avoid double work.
@@ -3159,7 +3204,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     },
   });
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: PointerDownInput) => {
     // Any click stops a running zoom animation / pan glide.
     smoothCamera.stop();
     panVelocityRef.current.reset();
@@ -3320,7 +3365,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     onNavigationComplete?.();
   }, [navigationTarget, zoom, canvasSize.width, canvasSize.height, getMapBounds, onNavigationComplete]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: PointerMoveInput) => {
     if (!isPanning && panCandidateRef.current) {
       const { startX, startY } = panCandidateRef.current;
       const dx = e.clientX - startX;
@@ -3571,141 +3616,244 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     smoothCamera.animateZoomTo(newZoom, { x: mouseX, y: mouseY });
   }, [smoothCamera]);
 
-  // Touch handlers for mobile
+  // Touch handlers for mobile (S1-T11). Gesture table and thresholds: src/lib/touchGestures.ts, TOUCH_CONFIG.
   const getTouchDistance = useCallback((touch1: React.Touch | Touch, touch2: React.Touch | Touch) => {
     const dx = touch1.clientX - touch2.clientX;
     const dy = touch1.clientY - touch2.clientY;
     return Math.sqrt(dx * dx + dy * dy);
   }, []);
 
-  const getTouchCenter = useCallback((touch1: React.Touch | Touch, touch2: React.Touch | Touch) => {
-    return {
-      x: (touch1.clientX + touch2.clientX) / 2,
-      y: (touch1.clientY + touch2.clientY) / 2,
-    };
+  // Only touches that start on the map itself (not on the confirm bubble or a portalled dialog) are gestures.
+  const isMapTouchTarget = useCallback((target: EventTarget | null) => {
+    return target === containerRef.current || (target instanceof HTMLCanvasElement && containerRef.current?.contains(target) === true);
   }, []);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      // Single touch - could be pan or tap
-      const touch = e.touches[0];
-      touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-      setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
-      setIsPanning(true);
-      isPinchZoomingRef.current = false;
-    } else if (e.touches.length === 2) {
-      // Two finger touch - pinch to zoom
-      const distance = getTouchDistance(e.touches[0], e.touches[1]);
-      initialPinchDistanceRef.current = distance;
-      initialZoomRef.current = zoom;
-      lastTouchCenterRef.current = getTouchCenter(e.touches[0], e.touches[1]);
-      setIsPanning(false);
-      isPinchZoomingRef.current = true;
+  // Tile under a screen point, using the live camera pose (null outside the map).
+  const clientToTile = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const { zoom: z, offset: o } = worldStateRef.current;
+    const { gridX, gridY } = screenToGrid((clientX - rect.left) / z, (clientY - rect.top) / z, o.x / z, o.y / z);
+    if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) return null;
+    return { x: gridX, y: gridY };
+  }, [gridSize]);
+
+  // Apply a camera pose right away (pinch and one-finger pan follow the fingers directly).
+  const applyTouchPose = useCallback((pose: CameraPose) => {
+    const clamped = clampOffset(pose.offset, pose.zoom);
+    worldStateRef.current.zoom = pose.zoom;
+    worldStateRef.current.offset = clamped;
+    zoomRef.current = pose.zoom;
+    setZoom(pose.zoom);
+    setOffset(clamped);
+  }, [clampOffset]);
+
+  // Drop an unfinished Draw-mode drag without committing it (roads already placed stay).
+  const cancelToolDrag = useCallback(() => {
+    setIsDragging(false);
+    setDragStartTile(null);
+    setDragEndTile(null);
+    setRoadDrawDirection(null);
+    placedRoadTilesRef.current.clear();
+    setHoveredTile(null);
+  }, []);
+
+  const startPinch = useCallback((g: TouchGesture, t1: React.Touch | Touch, t2: React.Touch | Touch) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    clearLongPress(g);
+    if (g.mode === 'draw') cancelToolDrag();
+    g.mode = 'pinch';
+    g.multiTouch = true;
+    const centre = { x: (t1.clientX + t2.clientX) / 2 - rect.left, y: (t1.clientY + t2.clientY) / 2 - rect.top };
+    const { zoom: z, offset: o } = worldStateRef.current;
+    g.pinch = createPinchStart({ zoom: z, offset: o }, getTouchDistance(t1, t2), centre);
+    isPinchZoomingRef.current = true;
+    panVelocityRef.current.reset();
+    setIsPanning(false);
+  }, [cancelToolDrag, getTouchDistance]);
+
+  // Long-press: inspect the tile (tile info) with any tool.
+  const inspectTileAt = useCallback((clientX: number, clientY: number) => {
+    const tile = clientToTile(clientX, clientY);
+    if (!tile) return;
+    setPendingPlacement(null);
+    const origin = findBuildingOrigin(tile.x, tile.y);
+    setSelectedTile(origin ? { x: origin.originX, y: origin.originY } : tile);
+  }, [clientToTile, findBuildingOrigin, setSelectedTile]);
+
+  // A confirm bubble only counts while its tool is still selected.
+  const activePendingPlacement = pendingPlacement && pendingPlacement.tool === selectedTool ? pendingPlacement : null;
+
+  // Tap: use the tool once. Expensive placements ask for confirmation first.
+  const handleTap = useCallback((clientX: number, clientY: number) => {
+    if (activePendingPlacement) {
+      // Tapping anywhere else while the bubble is open cancels it.
+      setPendingPlacement(null);
+      return;
     }
-  }, [offset, zoom, getTouchDistance, getTouchCenter]);
+    const tile = clientToTile(clientX, clientY);
+    if (!tile) return;
+    if (selectedTool === 'select') {
+      const origin = findBuildingOrigin(tile.x, tile.y);
+      setSelectedTile(origin ? { x: origin.originX, y: origin.originY } : tile);
+      return;
+    }
+    const check = getPlacementCheck(state, selectedTool, tile.x, tile.y);
+    if (check.ok && needsTapConfirm(check.cost, state.stats.money)) {
+      setPendingPlacement({ x: tile.x, y: tile.y, tool: selectedTool, cost: check.cost });
+      return;
+    }
+    placeAtTile(tile.x, tile.y);
+  }, [activePendingPlacement, clientToTile, selectedTool, findBuildingOrigin, setSelectedTile, state, placeAtTile]);
+
+  const confirmPendingPlacement = useCallback(() => {
+    if (activePendingPlacement) placeAtTile(activePendingPlacement.x, activePendingPlacement.y);
+    setPendingPlacement(null);
+  }, [activePendingPlacement, placeAtTile]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isMapTouchTarget(e.target)) return;
+    // Any touch stops a running zoom animation / pan glide.
+    smoothCamera.stop();
+
+    let g = touchGestureRef.current;
+    if (e.touches.length === 1 || !g) {
+      if (g) clearLongPress(g);
+      const touch = e.touches[0];
+      const gesture: TouchGesture = {
+        mode: 'pending',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startTime: e.timeStamp,
+        lastX: touch.clientX,
+        lastY: touch.clientY,
+        multiTouch: e.touches.length > 1,
+        longPressTimer: null,
+        pinch: null,
+      };
+      if (e.touches.length === 1) {
+        gesture.longPressTimer = setTimeout(() => {
+          gesture.longPressTimer = null;
+          if (touchGestureRef.current !== gesture || gesture.mode !== 'pending') return;
+          gesture.mode = 'done';
+          inspectTileAt(gesture.startX, gesture.startY);
+        }, TOUCH_CONFIG.longPressMs);
+      }
+      panVelocityRef.current.reset();
+      touchGestureRef.current = gesture;
+      g = gesture;
+    }
+    // Two fingers always pinch-zoom and pan, in Draw mode too.
+    if (e.touches.length >= 2) startPinch(g, e.touches[0], e.touches[1]);
+  }, [isMapTouchTarget, smoothCamera, inspectTileAt, startPinch]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
+    const g = touchGestureRef.current;
+    if (!g) return;
 
-    if (e.touches.length === 1 && isPanning && !initialPinchDistanceRef.current) {
-      // Single touch pan
-      const touch = e.touches[0];
-      const newOffset = {
-        x: touch.clientX - dragStart.x,
-        y: touch.clientY - dragStart.y,
-      };
-      setOffset(clampOffset(newOffset, zoom));
-    } else if (e.touches.length === 2 && initialPinchDistanceRef.current !== null) {
-      // Pinch to zoom
-      const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
-      const scale = currentDistance / initialPinchDistanceRef.current;
-      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, initialZoomRef.current * scale));
-
-      const currentCenter = getTouchCenter(e.touches[0], e.touches[1]);
-      const rect = containerRef.current?.getBoundingClientRect();
-      
-      if (rect && lastTouchCenterRef.current) {
-        // Calculate center position relative to canvas
-        const centerX = currentCenter.x - rect.left;
-        const centerY = currentCenter.y - rect.top;
-
-        // World position at pinch center
-        const worldX = (centerX - offset.x) / zoom;
-        const worldY = (centerY - offset.y) / zoom;
-
-        // Keep the same world position under the pinch center after zoom
-        const newOffsetX = centerX - worldX * newZoom;
-        const newOffsetY = centerY - worldY * newZoom;
-
-        // Also account for pan movement during pinch
-        const panDeltaX = currentCenter.x - lastTouchCenterRef.current.x;
-        const panDeltaY = currentCenter.y - lastTouchCenterRef.current.y;
-
-        const clampedOffset = clampOffset(
-          { x: newOffsetX + panDeltaX, y: newOffsetY + panDeltaY },
-          newZoom
-        );
-
-        setOffset(clampedOffset);
-        setZoom(newZoom);
-        lastTouchCenterRef.current = currentCenter;
+    if (e.touches.length >= 2) {
+      if (g.mode !== 'pinch' || !g.pinch) {
+        startPinch(g, e.touches[0], e.touches[1]);
+        return;
       }
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const centre = { x: (t1.clientX + t2.clientX) / 2 - rect.left, y: (t1.clientY + t2.clientY) / 2 - rect.top };
+      // Zoom around the pinch centre; moving both fingers pans.
+      applyTouchPose(computePinchPose(g.pinch, getTouchDistance(t1, t2), centre, ZOOM_MIN, ZOOM_MAX));
+      return;
     }
-  }, [isPanning, dragStart, zoom, offset, clampOffset, getTouchDistance, getTouchCenter]);
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+
+    if (g.mode === 'pending' || g.mode === 'done') {
+      if (!hasMovedBeyondTap(touch.clientX - g.startX, touch.clientY - g.startY)) return;
+      clearLongPress(g);
+      const drawing = g.mode === 'pending' && !g.multiTouch && touchDrawMode && isDrawModeTool(selectedTool);
+      if (drawing && clientToTile(g.startX, g.startY)) {
+        // Draw mode: one finger draws with the same code as a desktop left-drag.
+        g.mode = 'draw';
+        setPendingPlacement(null);
+        handleMouseDown({ button: 0, clientX: g.startX, clientY: g.startY, altKey: false, preventDefault: () => {} });
+        return;
+      }
+      // One-finger drag pans (measured from the start point, so the map does not lag the finger).
+      g.mode = 'pan';
+      g.lastX = g.startX;
+      g.lastY = g.startY;
+      panVelocityRef.current.push(g.startX, g.startY, performance.now());
+      setIsPanning(true);
+    }
+
+    if (g.mode === 'pan') {
+      const dx = touch.clientX - g.lastX;
+      const dy = touch.clientY - g.lastY;
+      g.lastX = touch.clientX;
+      g.lastY = touch.clientY;
+      panVelocityRef.current.push(touch.clientX, touch.clientY, performance.now());
+      const { zoom: z, offset: o } = worldStateRef.current;
+      applyTouchPose({ zoom: z, offset: { x: o.x + dx, y: o.y + dy } });
+    } else if (g.mode === 'draw') {
+      handleMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
+    }
+  }, [startPinch, applyTouchPose, getTouchDistance, touchDrawMode, selectedTool, clientToTile, handleMouseDown, handleMouseMove]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    const touchStart = touchStartRef.current;
-    
-    if (e.touches.length === 0) {
-      // All fingers lifted
-      if (touchStart && e.changedTouches.length === 1) {
-        const touch = e.changedTouches[0];
-        const deltaX = Math.abs(touch.clientX - touchStart.x);
-        const deltaY = Math.abs(touch.clientY - touchStart.y);
-        const deltaTime = Date.now() - touchStart.time;
+    const g = touchGestureRef.current;
+    if (!g) return;
+    // Stop the browser's emulated mouse events after a tap: they would use the tool a second time
+    // (and skip the confirm bubble).
+    if (e.cancelable) e.preventDefault();
 
-        // Detect tap (short duration, minimal movement)
-        if (deltaTime < 300 && deltaX < 10 && deltaY < 10) {
-          const rect = containerRef.current?.getBoundingClientRect();
-          if (rect) {
-            const mouseX = (touch.clientX - rect.left) / zoom;
-            const mouseY = (touch.clientY - rect.top) / zoom;
-            const { gridX, gridY } = screenToGrid(mouseX, mouseY, offset.x / zoom, offset.y / zoom);
-
-            if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
-              if (selectedTool === 'select') {
-                const origin = findBuildingOrigin(gridX, gridY);
-                if (origin) {
-                  setSelectedTile({ x: origin.originX, y: origin.originY });
-                } else {
-                  setSelectedTile({ x: gridX, y: gridY });
-                }
-              } else {
-                placeAtTile(gridX, gridY);
-              }
-            }
-          }
-        }
-      }
-
-      // Reset all touch state
-      setIsPanning(false);
-      setIsDragging(false);
-      isPinchZoomingRef.current = false;
-      touchStartRef.current = null;
-      initialPinchDistanceRef.current = null;
-      lastTouchCenterRef.current = null;
-    } else if (e.touches.length === 1) {
-      // Went from 2 touches to 1 - reset to pan mode
-      const touch = e.touches[0];
-      setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
-      setIsPanning(true);
-      isPinchZoomingRef.current = false;
-      initialPinchDistanceRef.current = null;
-      lastTouchCenterRef.current = null;
+    if (e.touches.length >= 2) {
+      startPinch(g, e.touches[0], e.touches[1]);
+      return;
     }
-  }, [zoom, offset, gridSize, selectedTool, placeAtTile, setSelectedTile, findBuildingOrigin]);
-  
+    if (e.touches.length === 1) {
+      if (g.mode === 'pinch') {
+        // Pinch → one finger left: keep panning with it (never a tap).
+        const touch = e.touches[0];
+        g.mode = 'pan';
+        g.pinch = null;
+        g.lastX = touch.clientX;
+        g.lastY = touch.clientY;
+        isPinchZoomingRef.current = false;
+        panVelocityRef.current.reset();
+        setIsPanning(true);
+      }
+      return;
+    }
+
+    // All fingers lifted
+    touchGestureRef.current = null;
+    clearLongPress(g);
+    const now = performance.now();
+    if (g.mode === 'pan') {
+      // Let the camera glide after a pan, like a desktop drag
+      smoothCamera.startInertia(panVelocityRef.current.getVelocity(now));
+    } else if (g.mode === 'draw') {
+      handleMouseUp();
+      setHoveredTile(null);
+    } else if (g.mode === 'pending' && !g.multiTouch && e.type === 'touchend') {
+      const touch = e.changedTouches[0];
+      const moved = touch ? Math.hypot(touch.clientX - g.startX, touch.clientY - g.startY) : 0;
+      // Event timestamps (not handler time), so a busy main thread cannot turn a tap into a hold.
+      if (classifyTouch(e.timeStamp - g.startTime, moved) === 'tap') handleTap(g.startX, g.startY);
+    }
+    panVelocityRef.current.reset();
+    isPinchZoomingRef.current = false;
+    setIsPanning(false);
+  }, [startPinch, smoothCamera, handleMouseUp, handleTap]);
+
+  // Cancel a pending long-press if the canvas unmounts mid-gesture.
+  useEffect(() => () => {
+    const g = touchGestureRef.current;
+    if (g) clearLongPress(g);
+  }, []);
 
   // Attach wheel and touchmove with { passive: false } so preventDefault() works.
   // React synthetic events are passive by default in modern browsers.
@@ -3723,9 +3871,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   return (
     <div
       ref={containerRef}
-      className="overflow-hidden relative w-full h-full touch-none"
+      className="overflow-hidden relative w-full h-full touch-none select-none"
       style={{ 
         cursor: isPanning ? 'grabbing' : isDragging ? 'crosshair' : 'default',
+        WebkitTouchCallout: 'none', // no iOS callout on long-press (long-press inspects the tile)
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -3823,6 +3972,41 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         />
       )}
       
+      {/* S1-T11: confirm an expensive tap placement (✓ places, ✗ or a tap elsewhere cancels) */}
+      {activePendingPlacement && (() => {
+        const { x, y, tool, cost } = activePendingPlacement;
+        const footprint = getToolFootprint(tool);
+        const { screenX, screenY } = gridToScreen(x + (footprint.width - 1) / 2, y + (footprint.height - 1) / 2, 0, 0);
+        // Anchored above the centre of the footprint; follows the camera because offset/zoom are state.
+        const left = (screenX + TILE_WIDTH / 2) * zoom + offset.x;
+        const top = (screenY + TILE_HEIGHT / 2) * zoom + offset.y;
+        return (
+          <div
+            data-testid="tap-confirm"
+            className="absolute z-30 -translate-x-1/2 -translate-y-full pb-1 flex flex-col items-center"
+            style={{ left: `clamp(110px, ${left}px, calc(100% - 110px))`, top: `max(64px, ${top}px)` }}
+            // Emulated mouse events from tapping ✓ / ✗ must not reach the map (they would place / hover)
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseMove={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 pl-3 shadow-lg backdrop-blur-sm">
+              <span className="text-xs font-medium text-foreground whitespace-nowrap">
+                {m(TOOL_INFO[tool].name)}{' '}
+                <span className="font-mono text-amber-500">${cost.toLocaleString()}</span>
+              </span>
+              <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
+                <Check className="w-5 h-5" />
+              </Button>
+              <Button size="icon" variant="secondary" className="h-11 w-11 rounded-full" aria-label={gt('Cancel')} onClick={() => setPendingPlacement(null)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-border" />
+          </div>
+        );
+      })()}
+
       {/* City Connection Dialog */}
       {cityConnectionDialog && (() => {
         // Find a discovered but not connected city in this direction

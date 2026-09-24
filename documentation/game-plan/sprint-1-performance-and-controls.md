@@ -73,7 +73,7 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
 - [ ] S1-T9: Reliable saves (IndexedDB)
 - [x] S1-T10: Desktop controls
-- [ ] S1-T11: Touch controls
+- [x] S1-T11: Touch controls
 - [x] S1-T12: Hide multiplayer
 - [ ] S1-T13: Final measurement and sprint sign-off
 
@@ -502,3 +502,19 @@ mis-tap on an expensive building asks for confirmation.
   "grab" cursor while Space is held (only while actually panning).
 - **S1-T10:** while dragging roads/zones the label still shows the old area/cost text; per-tile red/green during a drag
   is only shown for bridges (existing behaviour).
+- **S1-T11:** gesture helpers are pure in `src/lib/touchGestures.ts` (`classifyTouch`, `isDrawModeTool`, `needsTapConfirm`,
+  `computePinchPose`); thresholds in `TOUCH_CONFIG` (`controlsConfig.ts`). Draw mode reuses the desktop mouse-drag code
+  (`handleMouseDown/Move/Up` now take a minimal pointer shape), so road/rail/zone drawing rules exist once.
+- **S1-T11:** to fit 44×44 px targets on a 390 px top bar, the four speed buttons became **pause/resume + one speed
+  button that cycles 1× → 2× → 3×**. The speed it resumes at is only remembered for changes made with that button.
+  Radix slider thumbs (tax slider) were not resized.
+- **S1-T11:** render-loop skipping now uses one rule for pan, pinch and wheel zoom (`getInteractionSkips` in
+  `cameraMotion.ts`): small things (boats, smog, helicopters, seaplanes) are skipped while moving below
+  `SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD`; mobile still skips *all* animated entities while moving (existing perf choice).
+  The pan-inertia glide does not count as "moving". When `QUALITY_PRESETS` (S1-T7) lands, read the threshold from it.
+- **S1-T11:** the Controls help panel lists keyboard and mouse only; touch gestures could be added from the table in
+  `touchGestures.ts`. Draw-mode drags never ask for confirmation (only taps do). While drawing on touch, the bottom
+  placement label shows the desktop text ("Drag to place"). A second finger during a Draw-mode drag cancels an unfinished
+  zone rectangle (roads already laid stay). Water/land terraform is not a Draw-mode tool (50,000 per tile).
+- **S1-T11 (testing):** headless Chromium launched with the SwiftShader flags from `shot-helper.mjs` runs at 150–300 ms
+  per frame, which delays touch events enough to fire long-presses during drags. Launch with default args for touch tests.

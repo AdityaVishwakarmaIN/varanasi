@@ -123,6 +123,21 @@ export const CAMERA_CONFIG = {
   panReleaseIdleMs: 60,
 } as const;
 
+/**
+ * Touch gestures (S1-T11). Handled in `CanvasIsometricGrid` via the pure helpers in
+ * `src/lib/touchGestures.ts`.
+ */
+export const TOUCH_CONFIG = {
+  /** A touch shorter than this (ms) that moved less than `tapMaxMovePx` is a tap (uses the tool once). */
+  tapMaxMs: 250,
+  /** Moving further than this (px) from the start turns a touch into a drag (pan, or draw in Draw mode). */
+  tapMaxMovePx: 10,
+  /** Holding still this long (ms) inspects the tile (opens tile info) with any tool. */
+  longPressMs: 500,
+  /** A tap that would cost more than this fraction of current money asks for confirmation first. */
+  confirmCostFraction: 0.1,
+} as const;
+
 /** Reference frame length used to express per-frame values (60 Hz). */
 export const FRAME_MS = 1000 / 60;
 
