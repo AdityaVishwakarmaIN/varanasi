@@ -29,7 +29,10 @@ import { Copy, Check } from 'lucide-react';
 
 // Import game components
 import { OverlayMode } from '@/components/game/types';
-import { getOverlayForTool } from '@/components/game/overlays';
+import { getOverlayForTool, OVERLAY_CONFIG } from '@/components/game/overlays';
+import { ControlsHelpDialog } from '@/components/game/ControlsHelpDialog';
+import { useKeyboardControls } from '@/hooks/useKeyboardControls';
+import { createSharedControlsState, SharedControlsState } from '@/lib/controlsConfig';
 import { OverlayModeToggle } from '@/components/game/OverlayModeToggle';
 import { Sidebar } from '@/components/game/Sidebar';
 import {
@@ -44,6 +47,9 @@ import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 
 // Cargo type names for notifications
 const CARGO_TYPE_NAMES = [msg('containers'), msg('bulk materials'), msg('oil')];
+
+// Tab cycles overlays in the same order as the overlay toolbar
+const OVERLAY_ORDER = Object.keys(OVERLAY_CONFIG) as OverlayMode[];
 
 type ViewportState = {
   offset: { x: number; y: number };
@@ -76,6 +82,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const [showShareModal, setShowShareModal] = useState(false);
   const skipInitialUiPrefsSave = useRef(true);
   const multiplayer = useMultiplayerOptional();
+  // Keyboard/camera state shared between useKeyboardControls and the canvas (S1-T10)
+  const controlsRef = useRef<SharedControlsState>(createSharedControlsState());
+  const [showControlsHelp, setShowControlsHelp] = useState(false);
+  const openControlsHelp = useCallback(() => setShowControlsHelp(true), []);
   
   // Cheat code system
   const {
@@ -207,38 +217,22 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     }, 0);
   }, [state.selectedTool]);
   
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in input fields
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        if (overlayMode !== 'none') {
-          setOverlayMode('none');
-        } else if (state.activePanel !== 'none') {
-          setActivePanel('none');
-        } else if (selectedTile) {
-          setSelectedTile(null);
-        } else if (state.selectedTool !== 'select') {
-          setTool('select');
-        }
-      } else if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        setTool('bulldoze');
-      } else if (e.key === 'p' || e.key === 'P') {
-        e.preventDefault();
-        // Toggle pause/unpause: if paused (speed 0), resume to normal (speed 1)
-        // If running, pause (speed 0)
-        setSpeed(state.speed === 0 ? 1 : 0);
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state.activePanel, state.selectedTool, state.speed, selectedTile, setActivePanel, setTool, setSpeed, overlayMode]);
+  // All keyboard shortcuts (bindings in src/lib/controlsConfig.ts KEY_BINDINGS)
+  useKeyboardControls({
+    controlsRef,
+    overlayMode,
+    setOverlayMode,
+    overlayOrder: OVERLAY_ORDER,
+    activePanel: state.activePanel,
+    setActivePanel,
+    selectedTile,
+    setSelectedTile,
+    selectedTool: state.selectedTool,
+    setTool,
+    speed: state.speed,
+    setSpeed,
+    onShowHelp: openControlsHelp,
+  });
 
   // Handle cheat code triggers
   useEffect(() => {
@@ -329,6 +323,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               setSelectedTile={setSelectedTile}
               isMobile={true}
               onBargeDelivery={handleBargeDelivery}
+              controlsRef={controlsRef}
             />
             
             {/* Multiplayer Players Indicator - Mobile */}
@@ -418,6 +413,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onNavigationComplete={() => setNavigationTarget(null)}
               onViewportChange={handleViewportChange}
               onBargeDelivery={handleBargeDelivery}
+              controlsRef={controlsRef}
             />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
@@ -468,6 +464,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         {state.activePanel === 'statistics' && <StatisticsPanel />}
         {state.activePanel === 'advisors' && <AdvisorsPanel />}
         {state.activePanel === 'settings' && <SettingsPanel />}
+        <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />
         
         <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
         <CommandMenu />

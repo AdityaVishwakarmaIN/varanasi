@@ -72,7 +72,7 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [ ] S1-T7: GPU renderer on by default, quality presets and auto-quality
 - [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
 - [ ] S1-T9: Reliable saves (IndexedDB)
-- [ ] S1-T10: Desktop controls
+- [x] S1-T10: Desktop controls
 - [ ] S1-T11: Touch controls
 - [x] S1-T12: Hide multiplayer
 - [ ] S1-T13: Final measurement and sprint sign-off
@@ -489,3 +489,16 @@ mis-tap on an expensive building asks for confirmation.
   `@supabase/supabase-js` library code is still bundled and downloaded (it is imported statically by
   `MultiplayerContext` → `supabaseProvider`). Loading it with a dynamic `import()` only when `FEATURES.coop` is on
   would shrink the start-up bundle. Co-op entries in the saved-cities index are hidden (not deleted) while the flag is off.
+- **S1-T10:** camera smoothing lives in `src/lib/cameraMotion.ts` (pure) and `src/components/game/useSmoothCamera.ts`
+  (`animateZoomTo`, `getTargetZoom`, `startInertia`, `stop`). S1-T11 (touch) should call these from the touch handlers
+  instead of `setZoom`/`setOffset` directly. The touch handlers were not changed.
+- **S1-T10:** `src/lib/placement.ts` mirrors the no-op / money guards and the tool-to-building map from
+  `GameContext.placeAtTile` (`toolBuildingMap`, `toolZoneMap`), because those are private to a React file that other
+  tasks were editing. Later, `placeAtTile` could call `getPlacementCheck` so the guards exist in one place only.
+- **S1-T10:** keyboard shortcuts are ignored while focus is inside a dialog or menu (Radix handles Esc/Tab/Space there),
+  so with a panel focused, Esc closes that panel first instead of the overlay. Outside dialogs, Tab now cycles overlays
+  instead of moving keyboard focus.
+- **S1-T10:** the "Welcome" tip toast sits on top of the placement label and the Controls dialog (z-index). There is no
+  "grab" cursor while Space is held (only while actually panning).
+- **S1-T10:** while dragging roads/zones the label still shows the old area/cost text; per-tile red/green during a drag
+  is only shown for bridges (existing behaviour).
