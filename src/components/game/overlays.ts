@@ -5,7 +5,7 @@
 
 import { Tile } from '@/types/game';
 import type { MapId } from '@/games/isocity/maps/varanasi';
-import { GANGA_TILE_EFFECT, computeGangaTileEffects, getGangaRiverColor } from '@/lib/ganga';
+import { GANGA_TILE_EFFECT, getCachedGangaTileEffects, getGangaRiverColor } from '@/lib/ganga';
 import { SCORING_CONFIG } from '@/lib/scoring';
 import { OverlayMode } from './types';
 
@@ -321,16 +321,10 @@ export function getGangaOverlayContext(
   const health = gangaHealth ?? 75;
   const cached = gangaContextCache.get(grid);
   if (cached && cached.gangaHealth === health) return cached.context;
-  const stps: { x: number; y: number }[] = [];
-  for (let y = 0; y < gridSize; y++) {
-    const row = grid[y];
-    for (let x = 0; x < gridSize; x++) {
-      if (row[x].building.type === 'sewage_treatment_plant') stps.push({ x, y });
-    }
-  }
+  // Shared with the tile info panel (same grid → same effects, computed once).
   const context: OverlayRiverContext = {
     gangaHealth: health,
-    effect: computeGangaTileEffects(grid, gridSize, stps).effect,
+    effect: getCachedGangaTileEffects(grid, gridSize).effect,
     gridSize,
   };
   gangaContextCache.set(grid, { gangaHealth: health, context });
