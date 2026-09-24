@@ -294,3 +294,19 @@ flows through `GameContext.tsx` into `simulateTick`.
 ## 6. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+- **River level curve (S4-T5, `floods.ts`).** The game has 30-day months, so Jul 1 – Sep 30 is 90 game days, not 92.
+  `floor(peak × sin)` would reach the peak level on no whole day at all, so the curve is `min(peak, floor((peak + 1) × sin(π·t)))`.
+  That gives: weak = 60 days at level 1, normal = 48 days at level 2, heavy = 42 days at level 3. If that is too long, raise
+  `FLOOD_CONFIG.curveExponent` in S4-T12.
+- **Collapse rate (S4-T10, `collapse.ts`).** `age` goes up by 1 per tick while a finished building has utilities, so 8 years = 86,400.
+  At the doc's starting `dailyChance = 0.0005`, `estimateCollapsesPerYear(350, true)` ≈ 28 collapses a year once ~350 buildings are
+  that old (about a 1-lakh city) and all have fire coverage. That is far above the "at most 1 per year" target. Something near
+  `dailyChance ≈ 0.00002` meets it. Footprint upgrades reset `age` to 0. In-place level-ups keep `age`, so the "upgraded in the last
+  2 years" rule needs a new `lastUpgradeDay` field on the building to feed `daysSinceUpgrade`.
+- **Heatwave happiness (S4-T7).** The doc only says "happiness −". The starting value is `HEATWAVE_CONFIG.happinessHit = 10`, and the
+  shade and hospital halving applies to it too.
+- **Failure states (S4-T11, `failure.ts`).** If the player does not answer the loan offer by the next month change, it counts as
+  declined. The "population < 20% of peak" game over is checked only while an exodus is active, so early-game swings cannot end the game.
+- **Weather type.** `SimWeather` in `seasons.ts` is the simulation's weather. The renderer's `CloudWeatherMode` still needs `'fog'` and
+  `'heat_haze'` appended (S4-T2 step 2).
