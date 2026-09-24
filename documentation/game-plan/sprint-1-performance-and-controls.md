@@ -71,7 +71,7 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [x] S1-T6: Simulation in a Web Worker (**only if S1-T5 is not enough**) — `[deferred: decision recorded]` The gate said "needed", but the design below would cost the main thread more than it saves: serialising the 160 state takes 80+ ms against a ~6 ms tick. Decision (lead): keep the tick on the main thread for v1, re-check the frame and hitch targets in S1-T13 on a quiet machine, and plan a worker that **owns** a typed-array grid (small action messages in, changed tiles out) as a post-v1 project. See Notes for later
 - [ ] S1-T7: GPU renderer on by default, quality presets and auto-quality
 - [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
-- [ ] S1-T9: Reliable saves (IndexedDB)
+- [x] S1-T9: Reliable saves (IndexedDB)
 - [x] S1-T10: Desktop controls
 - [x] S1-T11: Touch controls
 - [x] S1-T12: Hide multiplayer
@@ -551,3 +551,17 @@ mis-tap on an expensive building asks for confirmation.
   zone rectangle (roads already laid stay). Water/land terraform is not a Draw-mode tool (50,000 per tile).
 - **S1-T11 (testing):** headless Chromium launched with the SwiftShader flags from `shot-helper.mjs` runs at 150–300 ms
   per frame, which delays touch events enough to fire long-presses during drags. Launch with default args for touch tests.
+
+**From S1-T9 (saves):**
+
+- Saves live in IndexedDB (`varanasi` db, `saves` store) with one-transaction safe writes (temp key → real key → delete temp).
+  Old localStorage saves migrate on first start (copy → verify → delete). Serialisation is time-sliced
+  (`storage/slicedStringify.ts`, ~6 ms slices); compression runs in the worker (2–4 s for a 160 city, off the main thread).
+- `state.notifications` is not shown anywhere in the UI; a general notification UI is needed (S4-T4 covers it).
+  A dedicated `SaveErrorToast` shows save failures meanwhile.
+- The `isocity-saved-city` restore slot stays in localStorage and `saveCurrentCityForRestore` is never called.
+- The camera starts at a fixed offset, not centred on the loaded city.
+- `CompressionStream` (gzip) would compress much faster than lz-string; `navigator.storage.persist()` would make
+  eviction less likely.
+- The home page decompresses the whole autosave on the main thread just to check it is valid.
+
