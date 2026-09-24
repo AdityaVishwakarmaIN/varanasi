@@ -4,6 +4,7 @@
  * The game calendar has 30-day months and 12-month years (360 days). Festival dates are fixed for simplicity
  * (real festivals follow the lunar calendar).
  */
+import { CALENDAR, DAYS_PER_YEAR } from '@/lib/seasons';
 
 export type FestivalId = 'maha_shivratri' | 'holi' | 'diwali' | 'chhath' | 'dev_deepawali' | 'ganga_aarti';
 export type FestivalType = 'visual' | 'management';
@@ -33,8 +34,6 @@ export const FESTIVALS: Record<FestivalId, FestivalDef> = {
 
 export const FESTIVAL_IDS: readonly FestivalId[] = Object.keys(FESTIVALS) as FestivalId[];
 
-export const CALENDAR = { daysPerMonth: 30, monthsPerYear: 12, daysPerYear: 360 } as const;
-
 /** Day of year, 0-based, on the 360-day game calendar. */
 export function dayOfYear(month: number, day: number): number {
   return (month - 1) * CALENDAR.daysPerMonth + (day - 1);
@@ -42,7 +41,7 @@ export function dayOfYear(month: number, day: number): number {
 
 function isDatedFestivalActive(f: FestivalDef, today: number): boolean {
   if (f.month === undefined || f.day === undefined) return false;
-  const since = (today - dayOfYear(f.month, f.day) + CALENDAR.daysPerYear) % CALENDAR.daysPerYear;
+  const since = (today - dayOfYear(f.month, f.day) + DAYS_PER_YEAR) % DAYS_PER_YEAR;
   return since < (f.durationDays ?? 1);
 }
 
@@ -70,7 +69,7 @@ export function getUpcomingFestivals(month: number, day: number, withinDays: num
   for (const id of FESTIVAL_IDS) {
     const f = FESTIVALS[id];
     if (f.month === undefined || f.day === undefined) continue;
-    const daysUntil = (dayOfYear(f.month, f.day) - today + CALENDAR.daysPerYear) % CALENDAR.daysPerYear;
+    const daysUntil = (dayOfYear(f.month, f.day) - today + DAYS_PER_YEAR) % DAYS_PER_YEAR;
     if (daysUntil <= withinDays) out.push({ festival: f, daysUntil });
   }
   return out.sort((a, b) => a.daysUntil - b.daysUntil);
