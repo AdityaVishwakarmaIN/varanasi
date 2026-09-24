@@ -3,6 +3,7 @@
 // Uses Next.js built-in worker bundling (bundles lz-string with the worker)
 
 import { compressToUTF16, decompressFromUTF16, compressToEncodedURIComponent } from 'lz-string';
+import { stringifyInSlices } from '@/lib/storage/slicedStringify';
 
 type PendingRequest = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +47,8 @@ function initWorker(): boolean {
       } else if (type === 'compressed-transferred') {
         pending.resolve(compressed);
       } else if (type === 'compressed-transferred-uri') {
+        pending.resolve(compressed);
+      } else if (type === 'compressed-transferred-parts') {
         pending.resolve(compressed);
       } else if (type === 'decompressed-parsed') {
         pending.resolve(state);
@@ -124,6 +127,68 @@ export async function serializeAndCompressAsync(state: unknown): Promise<string>
       try {
         const compressed = compressToUTF16(JSON.stringify(state));
         resolve(compressed);
+      } catch (fallbackError) {
+        reject(fallbackError);
+      }
+    }
+  });
+}
+
+/**
+ * S1-T9: Serialize and compress without a long main-thread block.
+ * JSON.stringify of a big city takes 50+ ms, so the JSON is built in time
+ * slices (see slicedStringify.ts); each slice is encoded and transferred to
+ * the worker, which joins and compresses them. The output is identical to
+ * serializeAndCompressAsync. Falls back to the main thread without a worker.
+ */
+export async function serializeAndCompressInSlicesAsync(
+  state: unknown,
+  options: { onSlice?: (ms: number) => void } = {},
+): Promise<string> {
+  if (!worker && !initWorker()) {
+    return compressToUTF16(JSON.stringify(state));
+  }
+
+  const encoder = new TextEncoder();
+  const buffers: ArrayBuffer[] = [];
+  await stringifyInSlices(state, {
+    onChunk: (text) => {
+      buffers.push(encoder.encode(text).buffer as ArrayBuffer);
+    },
+    onSlice: options.onSlice,
+  });
+
+  // The worker may have failed while we were slicing
+  if (!worker && !initWorker()) {
+    const decoder = new TextDecoder();
+    return compressToUTF16(buffers.map((b) => decoder.decode(b)).join(''));
+  }
+
+  const id = ++requestId;
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      const pending = pendingRequests.get(id);
+      if (pending) {
+        pendingRequests.delete(id);
+        console.warn('Save worker timeout, falling back to main thread');
+        try {
+          resolve(compressToUTF16(JSON.stringify(state)));
+        } catch (error) {
+          reject(error);
+        }
+      }
+    }, 15000); // 15 second timeout for larger states
+
+    pendingRequests.set(id, { resolve, reject, timeoutId });
+
+    try {
+      // Transfer the buffers (zero-copy, ownership moves to worker)
+      worker!.postMessage({ type: 'compress-transferred-parts', id, buffers }, buffers);
+    } catch {
+      clearTimeout(timeoutId);
+      pendingRequests.delete(id);
+      try {
+        resolve(compressToUTF16(JSON.stringify(state)));
       } catch (fallbackError) {
         reject(fallbackError);
       }

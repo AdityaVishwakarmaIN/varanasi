@@ -3,7 +3,8 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
-import { serializeAndCompressAsync } from '@/lib/saveWorkerManager';
+import { T } from 'gt-next';
+import { serializeAndCompressInSlicesAsync, decompressAndParseAsync } from '@/lib/saveWorkerManager';
 import { simulateTick } from '@/lib/simulation';
 import {
   Budget,
@@ -39,12 +40,21 @@ import {
 } from '@/lib/renderConfig';
 import {
   ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY,
-  ISOCITY_SAVED_CITIES_INDEX_KEY,
-  ISOCITY_SAVED_CITY_PREFIX,
   ISOCITY_SAVED_CITY_STORAGE_KEY,
   ISOCITY_SPRITE_PACK_STORAGE_KEY,
-  ISOCITY_STORAGE_KEY,
+  clearIsoCityAutosave,
+  deleteIsoCitySavedCityData,
+  flushPendingSaves,
+  loadIsoCitySavedCities,
+  readIsoCityAutosaveRaw,
+  readIsoCitySavedCityRaw,
+  trackPendingSave,
+  updateIsoCitySavedCities,
+  writeIsoCityAutosaveRaw,
+  writeIsoCitySavedCityRaw,
 } from '@/lib/isocityStorage';
+import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
+import { SaveErrorToast } from '@/components/game/SaveErrorToast';
 import type { CloudWeatherMode } from '@/components/game/types';
 import {
   copyLegacyGridToBuffer,
@@ -116,10 +126,16 @@ type GameContextValue = {
   // Multi-city save system
   savedCities: SavedCityMeta[];
   saveCity: () => void;
-  loadSavedCity: (cityId: string) => boolean;
+  loadSavedCity: (cityId: string) => Promise<boolean>;
   deleteSavedCity: (cityId: string) => void;
   renameSavedCity: (cityId: string, newName: string) => void;
+  // Set when a save failed (cleared by the next successful save or dismissSaveError)
+  saveError: string | null;
+  dismissSaveError: () => void;
 };
+
+// Shown when writing a save fails (quota, IndexedDB unavailable, ...).
+export const SAVE_FAILED_MESSAGE = "Couldn't save your city. Export it from Settings to keep a copy.";
 
 const GameContext = createContext<GameContextValue | null>(null);
 
@@ -195,32 +211,22 @@ function normalizeGameStateVersions(state: GameState): GameState {
   };
 }
 
-// Load game state from localStorage
-// Supports both compressed (lz-string) and uncompressed (legacy) formats
-function loadGameState(): GameState | null {
+// Load the autosave from IndexedDB (S1-T9)
+// Supports both compressed (lz-string) and uncompressed (legacy) formats.
+// Decompression + JSON.parse run in the save worker.
+async function loadGameState(): Promise<GameState | null> {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(ISOCITY_STORAGE_KEY);
+    // Make sure a save started just before (e.g. when leaving the game) has landed.
+    await flushPendingSaves();
+    const saved = await readIsoCityAutosaveRaw();
     if (saved) {
-      // Try to decompress first (new format)
-      // If it fails or returns null/garbage, fall back to parsing as plain JSON (legacy format)
-      let jsonString = decompressFromUTF16(saved);
-      
-      // Check if decompression returned valid-looking JSON (should start with '{')
-      // lz-string can return garbage strings when given invalid input
-      if (!jsonString || !jsonString.startsWith('{')) {
-        // Check if the saved string itself looks like JSON (legacy uncompressed format)
-        if (saved.startsWith('{')) {
-          jsonString = saved;
-        } else {
-          // Data is corrupted - clear it and return null
-          console.error('Corrupted save data detected, clearing...');
-          localStorage.removeItem(ISOCITY_STORAGE_KEY);
-          return null;
-        }
+      const parsed = await decompressAndParseAsync<any>(saved);
+      if (!parsed) {
+        // Corrupted data: keep it (never destroy a save) - the next autosave replaces it
+        console.error('Corrupted save data detected, starting a new city');
+        return null;
       }
-      
-      const parsed = JSON.parse(jsonString);
       // Validate it has essential properties
       if (parsed && 
           parsed.grid && 
@@ -319,17 +325,11 @@ function loadGameState(): GameState | null {
         }
         return normalizeGameStateVersions(parsed as GameState);
       } else {
-        localStorage.removeItem(ISOCITY_STORAGE_KEY);
+        console.error('Saved game state is missing required fields, starting a new city');
       }
     }
   } catch (e) {
     console.error('Failed to load game state:', e);
-    // Clear corrupted data
-    try {
-      localStorage.removeItem(ISOCITY_STORAGE_KEY);
-    } catch (clearError) {
-      console.error('Failed to clear corrupted game state:', clearError);
-    }
   }
   return null;
 }
@@ -353,88 +353,47 @@ function optimizeStateForSave(state: GameState): GameState {
   return optimized;
 }
 
-// Try to free up localStorage space by clearing old/unused data
-function tryFreeLocalStorageSpace(): void {
-  try {
-    // Clear any old saved city restore data
-    localStorage.removeItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
-    
-    // Clear sprite test data if any
-    localStorage.removeItem('isocity_sprite_test');
-    
-    // Clear any other temporary keys
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('isocity_temp_')) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-  } catch (e) {
-    console.error('Failed to free localStorage space:', e);
-  }
-}
-
-// Save game state to localStorage with lz-string compression
-// Compression typically reduces size by 60-80%, allowing much larger cities
-// PERF: Uses Web Worker for BOTH serialization and compression - no main thread blocking!
+// Save game state to IndexedDB with lz-string compression (S1-T9)
+// PERF: Compression runs in the save worker; the IndexedDB write is a safe
+// write (temp key + atomic swap), so a failed or interrupted save never
+// destroys the last good one. Rejects if the save failed.
 async function saveGameStateAsync(state: GameState): Promise<void> {
   if (typeof window === 'undefined') return;
-  
+
   // Validate state before saving
   if (!state || !state.grid || !state.gridSize || !state.stats) {
     console.error('Invalid game state, cannot save', { state, hasGrid: !!state?.grid, hasGridSize: !!state?.gridSize, hasStats: !!state?.stats });
     return;
   }
-  
-  try {
-    // Step 1: Optimize state (fast, stays on main thread)
-    const optimizedState = optimizeStateForSave(state);
-    
-    // Step 2: Serialize + Compress using Web Worker (BOTH operations off main thread!)
-    const compressed = await serializeAndCompressAsync(optimizedState);
-    
-    // Check size limit
-    if (compressed.length > 5 * 1024 * 1024) {
-      console.error('Compressed game state too large to save:', compressed.length, 'chars');
-      return;
-    }
-    
-    // Step 3: Write to localStorage (fast)
-    try {
-      localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
-    } catch (quotaError) {
-      if (quotaError instanceof DOMException && (quotaError.code === 22 || quotaError.code === 1014)) {
-        console.warn('localStorage quota exceeded, trying to free space...');
-        tryFreeLocalStorageSpace();
-        try {
-          localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
-        } catch {
-          console.error('localStorage still full after cleanup');
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Failed to save game state:', e);
-  }
+
+  // Step 1: Optimize state (fast, stays on main thread)
+  const optimizedState = optimizeStateForSave(state);
+
+  // Step 2: Serialize + Compress using Web Worker
+  const compressed = await serializeAndCompressInSlicesAsync(optimizedState);
+
+  // Step 3: Safe write to IndexedDB
+  await writeIsoCityAutosaveRaw(compressed);
 }
 
-// Wrapper that takes a callback for compatibility with existing code
-function saveGameState(state: GameState, callback?: () => void): void {
-  saveGameStateAsync(state).finally(() => {
-    callback?.();
-  });
+// Wrapper that takes a callback for compatibility with existing code.
+// The callback gets `ok = false` if the save failed.
+function saveGameState(state: GameState, callback?: (ok: boolean) => void): void {
+  trackPendingSave(saveGameStateAsync(state)).then(
+    () => callback?.(true),
+    (e) => {
+      console.error('Failed to save game state:', e);
+      callback?.(false);
+    },
+  );
 }
 
 // Clear saved game state
 function clearGameState(): void {
   if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(ISOCITY_STORAGE_KEY);
-  } catch (e) {
+  clearIsoCityAutosave().catch((e) => {
     console.error('Failed to clear game state:', e);
-  }
+  });
 }
 
 // Load sprite pack from localStorage
@@ -577,86 +536,31 @@ function generateUUID(): string {
   });
 }
 
-// Load saved cities index from localStorage
-function loadSavedCitiesIndex(): SavedCityMeta[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const saved = localStorage.getItem(ISOCITY_SAVED_CITIES_INDEX_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        return parsed as SavedCityMeta[];
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load saved cities index:', e);
-  }
-  return [];
-}
-
-// Save saved cities index to localStorage
-function saveSavedCitiesIndex(cities: SavedCityMeta[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(cities));
-  } catch (e) {
-    console.error('Failed to save cities index:', e);
-  }
-}
-
-// Save a city state to localStorage with compression
-// PERF: Uses Web Worker for BOTH serialization and compression - no main thread blocking!
+// Save a city state to IndexedDB with compression (S1-T9)
+// PERF: Compression happens in the worker. Rejects if the save failed.
 async function saveCityStateAsync(cityId: string, state: GameState): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  try {
-    // Both JSON.stringify and compression happen in the worker
-    const compressed = await serializeAndCompressAsync(state);
-    
-    if (compressed.length > 5 * 1024 * 1024) {
-      console.error('Compressed city state too large to save');
-      return;
-    }
-    
-    localStorage.setItem(ISOCITY_SAVED_CITY_PREFIX + cityId, compressed);
-  } catch (e) {
-    if (e instanceof DOMException && (e.code === 22 || e.code === 1014)) {
-      console.error('localStorage quota exceeded');
-    } else {
-      console.error('Failed to save city state:', e);
-    }
-  }
+  const compressed = await serializeAndCompressInSlicesAsync(state);
+  await writeIsoCitySavedCityRaw(cityId, compressed);
 }
 
-// Wrapper for compatibility
-function saveCityState(cityId: string, state: GameState): void {
-  saveCityStateAsync(cityId, state);
+// Wrapper that tracks the save so leaving the game waits for it
+function saveCityState(cityId: string, state: GameState): Promise<void> {
+  return trackPendingSave(saveCityStateAsync(cityId, state));
 }
 
-// Load a saved city state from localStorage (supports compressed and legacy formats)
-function loadCityState(cityId: string): GameState | null {
+// Load a saved city state from IndexedDB (supports compressed and legacy formats)
+async function loadCityState(cityId: string): Promise<GameState | null> {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_PREFIX + cityId);
+    const saved = await readIsoCitySavedCityRaw(cityId);
     if (saved) {
-      // Try to decompress first (new format)
-      // lz-string can return garbage when given invalid input, so check for valid JSON start
-      let jsonString = decompressFromUTF16(saved);
-      
-      // Check if decompression returned valid-looking JSON
-      if (!jsonString || !jsonString.startsWith('{')) {
-        // Check if saved string itself is JSON (legacy uncompressed format)
-        if (saved.startsWith('{')) {
-          jsonString = saved;
-        } else {
-          // Data is corrupted
-          console.error('Corrupted city save data for:', cityId);
-          return null;
-        }
+      const parsed = await decompressAndParseAsync<any>(saved);
+      if (!parsed) {
+        console.error('Corrupted city save data for:', cityId);
+        return null;
       }
-      
-      const parsed = JSON.parse(jsonString);
-      if (parsed && parsed.grid && parsed.gridSize && parsed.stats) {
+      if (parsed.grid && parsed.gridSize && parsed.stats) {
         return normalizeGameStateVersions(parsed as GameState);
       }
     }
@@ -666,18 +570,16 @@ function loadCityState(cityId: string): GameState | null {
   return null;
 }
 
-// Delete a saved city from localStorage
+// Delete a saved city from IndexedDB
 function deleteCityState(cityId: string): void {
   if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(ISOCITY_SAVED_CITY_PREFIX + cityId);
-  } catch (e) {
+  deleteIsoCitySavedCityData(cityId).catch((e) => {
     console.error('Failed to delete city state:', e);
-  }
+  });
 }
 
 export function GameProvider({ children, startFresh = false }: { children: React.ReactNode; startFresh?: boolean }) {
-  // Start with a default state, we'll load from localStorage after mount (unless startFresh is true)
+  // Start with a default state, we'll load from IndexedDB after mount (unless startFresh is true)
   const [state, setState] = useState<GameState>(() => createInitialGameState(DEFAULT_GRID_SIZE, 'IsoCity'));
   
   const [hasExistingGame, setHasExistingGame] = useState(false);
@@ -700,44 +602,12 @@ export function GameProvider({ children, startFresh = false }: { children: React
   // Saved cities state for multi-city save system
   const [savedCities, setSavedCities] = useState<SavedCityMeta[]>([]);
   
-  // Load game state and sprite pack from localStorage on mount (client-side only)
-  useEffect(() => {
-    // Load sprite pack preference
-    const savedPackId = loadSpritePackId();
-    const pack = getSpritePack(savedPackId);
-    setCurrentSpritePack(pack);
-    setActiveSpritePack(pack);
-    
-    // Load day/night mode preference
-    const savedDayNightMode = loadDayNightMode();
-    setDayNightModeState(savedDayNightMode);
-    
-    // Load saved cities index
-    const cities = loadSavedCitiesIndex();
-    setSavedCities(cities);
-    
-    // Load game state (unless startFresh is true - used for co-op to start with a new city)
-    if (!startFresh) {
-      const saved = loadGameState();
-      if (saved) {
-        skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
-        setState(saved);
-        setHasExistingGame(true);
-      } else {
-        setHasExistingGame(false);
-      }
-    } else {
-      setHasExistingGame(false);
-    }
-    // Mark as loaded immediately - the skipNextSaveRef will handle skipping the first save
-    hasLoadedRef.current = true;
-    // Mark state as ready - consumers should wait for this before using state
-    setIsStateReady(true);
-  }, [startFresh]);
-  
+  // Save-failure reporting (S1-T9)
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveFailureNotifiedRef = useRef(false);
+
   // Track the state that needs to be saved
   const lastSaveTimeRef = useRef<number>(0);
-  const saveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Update the state to save whenever state changes
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
@@ -795,64 +665,169 @@ export function GameProvider({ children, startFresh = false }: { children: React
     stateChangedRef.current = true;
   }, [state]);
   
+  // Load preferences from localStorage and the city from IndexedDB on mount (client-side only)
+  useEffect(() => {
+    let cancelled = false;
+
+    // Load sprite pack preference
+    const savedPackId = loadSpritePackId();
+    const pack = getSpritePack(savedPackId);
+    setCurrentSpritePack(pack);
+    setActiveSpritePack(pack);
+
+    // Load day/night mode preference
+    const savedDayNightMode = loadDayNightMode();
+    setDayNightModeState(savedDayNightMode);
+
+    // City saves are in IndexedDB, which is async (the first call also
+    // migrates old localStorage saves). Children render once this is done.
+    const loadSaves = async () => {
+      // Load saved cities index
+      const cities = await loadIsoCitySavedCities();
+      if (cancelled) return;
+      setSavedCities(cities);
+
+      // Load game state (unless startFresh is true - used for co-op to start with a new city)
+      const saved = startFresh ? null : await loadGameState();
+      if (cancelled) return;
+      if (saved) {
+        skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
+        // Point the simulation loop at the loaded city right away
+        latestStateRef.current = saved;
+        setState(saved);
+        setHasExistingGame(true);
+      } else {
+        setHasExistingGame(false);
+      }
+    };
+
+    loadSaves()
+      .catch((e) => {
+        console.error('Failed to load saves:', e);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        // Mark as loaded - the skipNextSaveRef will handle skipping the first save
+        hasLoadedRef.current = true;
+        // Mark state as ready - consumers should wait for this before using state
+        setIsStateReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [startFresh]);
+  
   // PERF: Track if a save is in progress to avoid overlapping saves
   const saveInProgressRef = useRef(false);
   
-  // Separate effect that actually performs saves on an interval
+  // Tell the player when a save fails (once per failure streak, so a
+  // persistent problem does not spam a notification every autosave).
+  const reportSaveResult = useCallback((ok: boolean) => {
+    if (ok) {
+      saveFailureNotifiedRef.current = false;
+      setSaveError(null);
+      return;
+    }
+    if (saveFailureNotifiedRef.current) return;
+    saveFailureNotifiedRef.current = true;
+    setSaveError(SAVE_FAILED_MESSAGE);
+    setState((prev) => ({
+      ...prev,
+      notifications: [
+        {
+          id: `save-failed-${Date.now()}`,
+          title: 'Save failed',
+          description: SAVE_FAILED_MESSAGE,
+          icon: 'alert',
+          timestamp: Date.now(),
+        },
+        ...prev.notifications.slice(0, 9), // Keep only 10 most recent
+      ],
+    }));
+  }, []);
+
+  const dismissSaveError = useCallback(() => {
+    setSaveError(null);
+  }, []);
+
+  // Separate effect that actually performs autosaves (S1-T9):
+  // every AUTOSAVE_CONFIG.intervalMs if the city changed, right away when the
+  // tab is hidden or the page is being unloaded, and when the game unmounts
+  // (leaving to the home screen).
   useEffect(() => {
-    // Wait for initial load - just check once after a short delay
-    const checkLoadedTimeout = setTimeout(() => {
+    let resaveRequested = false;
+
+    const autosave = () => {
+      // Wait for the initial load
       if (!hasLoadedRef.current) {
         return;
       }
-      
-      // Clear any existing save interval
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
+
+      // Don't save if we just loaded
+      if (skipNextSaveRef.current) {
+        skipNextSaveRef.current = false;
+        return;
       }
-      
-      // Set up interval to save every 5 seconds
-      // PERF: Save operation is broken into chunks internally to avoid blocking
-      saveIntervalRef.current = setInterval(() => {
-        // Don't save if we just loaded
-        if (skipNextSaveRef.current) {
-          skipNextSaveRef.current = false;
-          return;
-        }
-        
-        // Don't save if a save is already in progress
-        if (saveInProgressRef.current) {
-          return;
-        }
-        
-        // Don't save if state hasn't changed
-        if (!stateChangedRef.current) {
-          return;
-        }
-        
-        // Mark save as in progress
-        saveInProgressRef.current = true;
-        stateChangedRef.current = false;
-        setIsSaving(true);
-        
-        // PERF: No need for structuredClone here - the worker handles everything
-        // postMessage internally clones the data when sending to the worker
-        saveGameState(latestStateRef.current, () => {
-          lastSaveTimeRef.current = Date.now();
+
+      // Don't overlap saves; save again once the current one is done
+      if (saveInProgressRef.current) {
+        if (stateChangedRef.current) resaveRequested = true;
+        return;
+      }
+
+      // Don't save if state hasn't changed
+      if (!stateChangedRef.current) {
+        return;
+      }
+
+      // Mark save as in progress
+      saveInProgressRef.current = true;
+      stateChangedRef.current = false;
+      setIsSaving(true);
+
+      // PERF: No need for structuredClone here - the worker handles everything
+      saveGameState(latestStateRef.current, (ok) => {
+        lastSaveTimeRef.current = Date.now();
+        if (ok) {
           setHasExistingGame(true);
-          setIsSaving(false);
-          saveInProgressRef.current = false;
-        });
-      }, 5000); // Save every 5 seconds
-    }, 200); // Wait 200ms for initial load
-    
-    return () => {
-      clearTimeout(checkLoadedTimeout);
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
-      }
+        } else {
+          // Try again at the next autosave
+          stateChangedRef.current = true;
+        }
+        setIsSaving(false);
+        saveInProgressRef.current = false;
+        reportSaveResult(ok);
+        if (resaveRequested && ok) {
+          resaveRequested = false;
+          autosave();
+        }
+      });
     };
-  }, []);
+
+    const intervalId = setInterval(autosave, AUTOSAVE_CONFIG.intervalMs);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') autosave();
+    };
+    // Best effort: the async write may not finish before the page unloads.
+    const handlePageHide = () => autosave();
+
+    if (AUTOSAVE_CONFIG.saveOnHidden) {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+    if (AUTOSAVE_CONFIG.saveOnPageHide) {
+      window.addEventListener('pagehide', handlePageHide);
+    }
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      // Leaving the game: save what changed since the last autosave
+      autosave();
+    };
+  }, [reportSaveResult]);
 
   // PERF: Track tick count to only sync UI-visible changes to React periodically
   const tickCountRef = useRef(0);
@@ -1582,16 +1557,12 @@ export function GameProvider({ children, startFresh = false }: { children: React
       gridSize: state.gridSize,
       savedAt: Date.now(),
     };
-    
-    // Save the city state
-    saveCityState(state.id, state);
-    
-    // Update the index
-    setSavedCities((prev) => {
+
+    const upsert = (prev: SavedCityMeta[]): SavedCityMeta[] => {
       // Check if this city already exists in the list
-      const existingIndex = prev.findIndex((c) => c.id === state.id);
+      const existingIndex = prev.findIndex((c) => c.id === cityMeta.id);
       let newCities: SavedCityMeta[];
-      
+
       if (existingIndex >= 0) {
         // Update existing entry
         newCities = [...prev];
@@ -1600,20 +1571,34 @@ export function GameProvider({ children, startFresh = false }: { children: React
         // Add new entry
         newCities = [...prev, cityMeta];
       }
-      
+
       // Sort by savedAt descending (most recent first)
       newCities.sort((a, b) => b.savedAt - a.savedAt);
-      
-      // Persist to localStorage
-      saveSavedCitiesIndex(newCities);
-      
       return newCities;
-    });
-  }, [state]);
+    };
+
+    // Show it in the list right away
+    setSavedCities(upsert);
+
+    // Save the city state, then (only if that worked) the index entry.
+    // Tracked so leaving the game waits for it before listing saved cities.
+    const cityState = state;
+    trackPendingSave((async () => {
+      await saveCityState(cityState.id, cityState);
+      const storedCities = await updateIsoCitySavedCities(upsert);
+      setSavedCities(storedCities);
+    })()).then(
+      () => reportSaveResult(true),
+      (e) => {
+        console.error('Failed to save city:', e);
+        reportSaveResult(false);
+      },
+    );
+  }, [state, reportSaveResult]);
 
   // Load a saved city from the multi-save system
-  const loadSavedCity = useCallback((cityId: string): boolean => {
-    const cityState = loadCityState(cityId);
+  const loadSavedCity = useCallback(async (cityId: string): Promise<boolean> => {
+    const cityState = await loadCityState(cityId);
     if (!cityState) return false;
     
     // Ensure the loaded state has an ID
@@ -1681,43 +1666,46 @@ export function GameProvider({ children, startFresh = false }: { children: React
       roadNetworkVersion: (normalizedCityState.roadNetworkVersion ?? 0) + 1,
     }));
     
-    // Also update the current game in local storage
-    saveGameState(normalizedCityState);
-    
+    // Also update the current game's autosave
+    saveGameState(normalizedCityState, reportSaveResult);
+
     return true;
-  }, []);
+  }, [reportSaveResult]);
 
   // Delete a saved city from the multi-save system
   const deleteSavedCity = useCallback((cityId: string) => {
     // Delete the city state
     deleteCityState(cityId);
-    
+
     // Update the index
-    setSavedCities((prev) => {
-      const newCities = prev.filter((c) => c.id !== cityId);
-      saveSavedCitiesIndex(newCities);
-      return newCities;
+    const remove = (prev: SavedCityMeta[]) => prev.filter((c) => c.id !== cityId);
+    setSavedCities(remove);
+    updateIsoCitySavedCities(remove).catch((e) => {
+      console.error('Failed to update saved cities index:', e);
     });
   }, []);
 
   // Rename a saved city
   const renameSavedCity = useCallback((cityId: string, newName: string) => {
     // Load the city state, update the name, and save it back
-    const cityState = loadCityState(cityId);
-    if (cityState) {
-      cityState.cityName = newName;
-      saveCityState(cityId, cityState);
-    }
-    
-    // Update the index
-    setSavedCities((prev) => {
-      const newCities = prev.map((c) =>
-        c.id === cityId ? { ...c, cityName: newName } : c
-      );
-      saveSavedCitiesIndex(newCities);
-      return newCities;
+    trackPendingSave((async () => {
+      const cityState = await loadCityState(cityId);
+      if (cityState) {
+        cityState.cityName = newName;
+        await saveCityState(cityId, cityState);
+      }
+    })()).catch((e) => {
+      console.error('Failed to rename saved city:', e);
     });
-    
+
+    // Update the index
+    const rename = (prev: SavedCityMeta[]) =>
+      prev.map((c) => (c.id === cityId ? { ...c, cityName: newName } : c));
+    setSavedCities(rename);
+    updateIsoCitySavedCities(rename).catch((e) => {
+      console.error('Failed to update saved cities index:', e);
+    });
+
     // If the current game is the one being renamed, update its state too
     if (state.id === cityId) {
       setState((prev) => ({ ...prev, cityName: newName }));
@@ -1773,9 +1761,30 @@ export function GameProvider({ children, startFresh = false }: { children: React
     loadSavedCity,
     deleteSavedCity,
     renameSavedCity,
+    saveError,
+    dismissSaveError,
   };
 
-  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+  // The city loads from IndexedDB asynchronously; render the game only once
+  // it is ready so the player never sees a placeholder city flash first.
+  return (
+    <GameContext.Provider value={value}>
+      {isStateReady ? children : (
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/60">
+          <T>Loading city...</T>
+        </div>
+      )}
+      {saveError && (
+        <SaveErrorToast
+          onOpenSettings={() => {
+            setSaveError(null);
+            setActivePanel('settings');
+          }}
+          onDismiss={dismissSaveError}
+        />
+      )}
+    </GameContext.Provider>
+  );
 }
 
 export function useGame() {

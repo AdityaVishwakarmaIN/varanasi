@@ -5,21 +5,16 @@ import { GameProvider } from '@/context/GameContext';
 import { MultiplayerContextProvider } from '@/context/MultiplayerContext';
 import Game from '@/components/Game';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
-import { GameState } from '@/types/game';
+import { GameState, SavedCityMeta } from '@/types/game';
 import { compressToUTF16 } from 'lz-string';
 import { useParams, useRouter } from 'next/navigation';
-
-const STORAGE_KEY = 'isocity-game-state';
-const SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index';
+import { updateIsoCitySavedCities, writeIsoCityAutosaveRaw } from '@/lib/isocityStorage';
 
 // Save a city to the saved cities index (for multiplayer cities)
-function saveCityToIndex(state: GameState, roomCode?: string): void {
+async function saveCityToIndex(state: GameState, roomCode?: string): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const saved = localStorage.getItem(SAVED_CITIES_INDEX_KEY);
-    const cities = saved ? JSON.parse(saved) : [];
-    
-    const cityMeta = {
+    const cityMeta: SavedCityMeta = {
       id: state.id || `city-${Date.now()}`,
       cityName: state.cityName || 'Co-op City',
       population: state.stats.population,
@@ -31,17 +26,20 @@ function saveCityToIndex(state: GameState, roomCode?: string): void {
       roomCode: roomCode,
     };
     
-    const existingIndex = cities.findIndex((c: { id: string; roomCode?: string }) => 
-      c.id === cityMeta.id || (roomCode && c.roomCode === roomCode)
-    );
-    
-    if (existingIndex >= 0) {
-      cities[existingIndex] = cityMeta;
-    } else {
-      cities.unshift(cityMeta);
-    }
-    
-    localStorage.setItem(SAVED_CITIES_INDEX_KEY, JSON.stringify(cities.slice(0, 20)));
+    await updateIsoCitySavedCities((stored) => {
+      const cities = [...stored];
+      const existingIndex = cities.findIndex((c) => 
+        c.id === cityMeta.id || (roomCode && c.roomCode === roomCode)
+      );
+      
+      if (existingIndex >= 0) {
+        cities[existingIndex] = cityMeta;
+      } else {
+        cities.unshift(cityMeta);
+      }
+      
+      return cities.slice(0, 20);
+    });
   } catch (e) {
     console.error('Failed to save city to index:', e);
   }
@@ -65,16 +63,16 @@ export default function CoopPage() {
   };
 
   // Handle co-op game start
-  const handleCoopStart = (isHost: boolean, initialState?: GameState, code?: string) => {
+  const handleCoopStart = async (isHost: boolean, initialState?: GameState, code?: string) => {
     // Mark that we're intentionally starting the game (not closing to go home)
     isStartingGameRef.current = true;
     
     if (isHost && initialState) {
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(STORAGE_KEY, compressed);
+        await writeIsoCityAutosaveRaw(compressed);
         if (code) {
-          saveCityToIndex(initialState, code);
+          await saveCityToIndex(initialState, code);
         }
       } catch (e) {
         console.error('Failed to save co-op state:', e);
@@ -85,9 +83,9 @@ export default function CoopPage() {
     } else if (initialState) {
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(STORAGE_KEY, compressed);
+        await writeIsoCityAutosaveRaw(compressed);
         if (code) {
-          saveCityToIndex(initialState, code);
+          await saveCityToIndex(initialState, code);
         }
       } catch (e) {
         console.error('Failed to save co-op state:', e);
