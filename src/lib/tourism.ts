@@ -6,8 +6,12 @@
 import type { Tile } from '@/games/isocity/types/game';
 
 export const TOURISM_CONFIG = {
-  /** ₹ per tick per ghat before multipliers. Tuned in S2-T9/S2-T11 against the 15–25% income-share target. */
-  ghatBaseIncome: 12,
+  /**
+   * ₹ per month per ghat before multipliers. S2-T11 balance pass: at 12, a healthy mid-game city
+   * (1 lakh people, Ganga 70, 20 ghats in rows) earned ~2% of its income from tourism. 130 puts
+   * it at ~18–21% (target 15–25%); see the design-target test in tourism.test.ts.
+   */
+  ghatBaseIncome: 130,
   /** riverFactor = (gangaHealth / 100) ^ riverExponent: a dirty river drives visitors away fast. */
   riverExponent: 1.5,
   /** A road within this many tiles counts as access. */

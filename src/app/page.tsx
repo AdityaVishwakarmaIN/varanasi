@@ -16,6 +16,7 @@ import Game from '@/components/Game';
 import { PerfHud } from '@/components/game/PerfHud';
 import { BenchmarkRunner } from '@/components/game/BenchmarkRunner';
 import { parseBenchmarkParams } from '@/lib/benchmark';
+import { formatINR, formatPopulation } from '@/lib/format';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { FEATURES } from '@/lib/features';
 import { useMobile } from '@/hooks/useMobile';
@@ -268,8 +269,8 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
           )}
         </div>
         <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
-          <span>Pop: {city.population.toLocaleString()}</span>
-          <span>${city.money.toLocaleString()}</span>
+          <span>Pop: {formatPopulation(city.population)}</span>
+          <span>{formatINR(city.money)}</span>
           {FEATURES.coop && city.roomCode && <span className="text-blue-400/60">{city.roomCode}</span>}
         </div>
       </button>

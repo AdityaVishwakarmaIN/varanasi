@@ -2239,6 +2239,12 @@ function getRiverContext(state: GameState): RiverContext | undefined {
 
 // Calculate city stats
 // effectiveTaxRate is the lagged tax rate used for demand calculations
+
+/** Monthly tax income (rates are percent). Exported for balance tests (S2-T11). */
+export function calculateTaxIncome(population: number, jobs: number, taxRate: number): number {
+  return Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
+}
+
 function calculateStats(
   grid: Tile[][],
   size: number,
@@ -2319,7 +2325,7 @@ function calculateStats(
   const industrialDemand = Math.min(100, Math.max(-100, industrialWithBonuses * taxMultiplier + taxAdditiveModifier * 0.5));
 
   // Calculate income and expenses
-  const taxIncome = Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
+  const taxIncome = calculateTaxIncome(population, jobs, taxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
   let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};

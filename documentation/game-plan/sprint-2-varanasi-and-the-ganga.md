@@ -49,16 +49,16 @@ By the end of this sprint, a player can:
 
 ## 4. Tasks
 
-- [ ] S2-T1: Indian number formatting and population scale
-- [ ] S2-T2: Varanasi map data and generator
+- [x] S2-T1: Indian number formatting and population scale
+- [x] S2-T2: Varanasi map data and generator (owner "reads as Varanasi" sign-off is in the exit criteria)
 - [x] S2-T3: Map choice on the new-game screen, and branding
-- [ ] S2-T4: River zones (bank and floodplain helpers)
-- [ ] S2-T5: The Ghat building
-- [ ] S2-T6: Sewage Treatment Plant (STP)
-- [ ] S2-T7: Ganga Health score
-- [ ] S2-T8: Ganga overlay and UI
-- [ ] S2-T9: Tourism income
-- [ ] S2-T10: Boats on the Ganga
+- [x] S2-T4: River zones (bank and floodplain helpers)
+- [x] S2-T5: The Ghat building
+- [x] S2-T6: Sewage Treatment Plant (STP)
+- [x] S2-T7: Ganga Health score
+- [x] S2-T8: Ganga overlay and UI
+- [x] S2-T9: Tourism income (base tuned 12 → 130 in the S2-T11 balance pass; see Notes)
+- [x] S2-T10: Boats on the Ganga
 - [ ] S2-T11: Tips, balance pass and sign-off
 
 ---
@@ -392,6 +392,12 @@ tourismIncome   = Σ ghatIncome
 
 *(Implementers: add things you noticed but did not do here.)*
 
+- **S2-T11 balance pass (step 2, tourism):** with `ghatBaseIncome` 12, a healthy mid-game city (displayed 1 lakh people, Ganga 70,
+  20 ghats in four rows of five with roads and bazaars) got only ~2% of its income from tourism: 20 ghats × ~₹12 ≈ ₹250 a month against
+  ~₹11,000–12,600 of tax. Raised to **130**, which gives ~18–21% for 0.4–0.8 jobs per resident at 9% tax. A design-target test in
+  `src/lib/__tests__/tourism.test.ts` now fails if a later change pushes the share out of 15–25%. At 130, one early ghat on a clean river with
+  a road earns ~₹110 a month, about 7 months to pay back its ₹800 cost. That's a fair early reward for the game's signature building.
+  The 45-minute playtest (ghat affordability, Ganga Health over time) is still to do with the owner.
 - **S2-T8 (UI, steps 3–5):** the top-bar Ganga chip *toggles* the Ganga overlay (a second click turns it off), because the
   desktop overlay panel can be hidden. On mobile the chip sits in the second (R/C/I) row; the tile-info "Effect on Ganga" is an
   extra line under the mobile tile row. A home only partly covered by an STP shows "Partly treated by STP" next to its untreated
