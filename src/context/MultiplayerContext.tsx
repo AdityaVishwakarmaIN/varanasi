@@ -78,7 +78,6 @@ export function MultiplayerContextProvider({
   const [error, setError] = useState<string | null>(null);
   const [initialState, setInitialState] = useState<MultiplayerGameState | null>(null);
   const [provider, setProvider] = useState<MultiplayerProvider | null>(null);
-  const [onRemoteAction, setOnRemoteAction] = useState<((action: GameAction) => void) | null>(null);
 
   const providerRef = useRef<MultiplayerProvider | null>(null);
   const onRemoteActionRef = useRef<((action: GameAction) => void) | null>(null);
@@ -86,8 +85,9 @@ export function MultiplayerContextProvider({
   // Set up remote action callback
   const handleSetOnRemoteAction = useCallback(
     (callback: ((action: GameAction) => void) | null) => {
+      // Kept in a ref only: storing it in state changed the context value on every registration,
+      // which re-ran the registering effect in useMultiplayerSync forever (update-depth loop).
       onRemoteActionRef.current = callback;
-      setOnRemoteAction(callback);
     },
     []
   );
@@ -253,7 +253,7 @@ export function MultiplayerContextProvider({
     leaveRoom,
     dispatchAction,
     initialState,
-    onRemoteAction,
+    onRemoteAction: null, // unused; the callback lives in onRemoteActionRef (see handleSetOnRemoteAction)
     setOnRemoteAction: handleSetOnRemoteAction,
     updateGameState,
     provider,
