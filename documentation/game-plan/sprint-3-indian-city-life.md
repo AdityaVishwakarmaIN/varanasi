@@ -332,3 +332,14 @@ There are unit tests for the spawn conditions.
 ## 6. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+- **Pure logic landed first (S3 part 1).** `src/lib/utilities.ts`, `mixedUse.ts`, `informal.ts`, `trafficConfig.ts` and `pilgrims.ts`
+  hold the rules and configs with unit tests; the simulation/UI wiring is still to do.
+- **Rolling-cut fairness needs an absolute hour.** `getCutFeeders` rotates by `(hour × k) mod n` so consecutive hours continue where the
+  last one stopped (max − min cut hours ≤ 1 over any run of hours). Pass `toAbsoluteHour(...)`, not hour-of-day, or the same feeders get
+  the "extra" cut hour every day. Fairness assumes the set of feeders with demand and the cut count stay the same across those hours.
+- **Starting values not in the doc** (tune in S3-T11): per-tile happiness penalty during a power or water cut (5), water tank level bonus
+  (20% per level, mirroring power plants), informal preferred-zone weight (×4) and job-proximity bonus, pilgrims per ₹ of tourism income
+  (0.5), cow pause chance per tile (0.15) and cow walk speed (0.15 × car).
+- **`tile.traffic` is never written** by the simulation today (always 0), so anything that reads it (e.g. S5-T4's access check) needs a real
+  traffic measure first.
