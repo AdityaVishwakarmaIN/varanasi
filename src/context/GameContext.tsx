@@ -641,8 +641,12 @@ export function GameProvider({
   const cloudWeatherModeRef = useRef<CloudWeatherMode>('clear');
   const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
+  // The state React last committed: lets the tick's UI sync see a newer player action.
+  const committedStateRef = useRef(state);
+
   useEffect(() => {
     latestStateRef.current = state;
+    committedStateRef.current = state;
 
     // PERF: Keep the SoA mirror in sync with state.grid so worker/MiniMap/etc.
     // can read typed arrays without walking Tile[][]. The copy is ~12 bytes
@@ -890,7 +894,9 @@ export function GameProvider({
       // React state is only needed for UI elements (stats, budget display)
       if (now - lastUiSyncRef.current >= GAME_LOOP_CONFIG.uiSyncIntervalMs) {
         lastUiSyncRef.current = now;
-        setState(newState);
+        // A player action queued since the last commit wins over this sync; its commit
+        // re-points latestStateRef at the action's state and the next sync carries on.
+        setState((prev) => (prev === committedStateRef.current ? newState : prev));
       }
     }, () => tickIntervalRef.current);
 
@@ -1201,18 +1207,29 @@ export function GameProvider({
       ? 12  // Noon - full daylight
       : 22; // Night time
 
+  /**
+   * Swap in a whole new city. The simulation loop reads `latestStateRef`, so it must point at
+   * the new city right away: otherwise a tick already queued for this frame simulates the old
+   * city and its UI sync overwrites the one just loaded.
+   * Bumping gameVersion clears vehicles/entities; the other versions force a full redraw.
+   */
+  const replaceCity = useCallback((next: GameState, versionBase: Pick<GameState, 'structureVersion' | 'roadNetworkVersion'>) => {
+    const prev = latestStateRef.current;
+    const city: GameState = {
+      ...next,
+      gameVersion: (prev.gameVersion ?? 0) + 1,
+      structureVersion: (versionBase.structureVersion ?? 0) + 1,
+      roadNetworkVersion: (versionBase.roadNetworkVersion ?? 0) + 1,
+    };
+    latestStateRef.current = city;
+    setState(city);
+  }, []);
+
   const newGame = useCallback((options?: NewGameOptions) => {
     clearGameState(); // Clear saved state when starting fresh
     cloudWeatherModeRef.current = 'clear';
-    const fresh = createNewGameState(options, isMobile);
-    // Increment gameVersion from current state to ensure vehicles/entities are cleared
-    setState((prev) => ({
-      ...fresh,
-      gameVersion: (prev.gameVersion ?? 0) + 1,
-      structureVersion: (prev.structureVersion ?? 0) + 1,
-      roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
-    }));
-  }, []);
+    replaceCity(createNewGameState(options, isMobile), latestStateRef.current);
+  }, [replaceCity]);
 
   const loadState = useCallback((stateString: string): boolean => {
     try {
@@ -1283,19 +1300,14 @@ export function GameProvider({
         // Increment gameVersion to clear vehicles/entities when loading a new state
         cloudWeatherModeRef.current = 'clear';
         const normalizedState = normalizeGameStateVersions(parsed as GameState);
-        setState((prev) => ({
-          ...normalizedState,
-          gameVersion: (prev.gameVersion ?? 0) + 1,
-          structureVersion: (normalizedState.structureVersion ?? 0) + 1,
-          roadNetworkVersion: (normalizedState.roadNetworkVersion ?? 0) + 1,
-        }));
+        replaceCity(normalizedState, normalizedState);
         return true;
       }
       return false;
     } catch {
       return false;
     }
-  }, []);
+  }, [replaceCity]);
 
   const exportState = useCallback((): string => {
     return JSON.stringify(state);
@@ -1304,15 +1316,8 @@ export function GameProvider({
   const generateRandomCity = useCallback(() => {
     clearGameState(); // Clear saved state when generating a new city
     cloudWeatherModeRef.current = 'clear';
-    const randomCity = generateRandomAdvancedCity(DEFAULT_GRID_SIZE);
-    // Increment gameVersion to ensure vehicles/entities are cleared
-    setState((prev) => ({
-      ...randomCity,
-      gameVersion: (prev.gameVersion ?? 0) + 1,
-      structureVersion: (prev.structureVersion ?? 0) + 1,
-      roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
-    }));
-  }, []);
+    replaceCity(generateRandomAdvancedCity(DEFAULT_GRID_SIZE), latestStateRef.current);
+  }, [replaceCity]);
 
   // Expand the city grid by 15 tiles on each side (30x30 total increase)
   const expandCity = useCallback(() => {

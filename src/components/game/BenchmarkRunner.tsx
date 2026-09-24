@@ -5,6 +5,7 @@ import { useGame } from '@/context/GameContext';
 import {
   BENCHMARK_CONFIG,
   flythroughCamera,
+  isBenchmarkState,
   loadBenchmarkCity,
   parseBenchmarkParams,
   type BenchmarkSize,
@@ -25,7 +26,11 @@ declare global {
  * Drives the camera along the fixed fly-through path for BENCHMARK_CONFIG.flythroughMs,
  * then logs the performance summary as JSON. Returns a cancel function.
  */
-function runFlythrough(size: BenchmarkSize, setSpeed: (speed: 0 | 1 | 2 | 3) => void): () => void {
+function runFlythrough(
+  size: BenchmarkSize,
+  setSpeed: (speed: 0 | 1 | 2 | 3) => void,
+  isBenchmarkShown: () => boolean,
+): () => void {
   let cancelled = false;
   let frameId = 0;
   let startedAt = -1;
@@ -33,8 +38,9 @@ function runFlythrough(size: BenchmarkSize, setSpeed: (speed: 0 | 1 | 2 | 3) => 
   const step = (now: number) => {
     if (cancelled) return;
     const controller = getCameraController();
-    // Wait until the map component is mounted and shows the benchmark city.
-    if (!controller || controller.getCamera().gridSize !== size) {
+    // Wait until the map component is mounted and shows the benchmark city (the Varanasi
+    // map is also 160 tiles, so the size alone is not enough).
+    if (!controller || !isBenchmarkShown() || controller.getCamera().gridSize !== size) {
       frameId = requestAnimationFrame(step);
       return;
     }
@@ -87,7 +93,7 @@ function runFlythrough(size: BenchmarkSize, setSpeed: (speed: 0 | 1 | 2 | 3) => 
  * The benchmark city is never autosaved (see `isBenchmarkState`), so the player's save is safe.
  */
 export function BenchmarkRunner() {
-  const { isStateReady, loadState, setSpeed } = useGame();
+  const { isStateReady, loadState, setSpeed, latestStateRef } = useGame();
   const [loadedSize, setLoadedSize] = useState<BenchmarkSize | null>(null);
 
   // Load the benchmark city once, after the saved game (if any) has been read.
@@ -109,8 +115,8 @@ export function BenchmarkRunner() {
 
   useEffect(() => {
     if (loadedSize === null || !parseBenchmarkParams(window.location.search).flythrough) return;
-    return runFlythrough(loadedSize, setSpeed);
-  }, [loadedSize, setSpeed]);
+    return runFlythrough(loadedSize, setSpeed, () => isBenchmarkState(latestStateRef.current));
+  }, [loadedSize, setSpeed, latestStateRef]);
 
   return null;
 }
