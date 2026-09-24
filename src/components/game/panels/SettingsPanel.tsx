@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { SpriteTestPanel } from './SpriteTestPanel';
 import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
+import { loadBenchmarkCity } from '@/lib/benchmark';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -66,6 +67,9 @@ const UI_LABELS = {
   developerTools: msg('Developer Tools'),
   openSpriteTestView: msg('Open Sprite Test View'),
   loadExampleState: msg('Load Example State'),
+  benchmarkMedium: msg('Benchmark: Medium (120)'),
+  benchmarkLarge: msg('Benchmark: Large (160)'),
+  benchmarkDesc: msg('Fixed test city for performance checks. It is never auto-saved: reload the page to get your own city back.'),
   dayNightMode: msg('Day/Night Mode'),
   dayNightModeDesc: msg('Override the time-of-day appearance without affecting time progression'),
   auto: msg('Auto'),
@@ -600,6 +604,13 @@ export function SettingsPanel() {
               onClick={() => setShowSpriteTest(true)}
             >
               {m(UI_LABELS.openSpriteTestView)}
+            </Button>
+            <p className="text-muted-foreground text-xs mt-3 mb-1">{m(UI_LABELS.benchmarkDesc)}</p>
+            <Button variant="outline" className="w-full mt-1" onClick={() => { if (loadBenchmarkCity(120, loadState)) setActivePanel('none'); }}>
+              {m(UI_LABELS.benchmarkMedium)}
+            </Button>
+            <Button variant="outline" className="w-full mt-2" onClick={() => { if (loadBenchmarkCity(160, loadState)) setActivePanel('none'); }}>
+              {m(UI_LABELS.benchmarkLarge)}
             </Button>
             <Button variant="outline" className="w-full mt-2" onClick={() => loadExampleState('example_state.json', loadState, setActivePanel)}>
               Load Example State

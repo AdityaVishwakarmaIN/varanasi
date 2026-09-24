@@ -5,6 +5,8 @@ import React, { createContext, useCallback, useContext, useEffect, useState, use
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { serializeAndCompressAsync } from '@/lib/saveWorkerManager';
 import { simulateTick } from '@/lib/simulation';
+import { recordSave, recordTick } from '@/lib/perfStats';
+import { isBenchmarkState } from '@/lib/benchmark';
 import {
   Budget,
   BuildingType,
@@ -401,6 +403,10 @@ async function saveGameStateAsync(state: GameState): Promise<void> {
       return;
     }
     
+    // Benchmark cities (S1-T2) do all the save work (so "save max" is measured) but are
+    // never written, so loading a benchmark cannot overwrite the player's saved city.
+    if (isBenchmarkState(state)) return;
+
     // Step 3: Write to localStorage (fast)
     try {
       localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
@@ -837,12 +843,14 @@ export function GameProvider({ children, startFresh = false }: { children: React
         
         // PERF: No need for structuredClone here - the worker handles everything
         // postMessage internally clones the data when sending to the worker
+        const saveStart = performance.now();
         saveGameState(latestStateRef.current, () => {
           lastSaveTimeRef.current = Date.now();
           setHasExistingGame(true);
           setIsSaving(false);
           saveInProgressRef.current = false;
         });
+        recordSave(performance.now() - saveStart); // synchronous (main-thread) part of the save
       }, 5000); // Save every 5 seconds
     }, 200); // Wait 200ms for initial load
     
@@ -883,6 +891,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         
         // PERF: Run simulation and update ref immediately (for canvas)
         const newState = simulateTick(latestStateRef.current, cloudWeatherModeRef.current);
+        recordTick(performance.now() - now);
         latestStateRef.current = newState;
         stateChangedRef.current = true;
         
