@@ -33,6 +33,8 @@ import { copyShareUrl } from '@/lib/shareState';
 import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
+import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
+import type { OverlayMode } from '@/components/game/types';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -195,6 +197,10 @@ interface TopBarProps {
   /** Varanasi map: the Ganga Health chip toggles the Ganga overlay. */
   gangaOverlayActive?: boolean;
   onToggleGangaOverlay?: () => void;
+  /** Power / water chips (S3-T7/T8) toggle those overlays. */
+  overlayMode?: OverlayMode;
+  onTogglePowerOverlay?: () => void;
+  onToggleWaterOverlay?: () => void;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -204,6 +210,9 @@ export const TopBar = React.memo(function TopBar({
   onToggleMinimap,
   gangaOverlayActive = false,
   onToggleGangaOverlay,
+  overlayMode = 'none',
+  onTogglePowerOverlay,
+  onToggleWaterOverlay,
 }: TopBarProps) {
   const { state, setSpeed, setTaxRate, visualHour } = useGame();
   const { stats, year, month, day, speed, taxRate, cityName } = state;
@@ -280,6 +289,21 @@ export const TopBar = React.memo(function TopBar({
             onClick={onToggleGangaOverlay}
           />
         )}
+        {(['power', 'water'] as const).map((kind) => {
+          const supply = stats[kind];
+          const onToggle = kind === 'power' ? onTogglePowerOverlay : onToggleWaterOverlay;
+          if (!onToggle || !shouldShowUtilityChip(supply, 'desktop')) return null;
+          return (
+            <UtilityChip
+              key={kind}
+              kind={kind}
+              variant="desktop"
+              stats={supply}
+              active={overlayMode === kind}
+              onClick={onToggle}
+            />
+          );
+        })}
       </div>
       
       <div className="flex items-center gap-2">

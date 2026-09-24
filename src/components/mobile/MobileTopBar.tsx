@@ -33,6 +33,8 @@ import {
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
+import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
+import type { OverlayMode } from '@/components/game/types';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
@@ -118,6 +120,9 @@ export function MobileTopBar({
   onCloseTile,
   gangaOverlayActive = false,
   onToggleGangaOverlay,
+  overlayMode = 'none',
+  onTogglePowerOverlay,
+  onToggleWaterOverlay,
   onShare,
   onExit,
 }: { 
@@ -127,6 +132,10 @@ export function MobileTopBar({
   /** Varanasi map: the Ganga Health chip toggles the Ganga overlay (S2-T8). */
   gangaOverlayActive?: boolean;
   onToggleGangaOverlay?: () => void;
+  /** Power / water chips (S3-T7/T8) toggle those overlays. */
+  overlayMode?: OverlayMode;
+  onTogglePowerOverlay?: () => void;
+  onToggleWaterOverlay?: () => void;
   onShare?: () => void;
   onExit?: () => void;
 }) {
@@ -278,6 +287,21 @@ export function MobileTopBar({
               onClick={onToggleGangaOverlay}
             />
           )}
+          {(['power', 'water'] as const).map((kind) => {
+            const supply = stats[kind];
+            const onToggle = kind === 'power' ? onTogglePowerOverlay : onToggleWaterOverlay;
+            if (!onToggle || !shouldShowUtilityChip(supply, 'mobile')) return null;
+            return (
+              <UtilityChip
+                key={kind}
+                kind={kind}
+                variant="mobile"
+                stats={supply}
+                active={overlayMode === kind}
+                onClick={onToggle}
+              />
+            );
+          })}
 
           <button
             className="flex items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-2 -my-3"

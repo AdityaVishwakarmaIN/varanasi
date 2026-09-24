@@ -68,6 +68,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const toggleGangaOverlay = useCallback(() => {
     setOverlayMode(mode => (mode === 'ganga' ? 'none' : 'ganga'));
   }, []);
+  const togglePowerOverlay = useCallback(() => {
+    setOverlayMode(mode => (mode === 'power' ? 'none' : 'power'));
+  }, []);
+  const toggleWaterOverlay = useCallback(() => {
+    setOverlayMode(mode => (mode === 'water' ? 'none' : 'water'));
+  }, []);
   // Read from localStorage on first client render so we never persist the default `true,true`
   // in the same effect flush as hydration (that was overwriting saved prefs on every mount).
   const [showOverlayPanel, setShowOverlayPanel] = useState(() =>
@@ -319,6 +325,9 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onCloseTile={() => setSelectedTile(null)}
             gangaOverlayActive={overlayMode === 'ganga'}
             onToggleGangaOverlay={toggleGangaOverlay}
+            overlayMode={overlayMode}
+            onTogglePowerOverlay={togglePowerOverlay}
+            onToggleWaterOverlay={toggleWaterOverlay}
             onShare={FEATURES.coop ? () => setShowShareModal(true) : undefined}
             onExit={onExit}
           />
@@ -423,6 +432,9 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onToggleMinimap={setShowMinimap}
             gangaOverlayActive={overlayMode === 'ganga'}
             onToggleGangaOverlay={toggleGangaOverlay}
+            overlayMode={overlayMode}
+            onTogglePowerOverlay={togglePowerOverlay}
+            onToggleWaterOverlay={toggleWaterOverlay}
           />
           <StatsPanel />
           <div className="flex-1 relative overflow-visible">
