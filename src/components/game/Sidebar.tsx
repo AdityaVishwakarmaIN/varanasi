@@ -40,6 +40,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { openCommandMenu } from '@/components/ui/CommandMenu';
 import { Users } from 'lucide-react';
 import { ShareModal } from '@/components/multiplayer/ShareModal';
+import { FEATURES } from '@/lib/features';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 import {
   Dialog,
@@ -586,7 +587,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               </svg>
             </Button>
             {/* Invite button - only show if in multiplayer context */}
-            {multiplayer && (
+            {FEATURES.coop && multiplayer && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -731,7 +732,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         onExitWithoutSaving={handleExitWithoutSaving}
       />
       
-      {multiplayer && (
+      {FEATURES.coop && multiplayer && (
         <ShareModal
           open={showShareModal}
           onOpenChange={setShowShareModal}

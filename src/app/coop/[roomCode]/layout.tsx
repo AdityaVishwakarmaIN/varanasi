@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { FEATURES } from '@/lib/features';
 
 interface Props {
   params: Promise<{ roomCode: string }>;
@@ -35,5 +37,7 @@ export default function CoopRoomLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Co-op is hidden for v1: send old invite links to the home page.
+  if (!FEATURES.coop) redirect('/');
   return children;
 }

@@ -129,6 +129,10 @@ import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
 import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/components/game/gpu';
 import type { Application } from 'pixi.js';
+import { CAMERA_CONFIG, SharedControlsState, setCameraControls } from '@/lib/controlsConfig';
+import { clampZoom, PanVelocityTracker } from '@/lib/cameraMotion';
+import { useSmoothCamera } from '@/components/game/useSmoothCamera';
+import { getPlacementCheck } from '@/lib/placement';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
 // Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
@@ -144,10 +148,12 @@ export interface CanvasIsometricGridProps {
   onNavigationComplete?: () => void;
   onViewportChange?: (viewport: { offset: { x: number; y: number }; zoom: number; canvasSize: { width: number; height: number } }) => void;
   onBargeDelivery?: (cargoValue: number, cargoType: number) => void;
+  /** Shared keyboard state from useKeyboardControls (held pan keys, Space) and camera registration. */
+  controlsRef?: React.MutableRefObject<SharedControlsState>;
 }
 
 // Canvas-based Isometric Grid - HIGH PERFORMANCE
-export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery }: CanvasIsometricGridProps) {
+export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery, controlsRef }: CanvasIsometricGridProps) {
   const {
     state,
     latestStateRef,
@@ -360,7 +366,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const [dragStartTile, setDragStartTile] = useState<{ x: number; y: number } | null>(null);
   const [dragEndTile, setDragEndTile] = useState<{ x: number; y: number } | null>(null);
   const [cityConnectionDialog, setCityConnectionDialog] = useState<{ direction: 'north' | 'south' | 'east' | 'west' } | null>(null);
-  const keysPressedRef = useRef<Set<string>>(new Set());
+  // S1-T10: right-drag pans; a right-click without a drag cancels the tool (resolved on mouse up)
+  const rightClickRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
+  const panVelocityRef = useRef(new PanVelocityTracker()); // release velocity for pan inertia
   const renderWorkerManagerRef = useRef<RenderWorkerManager | null>(null);
   const lightingCanvasTransferredRef = useRef(false);
 
@@ -712,27 +720,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     onViewportChange?.({ offset, zoom, canvasSize });
   }, [offset, zoom, canvasSize, onViewportChange]);
 
-  // Keyboard panning (WASD / arrow keys)
+  // Keyboard panning (WASD / arrow keys). The keys are tracked by useKeyboardControls
+  // (KEY_BINDINGS in src/lib/controlsConfig.ts); this loop only applies the held pan actions.
   useEffect(() => {
-    const pressed = keysPressedRef.current;
-    const isTypingTarget = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null;
-      return !!el?.closest('input, textarea, select, [contenteditable="true"]');
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
-      const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright'].includes(key)) {
-        pressed.add(key);
-        e.preventDefault();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      pressed.delete(key);
-    };
+    const pressed = controlsRef?.current.heldActions;
+    if (!pressed) return;
 
     let animationFrameId = 0;
     let lastTime = performance.now();
@@ -745,10 +737,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
       let dx = 0;
       let dy = 0;
-      if (pressed.has('w') || pressed.has('arrowup')) dy += KEY_PAN_SPEED * delta;
-      if (pressed.has('s') || pressed.has('arrowdown')) dy -= KEY_PAN_SPEED * delta;
-      if (pressed.has('a') || pressed.has('arrowleft')) dx += KEY_PAN_SPEED * delta;
-      if (pressed.has('d') || pressed.has('arrowright')) dx -= KEY_PAN_SPEED * delta;
+      if (pressed.has('panUp')) dy += KEY_PAN_SPEED * delta;
+      if (pressed.has('panDown')) dy -= KEY_PAN_SPEED * delta;
+      if (pressed.has('panLeft')) dx += KEY_PAN_SPEED * delta;
+      if (pressed.has('panRight')) dx -= KEY_PAN_SPEED * delta;
 
       if (dx !== 0 || dy !== 0) {
         const { zoom: currentZoom, gridSize: n, canvasSize: cs } = worldStateRef.current;
@@ -770,17 +762,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
     animationFrameId = requestAnimationFrame(tick);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
       cancelAnimationFrame(animationFrameId);
-      pressed.clear();
     };
-  }, []);
+  }, [controlsRef]);
 
   // Find marinas and piers (uses imported utility)
   const findMarinasAndPiersCallback = useCallback(() => {
@@ -2604,6 +2591,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
   }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile]);
   
+  // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
+  const placementPreview = useMemo(() => {
+    if (isMobile || isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
+    return getPlacementCheck(state, selectedTool, hoveredTile.x, hoveredTile.y);
+  }, [isMobile, isDragging, hoveredTile, selectedTool, state]);
+
   // PERF: Lightweight hover/selection overlay - renders ONLY tile highlights
   // This runs frequently (on mouse move) but is extremely fast since it only draws simple shapes
   useEffect(() => {
@@ -2641,6 +2634,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       r.stroke();
     };
 
+    // S1-T10: green = can build, red = cannot (white when no placement tool is active)
+    const previewFill = placementPreview ? (placementPreview.ok ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.4)') : undefined;
+    const previewStroke = placementPreview ? (placementPreview.ok ? '#22c55e' : '#ef4444') : undefined;
+
     // Step 4: hover/selection highlights routed through a renderer so the GPU 'hover'
     // layer can replay the same draws (Canvas2D path unchanged).
     const paintHighlights = (r: IsoRenderer) => {
@@ -2662,14 +2659,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const ty = hoveredTile.y + dy;
             if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
               const { screenX, screenY } = gridToScreen(tx, ty, 0, 0);
-              drawHighlight(r, screenX, screenY);
+              drawHighlight(r, screenX, screenY, previewFill, previewStroke);
             }
           }
         }
       } else {
         // Single tile highlight for non-building tools
         const { screenX, screenY } = gridToScreen(hoveredTile.x, hoveredTile.y, 0, 0);
-        drawHighlight(r, screenX, screenY);
+        drawHighlight(r, screenX, screenY, previewFill, previewStroke);
       }
     }
     
@@ -2823,7 +2820,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile]);
+  }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile, placementPreview]);
   
   // P4: bootstrap the opt-in GPU (PixiJS) backend alongside the Canvas2D path.
   // Flag-gated and client-only; default OFF leaves the Canvas2D renderer untouched.
@@ -3144,7 +3141,40 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     transferredRef: lightingCanvasTransferredRef,
   });
   
+  // S1-T10: smooth zoom (ease-out) and pan inertia. Tuning in CAMERA_CONFIG (controlsConfig.ts).
+  // (clampOffset is declared below; these callbacks only run after render.)
+  const smoothCamera = useSmoothCamera({
+    getPose: () => ({ zoom: worldStateRef.current.zoom, offset: worldStateRef.current.offset }),
+    applyPose: (pose) => {
+      const clamped = clampOffset(pose.offset, pose.zoom);
+      // Update the live refs now so the next animation frame / wheel event sees this pose.
+      worldStateRef.current.zoom = pose.zoom;
+      worldStateRef.current.offset = clamped;
+      zoomRef.current = pose.zoom;
+      setZoom(pose.zoom);
+      setOffset(clamped);
+    },
+    panBy: (dx, dy) => {
+      setOffset(prev => clampOffset({ x: prev.x + dx, y: prev.y + dy }, zoomRef.current));
+    },
+  });
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Any click stops a running zoom animation / pan glide.
+    smoothCamera.stop();
+    panVelocityRef.current.reset();
+
+    // Right button: drag pans; a click without a drag cancels the tool (see handleMouseUp).
+    // While drawing with the left button, right-click still cancels immediately.
+    if (!isMobile && e.button === 2 && !isDragging) {
+      e.preventDefault();
+      rightClickRef.current = { startX: e.clientX, startY: e.clientY, moved: false };
+      panCandidateRef.current = null;
+      setIsPanning(true);
+      setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+      return;
+    }
+
     if (!isMobile && e.button === 2) {
       e.preventDefault();
       panCandidateRef.current = null;
@@ -3157,7 +3187,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return;
     }
 
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    const spacePan = e.button === 0 && !!controlsRef?.current.spaceHeld;
+    if (e.button === 1 || (e.button === 0 && e.altKey) || spacePan) {
+      if (spacePan && controlsRef) controlsRef.current.spaceUsedForPan = true; // not a pause tap
       setIsPanning(true);
       setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
       panCandidateRef.current = null;
@@ -3217,7 +3249,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeAtTile, zoom, showsDragGrid, supportsDragPlace, setSelectedTile, findBuildingOrigin, grid, setTool]);
+  }, [offset, gridSize, selectedTool, placeAtTile, zoom, showsDragGrid, supportsDragPlace, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -3246,6 +3278,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, newOffset.y)),
     };
   }, [getMapBounds, canvasSize.width, canvasSize.height]);
+
+  // Register the camera API for keyboard zoom (+ / -), zooming towards the screen centre.
+  useEffect(() => {
+    const controls = controlsRef?.current;
+    if (!controls) return;
+    setCameraControls(controls, {
+      zoomStep: (direction) => {
+        const target = smoothCamera.getTargetZoom() * Math.pow(CAMERA_CONFIG.keyZoomFactor, direction);
+        const { width, height } = worldStateRef.current.canvasSize;
+        smoothCamera.animateZoomTo(clampZoom(target, ZOOM_MIN, ZOOM_MAX), { x: width / 2, y: height / 2 });
+      },
+    });
+    return () => setCameraControls(controls, null);
+  }, [controlsRef, smoothCamera]);
 
   // Handle minimap navigation - center the view on the target tile
   useEffect(() => {
@@ -3293,6 +3339,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
 
     if (isPanning) {
+      panVelocityRef.current.push(e.clientX, e.clientY, performance.now());
+      const rightClick = rightClickRef.current;
+      if (rightClick && !rightClick.moved
+        && (Math.abs(e.clientX - rightClick.startX) >= PAN_DRAG_THRESHOLD || Math.abs(e.clientY - rightClick.startY) >= PAN_DRAG_THRESHOLD)) {
+        rightClick.moved = true;
+      }
       const newOffset = {
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y,
@@ -3401,6 +3453,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [isPanning, dragStart, offset, zoom, gridSize, isDragging, showsDragGrid, dragStartTile, selectedTool, roadDrawDirection, supportsDragPlace, placeAtTile, clampOffset, grid]);
   
   const handleMouseUp = useCallback(() => {
+    const rightClick = rightClickRef.current;
+    rightClickRef.current = null;
+    if (rightClick && !rightClick.moved) {
+      // Right-click without a drag: cancel the current tool (back to Select)
+      setTool('select');
+    } else if (isPanning) {
+      // Let the camera glide after a drag-pan is released
+      smoothCamera.startInertia(panVelocityRef.current.getVelocity(performance.now()));
+    }
+    panVelocityRef.current.reset();
+
     if (panCandidateRef.current && !isPanning && selectedTool === 'select') {
       const { gridX, gridY, startedAt } = panCandidateRef.current;
       const clickDurationMs = performance.now() - startedAt;
@@ -3470,7 +3533,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
   
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -3483,13 +3546,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const mouseY = e.clientY - rect.top;
     
     // Calculate new zoom with proportional scaling for smoother feel
-    // Use smaller base delta (0.05) and scale by current zoom for consistent feel at all levels
-    const baseZoomDelta = 0.05;
-    const scaledDelta = baseZoomDelta * Math.max(0.5, zoom); // Scale with zoom, min 0.5x
+    // Steps accumulate on the animation's target zoom, so fast scrolling stays responsive (S1-T10)
+    const targetZoom = smoothCamera.getTargetZoom();
+    const scaledDelta = CAMERA_CONFIG.wheelZoomStep * Math.max(CAMERA_CONFIG.wheelZoomMinScale, targetZoom);
     const zoomDelta = e.deltaY > 0 ? -scaledDelta : scaledDelta;
-    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom + zoomDelta));
-    
-    if (newZoom === zoom) return;
+    const newZoom = clampZoom(targetZoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
+
+    if (newZoom === targetZoom) return;
     
     // PERF: Track wheel zooming state to disable lights during zoom (like mobile pinch zoom)
     if (!isWheelZoomingRef.current) {
@@ -3504,22 +3567,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setIsWheelZooming(false); // Trigger re-render to restore lights
     }, 150); // Wait 150ms after last wheel event to consider zooming complete
     
-    // World position under the mouse before zoom
-    // screen = world * zoom + offset → world = (screen - offset) / zoom
-    const worldX = (mouseX - offset.x) / zoom;
-    const worldY = (mouseY - offset.y) / zoom;
-    
-    // After zoom, keep the same world position under the mouse
-    // mouseX = worldX * newZoom + newOffset.x → newOffset.x = mouseX - worldX * newZoom
-    const newOffsetX = mouseX - worldX * newZoom;
-    const newOffsetY = mouseY - worldY * newZoom;
-    
-    // Clamp to map bounds
-    const clampedOffset = clampOffset({ x: newOffsetX, y: newOffsetY }, newZoom);
-    
-    setOffset(clampedOffset);
-    setZoom(newZoom);
-  }, [zoom, offset, clampOffset]);
+    // Ease towards the new zoom, keeping the world position under the mouse fixed
+    smoothCamera.animateZoomTo(newZoom, { x: mouseX, y: mouseY });
+  }, [smoothCamera]);
 
   // Touch handlers for mobile
   const getTouchDistance = useCallback((touch1: React.Touch | Touch, touch2: React.Touch | Touch) => {
@@ -3845,22 +3895,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       })()}
       
       {hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
-        // Check if this is a waterfront building tool and if placement is valid
-        const buildingType = (selectedTool as string) as BuildingType;
-        const isWaterfrontTool = requiresWaterAdjacency(buildingType);
-        let isWaterfrontPlacementInvalid = false;
-        
-        if (isWaterfrontTool && hoveredTile) {
-          const size = getBuildingSize(buildingType);
-          const waterCheck = getWaterAdjacency(grid, hoveredTile.x, hoveredTile.y, size.width, size.height, gridSize);
-          isWaterfrontPlacementInvalid = !waterCheck.hasWater;
-        }
+        // S1-T10: placement preview label (cost, and the reason when the tile is red)
+        const isPlacementInvalid = !!placementPreview && !placementPreview.ok;
 
         const toolName = m(TOOL_INFO[selectedTool].name);
 
         return (
-          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
-            isWaterfrontPlacementInvalid
+          <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
+            isPlacementInvalid
               ? 'border bg-destructive/90 border-destructive-foreground/30 text-destructive-foreground'
               : 'border bg-card/90 border-border'
           }`}>
@@ -3878,14 +3920,19 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                   );
                 })()}
               </>
-            ) : isWaterfrontPlacementInvalid ? (
+            ) : isPlacementInvalid && placementPreview?.reason ? (
               <>
-                {gt('{toolName} must be placed next to water', { toolName })}
+                {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
+                {TOOL_INFO[selectedTool].cost > 0 && ` - $${TOOL_INFO[selectedTool].cost}`}
+                {' - '}<span className="font-semibold">{m(placementPreview.reason)}</span>
               </>
             ) : (
               <>
                 {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
                 {TOOL_INFO[selectedTool].cost > 0 && ` - $${TOOL_INFO[selectedTool].cost}`}
+                {placementPreview?.warning && (
+                  <span className="text-amber-500">{' - '}{m(placementPreview.warning)}</span>
+                )}
                 {showsDragGrid && gt(' - Drag to zone area')}
                 {supportsDragPlace && !showsDragGrid && gt(' - Drag to place')}
               </>

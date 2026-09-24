@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { SpriteTestPanel } from './SpriteTestPanel';
+import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
 
@@ -274,6 +275,8 @@ export function SettingsPanel() {
               <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
               <LocaleSelector />
             </div>
+
+            <ControlsHelpButton />
           </div>
 
           <div>
