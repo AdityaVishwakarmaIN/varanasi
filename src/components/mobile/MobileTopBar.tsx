@@ -32,6 +32,8 @@ import {
 } from '@/components/ui/dialog';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { formatINR, formatPopulation } from '@/lib/format';
+import { GangaHealthChip } from '@/components/game/GangaHealthChip';
+import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -114,12 +116,17 @@ export function MobileTopBar({
   selectedTile, 
   services, 
   onCloseTile,
+  gangaOverlayActive = false,
+  onToggleGangaOverlay,
   onShare,
   onExit,
 }: { 
   selectedTile: Tile | null;
   services: { police: number[][]; fire: number[][]; health: number[][]; education: number[][]; power: boolean[][]; water: boolean[][] };
   onCloseTile: () => void;
+  /** Varanasi map: the Ganga Health chip toggles the Ganga overlay (S2-T8). */
+  gangaOverlayActive?: boolean;
+  onToggleGangaOverlay?: () => void;
   onShare?: () => void;
   onExit?: () => void;
 }) {
@@ -147,6 +154,13 @@ export function MobileTopBar({
     setShowExitDialog(false);
     onExit?.();
   }, [onExit]);
+
+  const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
+  // S2-T8: "Effect on Ganga" for catchment tiles (memoized per grid inside ganga.ts).
+  const gangaEffectInfo = selectedTile
+    ? getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, selectedTile.x, selectedTile.y)
+    : null;
+  const gangaEffectLines = gangaEffectInfo ? describeGangaTileEffect(gangaEffectInfo, formatPopulation) : null;
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -254,6 +268,16 @@ export function MobileTopBar({
             <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-500" />
             <DemandBar label="I" demand={stats.demand.industrial} color="text-amber-500" />
           </div>
+
+          {gangaHealth !== undefined && onToggleGangaOverlay && (
+            <GangaHealthChip
+              variant="mobile"
+              gangaHealth={gangaHealth}
+              gangaHealthTarget={stats.gangaHealthTarget}
+              active={gangaOverlayActive}
+              onClick={onToggleGangaOverlay}
+            />
+          )}
 
           <button
             className="flex items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-2 -my-3"
@@ -364,6 +388,23 @@ export function MobileTopBar({
             >
               <CloseIcon size={12} />
             </button>
+          </div>
+        )}
+
+        {/* Effect on Ganga (Varanasi catchment tiles only) */}
+        {selectedTile && gangaEffectLines && (
+          <div className="border-t border-sidebar-border/50 bg-secondary/20 px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
+            <span className="text-muted-foreground shrink-0">Effect on Ganga:</span>
+            <span className="truncate">
+              {gangaEffectLines.map((line, i) => (
+                <span
+                  key={line.text}
+                  className={line.tone === 'hurts' ? 'text-red-400' : line.tone === 'cleans' ? 'text-green-400' : 'text-muted-foreground'}
+                >
+                  {i > 0 ? ' · ' : ''}{line.text}
+                </span>
+              ))}
+            </span>
           </div>
         )}
       </Card>

@@ -32,6 +32,7 @@ import {
 import { copyShareUrl } from '@/lib/shareState';
 import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
 import { formatINR, formatPopulation } from '@/lib/format';
+import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -191,6 +192,9 @@ interface TopBarProps {
   showMinimap: boolean;
   onToggleOverlayPanel: (isVisible: boolean) => void;
   onToggleMinimap: (isVisible: boolean) => void;
+  /** Varanasi map: the Ganga Health chip toggles the Ganga overlay. */
+  gangaOverlayActive?: boolean;
+  onToggleGangaOverlay?: () => void;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -198,9 +202,12 @@ export const TopBar = React.memo(function TopBar({
   showMinimap,
   onToggleOverlayPanel,
   onToggleMinimap,
+  gangaOverlayActive = false,
+  onToggleGangaOverlay,
 }: TopBarProps) {
   const { state, setSpeed, setTaxRate, visualHour } = useGame();
   const { stats, year, month, day, speed, taxRate, cityName } = state;
+  const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
   const m = useMessages();
   const locale = useLocale();
   const setLocale = useSetLocale();
@@ -264,6 +271,15 @@ export const TopBar = React.memo(function TopBar({
           label={String(m(UI_LABELS.funds))}
           variant={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'success'}
         />
+        {gangaHealth !== undefined && onToggleGangaOverlay && (
+          <GangaHealthChip
+            variant="desktop"
+            gangaHealth={gangaHealth}
+            gangaHealthTarget={stats.gangaHealthTarget}
+            active={gangaOverlayActive}
+            onClick={onToggleGangaOverlay}
+          />
+        )}
       </div>
       
       <div className="flex items-center gap-2">
