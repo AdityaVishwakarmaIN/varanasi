@@ -6,6 +6,7 @@ import { useGame } from '@/context/GameContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { formatINR } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -42,16 +43,16 @@ export function BudgetPanel() {
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-border">
             <div>
               <div className="text-muted-foreground text-xs mb-1">{m(UI_LABELS.income)}</div>
-              <div className="text-green-400 font-mono">${stats.income.toLocaleString()}/mo</div>
+              <div className="text-green-400 font-mono">{formatINR(stats.income)}/mo</div>
             </div>
             <div>
               <div className="text-muted-foreground text-xs mb-1">{m(UI_LABELS.expenses)}</div>
-              <div className="text-red-400 font-mono">${stats.expenses.toLocaleString()}/mo</div>
+              <div className="text-red-400 font-mono">{formatINR(stats.expenses)}/mo</div>
             </div>
             <div>
               <div className="text-muted-foreground text-xs mb-1">{m(UI_LABELS.net)}</div>
               <div className={`font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${(stats.income - stats.expenses).toLocaleString()}/mo
+                {formatINR(stats.income - stats.expenses)}/mo
               </div>
             </div>
           </div>

@@ -50,6 +50,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatINR } from '@/lib/format';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -241,10 +242,10 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   className={`w-full justify-start gap-2 px-3 py-2 h-auto text-sm transition-all duration-150 ${
                     isSelected ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted/60'
                   }`}
-                  title={`${m(info.description)} - Cost: $${info.cost.toLocaleString()}`}
+                  title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
                 >
                   <span className="flex-1 text-left truncate">{m(info.name)}</span>
-                  <span className={`text-xs ${isSelected ? 'opacity-80' : 'opacity-50'}`}>${info.cost.toLocaleString()}</span>
+                  <span className={`text-xs ${isSelected ? 'opacity-80' : 'opacity-50'}`}>{formatINR(info.cost)}</span>
                 </Button>
               );
             })}
@@ -647,11 +648,11 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     className={`w-full justify-start gap-3 px-3 py-2 h-auto text-sm ${
                       isSelected ? 'bg-primary text-primary-foreground' : ''
                     }`}
-                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: $${info.cost}` : ''}`}
+                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
                   >
                     <span className="flex-1 text-left truncate">{m(info.name)}</span>
                     {info.cost > 0 && (
-                      <span className="text-xs opacity-60">${info.cost}</span>
+                      <span className="text-xs opacity-60">{formatINR(info.cost)}</span>
                     )}
                   </Button>
                 );

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
+import { formatINR } from '@/lib/format';
 
 // Global callback to open the command menu
 let openCommandMenuCallback: (() => void) | null = null;
@@ -469,7 +470,7 @@ export function CommandMenu() {
                                 'text-xs shrink-0',
                                 isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
                               )}>
-                                ${item.cost.toLocaleString()}
+                                {formatINR(item.cost)}
                               </span>
                             )}
                           </button>

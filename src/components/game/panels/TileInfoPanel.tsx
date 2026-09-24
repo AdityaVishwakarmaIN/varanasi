@@ -15,6 +15,7 @@ import {
   SERVICE_RANGE_INCREASE_PER_LEVEL,
   SERVICE_UPGRADE_COST_BASE,
 } from '@/lib/simulation';
+import { formatINR } from '@/lib/format';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -152,7 +153,7 @@ export function TileInfoPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Land Value</span>
-          <span>${tile.landValue}</span>
+          <span>{formatINR(tile.landValue)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Pollution</span>
@@ -207,7 +208,7 @@ export function TileInfoPanel({
               <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Upgrade Cost</span>
                 <span className={`font-mono ${upgradeInfo.canAfford ? 'text-foreground' : 'text-red-400'}`}>
-                  ${upgradeInfo.cost.toLocaleString()}
+                  {formatINR(upgradeInfo.cost)}
                 </span>
               </div>
               <Button

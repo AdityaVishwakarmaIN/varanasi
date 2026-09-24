@@ -15,6 +15,7 @@ import { SpriteTestPanel } from './SpriteTestPanel';
 import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
+import { formatINR, formatPopulation } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -87,13 +88,6 @@ function formatDate(timestamp: number): string {
   });
 }
 
-// Format population for display
-function formatPopulation(pop: number): string {
-  if (pop >= 1000000) return `${(pop / 1000000).toFixed(1)}M`;
-  if (pop >= 1000) return `${(pop / 1000).toFixed(1)}K`;
-  return pop.toString();
-}
-
 // Helper function to load example state with proper error handling
 async function loadExampleState(
   filename: string,
@@ -121,12 +115,6 @@ async function loadExampleState(
   }
 }
 
-// Format money for display
-function formatMoney(money: number): string {
-  if (money >= 1000000) return `$${(money / 1000000).toFixed(1)}M`;
-  if (money >= 1000) return `$${(money / 1000).toFixed(1)}K`;
-  return `$${money}`;
-}
 
 export function SettingsPanel() {
   const { state, setActivePanel, setDisastersEnabled, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
@@ -441,7 +429,7 @@ export function SettingsPanel() {
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
                           <span>{m(UI_LABELS.pop)}: {formatPopulation(city.population)}</span>
-                          <span>{formatMoney(city.money)}</span>
+                          <span>{formatINR(city.money)}</span>
                           <span>{city.gridSize}×{city.gridSize}</span>
                         </div>
                         <div className="text-[10px] text-muted-foreground mb-2">

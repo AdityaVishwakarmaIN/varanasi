@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/Icons';
 import { copyShareUrl } from '@/lib/shareState';
 import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
+import { formatINR, formatPopulation } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -256,10 +257,10 @@ export const TopBar = React.memo(function TopBar({
       </div>
       
       <div className="flex items-center gap-3">
-        <StatBadge value={stats.population.toLocaleString()} label={String(m(UI_LABELS.population))} />
-        <StatBadge value={stats.jobs.toLocaleString()} label={String(m(UI_LABELS.jobs))} />
+        <StatBadge value={formatPopulation(stats.population)} label={String(m(UI_LABELS.population))} />
+        <StatBadge value={formatPopulation(stats.jobs)} label={String(m(UI_LABELS.jobs))} />
         <StatBadge 
-          value={`$${stats.money.toLocaleString()}`} 
+          value={formatINR(stats.money)} 
           label={String(m(UI_LABELS.funds))}
           variant={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'success'}
         />
@@ -267,7 +268,7 @@ export const TopBar = React.memo(function TopBar({
       
       <div className="flex items-center gap-2">
         <StatBadge 
-          value={`$${(stats.income - stats.expenses).toLocaleString()}`} 
+          value={formatINR(stats.income - stats.expenses)} 
           label={String(m(UI_LABELS.monthly))}
           variant={stats.income - stats.expenses >= 0 ? 'success' : 'destructive'}
         />

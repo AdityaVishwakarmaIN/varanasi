@@ -6,6 +6,7 @@ import { useGame } from '@/context/GameContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatINR, formatIndianNumber, formatPopulation } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -43,16 +44,18 @@ export function StatisticsPanel() {
     
     let data: number[] = [];
     let color = '#10b981';
-    const formatValue = (v: number) => v.toLocaleString();
+    let formatValue = (v: number) => formatIndianNumber(v);
     
     switch (activeTab) {
       case 'population':
         data = history.map(h => h.population);
         color = '#10b981';
+        formatValue = formatPopulation;
         break;
       case 'money':
         data = history.map(h => h.money);
         color = '#f59e0b';
+        formatValue = formatINR;
         break;
       case 'happiness':
         data = history.map(h => h.happiness);
@@ -107,20 +110,20 @@ export function StatisticsPanel() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Card className="p-2 sm:p-3">
               <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.population)}</div>
-              <div className="font-mono tabular-nums font-semibold text-green-400 text-sm sm:text-base truncate">{stats.population.toLocaleString()}</div>
+              <div className="font-mono tabular-nums font-semibold text-green-400 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
             </Card>
             <Card className="p-2 sm:p-3">
               <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.jobs)}</div>
-              <div className="font-mono tabular-nums font-semibold text-blue-400 text-sm sm:text-base truncate">{stats.jobs.toLocaleString()}</div>
+              <div className="font-mono tabular-nums font-semibold text-blue-400 text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
             </Card>
             <Card className="p-2 sm:p-3">
               <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.treasury)}</div>
-              <div className="font-mono tabular-nums font-semibold text-amber-400 text-sm sm:text-base truncate">${stats.money.toLocaleString()}</div>
+              <div className="font-mono tabular-nums font-semibold text-amber-400 text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
             </Card>
             <Card className="p-2 sm:p-3">
               <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.weekly)}</div>
               <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${Math.floor((stats.income - stats.expenses) / 4).toLocaleString()}
+                {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
               </div>
             </Card>
           </div>
