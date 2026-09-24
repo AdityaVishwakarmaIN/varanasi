@@ -20,7 +20,9 @@ export const COLLAPSE_CONFIG = {
   /** Zones whose buildings can collapse. */
   zones: ['residential', 'commercial'] as readonly string[],
   /** Base chance per in-game day for an eligible building. */
-  dailyChance: 0.0005,
+  // Doc starting value was 0.0005 (≈28 collapses/yr for 350 old, fire-covered buildings). Tuned to meet the
+  // "≤ 1 per year in a well-run 1-lakh city" target; see estimateCollapsesPerYear.
+  dailyChance: 0.00002,
   /** Multiplier during these seasons. */
   monsoonMultiplier: 3,
   riskySeasons: ['monsoon'] as readonly Season[],
