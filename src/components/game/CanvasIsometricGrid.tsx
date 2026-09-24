@@ -152,6 +152,8 @@ import {
 } from '@/lib/touchGestures';
 import { Check, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
+import { recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
+import { registerCameraController } from '@/components/game/cameraController';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
 // Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
@@ -2936,6 +2938,39 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     };
   }, [canvasSize.width, canvasSize.height]);
 
+  // Perf HUD (S1-T2): frame time = time between consecutive animation frames, so it includes
+  // React re-renders, the main tile render and GC (what the player actually sees). Runs in its
+  // own never-restarting rAF loop because the animation loop below restarts on many re-renders.
+  useEffect(() => {
+    let frameId = 0;
+    let lastFrameStamp = -1;
+    let lastEntitySample = 0;
+    const onVisibilityChange = () => { lastFrameStamp = -1; }; // don't count the hidden-tab gap
+    const measure = (time: number) => {
+      frameId = requestAnimationFrame(measure);
+      if (lastFrameStamp >= 0) recordFrame(time - lastFrameStamp);
+      lastFrameStamp = time;
+      if (time - lastEntitySample < 250) return;
+      lastEntitySample = time;
+      setEntityCount('cars', carsRef.current.length);
+      setEntityCount('buses', busesRef.current.length);
+      setEntityCount('emergency', emergencyVehiclesRef.current.length);
+      setEntityCount('pedestrians', pedestriansRef.current.length);
+      setEntityCount('trains', trainsRef.current.length);
+      setEntityCount('boats', boatsRef.current.length);
+      setEntityCount('barges', bargesRef.current.length);
+      setEntityCount('aircraft', airplanesRef.current.length + helicoptersRef.current.length + seaplanesRef.current.length);
+      setEntityCount('clouds', cloudsRef.current.length);
+      setPerfRenderer(GPU_RENDERER_ENABLED ? (pixiAppRef.current ? 'gpu' : 'gpu (starting)') : 'canvas');
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    frameId = requestAnimationFrame(measure);
+    return () => {
+      cancelAnimationFrame(frameId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
@@ -3381,6 +3416,25 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     });
     return () => setCameraControls(controls, null);
   }, [controlsRef, smoothCamera]);
+  // Expose the camera to code outside this component (benchmark fly-through, smooth camera).
+  // See cameraController.ts. Reads come from worldStateRef (the last rendered camera).
+  useEffect(() => registerCameraController({
+    getCamera: () => {
+      const ws = worldStateRef.current;
+      return { offset: ws.offset, zoom: ws.zoom, canvasSize: ws.canvasSize, gridSize: ws.gridSize };
+    },
+    setCamera: ({ offset: nextOffset, zoom: nextZoom }) => {
+      const ws = worldStateRef.current;
+      const z = nextZoom === undefined ? ws.zoom : Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, nextZoom));
+      const o = nextOffset ?? ws.offset;
+      const bounds = getMapBounds(z, ws.canvasSize.width, ws.canvasSize.height);
+      setOffset({
+        x: Math.max(bounds.minOffsetX, Math.min(bounds.maxOffsetX, o.x)),
+        y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, o.y)),
+      });
+      if (z !== ws.zoom) setZoom(z);
+    },
+  }), [getMapBounds]);
 
   // Handle minimap navigation - center the view on the target tile
   useEffect(() => {

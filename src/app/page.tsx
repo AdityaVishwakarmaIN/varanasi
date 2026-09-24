@@ -13,6 +13,9 @@ import {
 import { GameProvider } from '@/context/GameContext';
 import { MultiplayerContextProvider } from '@/context/MultiplayerContext';
 import Game from '@/components/Game';
+import { PerfHud } from '@/components/game/PerfHud';
+import { BenchmarkRunner } from '@/components/game/BenchmarkRunner';
+import { parseBenchmarkParams } from '@/lib/benchmark';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { FEATURES } from '@/lib/features';
 import { useMobile } from '@/hooks/useMobile';
@@ -372,6 +375,11 @@ export default function HomePage() {
         window.location.replace(`/coop/${roomCode.toUpperCase()}`);
         return;
       }
+      // ?bench=120|160: go straight into the game; BenchmarkRunner loads the benchmark city
+      if (parseBenchmarkParams(window.location.search).bench !== null) {
+        setShowGame(true);
+        return;
+      }
       // Always show landing page - don't auto-load into game
       // User can select from saved cities or start new
     };
@@ -513,6 +521,8 @@ export default function HomePage() {
     const gameContent = (
       <main className="h-screen w-screen overflow-hidden">
         <Game onExit={handleExitGame} />
+        <PerfHud />
+        <BenchmarkRunner />
       </main>
     );
 

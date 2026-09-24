@@ -64,9 +64,9 @@ Read these once. The tasks refer to them by name.
 Do them **in this order**. Tick each box when it is done (see Definition of Done in README).
 
 - [x] S1-T1: Unit test setup and seeded random numbers
-- [ ] S1-T2: Performance HUD and benchmark city
+- [x] S1-T2: Performance HUD and benchmark city
 - [ ] S1-T3: Record the baseline
-- [ ] S1-T4: A proper game loop (fixed timestep, pause when hidden)
+- [x] S1-T4: A proper game loop (fixed timestep, pause when hidden)
 - [x] S1-T5: Make the simulation cheaper
 - [x] S1-T6: Simulation in a Web Worker (**only if S1-T5 is not enough**) — `[deferred: decision recorded]` The gate said "needed", but the design below would cost the main thread more than it saves: serialising the 160 state takes 80+ ms against a ~6 ms tick. Decision (lead): keep the tick on the main thread for v1, re-check the frame and hitch targets in S1-T13 on a quiet machine, and plan a worker that **owns** a typed-array grid (small action messages in, changed tiles out) as a post-v1 project. See Notes for later
 - [ ] S1-T7: GPU renderer on by default, quality presets and auto-quality
@@ -565,3 +565,14 @@ mis-tap on an expensive building asks for confirmation.
   eviction less likely.
 - The home page decompresses the whole autosave on the main thread just to check it is valid.
 
+- **S1-T2 (perf):** the entity animation loop in `CanvasIsometricGrid.tsx` (the `useEffect` that calls
+  `requestAnimationFrame(render)` and updates cars, pedestrians and so on) lists callbacks such as `updateCars` and
+  `drawCars` as dependencies. They come from `createVehicleSystems(...)` and similar factories that run on **every
+  render**, so the loop is torn down and restarted on every React re-render (every frame while panning, and on every
+  500 ms state sync). The frame meter for the HUD therefore runs in its own stable loop. Worth fixing in S1-T5/S1-T8.
+- **S1-T2:** "frame time" in the HUD is the time **between** consecutive animation frames (what the player sees:
+  includes React re-renders, the main tile render and GC), not the time spent inside one callback. The fly-through
+  JSON summarises **every** frame of the 30 s run (`startPerfCapture`/`stopPerfCapture` in `perfStats.ts`), not
+  only the last 300.
+- **S1-T2:** a benchmark city (id starting with `benchmark-`) is never written by autosave: the save work still runs
+  (so "save max" is measured) but the final write is skipped. S1-T9 must keep this check when it rewrites saving.
