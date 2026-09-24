@@ -6,9 +6,10 @@
  */
 import type { BuildingType } from '@/games/isocity/types/buildings';
 import type { Tile } from '@/games/isocity/types/game';
-import { getGangaCatchment, getRiverZone, getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
+import { getDistanceToGanga, getGangaCatchment, getRiverZone, getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { SCORING_CONFIG, type GangaLoadInput } from '@/lib/scoring';
+import { WATER_CONFIG, isWaterWorksSiteValid } from '@/lib/utilities';
 
 const GANGA = SCORING_CONFIG.ganga;
 
@@ -119,6 +120,19 @@ export function getGhatPlacement(
   const waterSouth = isWater(x, y + 1);
   if (!waterEast && !waterSouth && !isWater(x - 1, y) && !isWater(x, y - 1)) return null;
   return { flipped: !waterEast && waterSouth };
+}
+
+/**
+ * Jal Sansthan Water Works placement rule (S3-T8): the footprint's nearest tile must be within
+ * WATER_CONFIG.worksMaxDistanceToGanga tiles of the Ganga. Always false off the Varanasi map.
+ */
+export function isWaterWorksPlacementValid(x: number, y: number, gridSize: number, mapId: MapId | undefined): boolean {
+  const size = WATER_CONFIG.worksSize;
+  let min = Infinity;
+  for (let dy = 0; dy < size; dy++) {
+    for (let dx = 0; dx < size; dx++) min = Math.min(min, getDistanceToGanga(x + dx, y + dy, gridSize, mapId));
+  }
+  return isWaterWorksSiteValid(min);
 }
 
 /** Per-tile effect on the Ganga, for the Ganga overlay and tile info (S2-T8). */

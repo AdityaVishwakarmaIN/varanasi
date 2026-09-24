@@ -116,7 +116,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
           else if (tile.zone === 'industrial') color = '#b45309';
           else if (serviceBuildings.has(buildingType)) color = '#c084fc';
           else if (buildingType === 'power_plant') color = '#f97316';
-          else if (buildingType === 'water_tower') color = '#06b6d4';
+          else if (buildingType === 'water_tower' || buildingType === 'jal_sansthan_water_works') color = '#06b6d4';
           else if (parkBuildings.has(buildingType)) color = '#84cc16';
           
           ctx.fillStyle = color;

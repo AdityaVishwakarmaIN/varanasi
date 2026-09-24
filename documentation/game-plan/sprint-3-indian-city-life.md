@@ -53,8 +53,8 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [ ] S3-T4: Mixed traffic (vehicle kinds)
 - [ ] S3-T5: Cows
 - [ ] S3-T6: Mixed-use commercial
-- [ ] S3-T7: Power capacity and rolling power cuts
-- [ ] S3-T8: Water capacity, the Jal Sansthan water works and shortages
+- [x] S3-T7: Power capacity and rolling power cuts
+- [x] S3-T8: Water capacity, the Jal Sansthan water works and shortages
 - [ ] S3-T9: Informal settlements
 - [ ] S3-T10: Pilgrim crowds at the ghats
 - [ ] S3-T11: Balance pass and sign-off
@@ -262,6 +262,19 @@ If ratio < 1:
 - Top bar: a water-drop icon with supply %.
 
 **Acceptance criteria:** as with power. Plus: lowering Ganga Health (in a test) lowers the water works' capacity.
+
+**Done (notes):**
+- S3-T7 and S3-T8 share one model: `src/lib/utilities.ts` (config + pure maths), `src/lib/utilityCuts.ts` (cuts applied as a
+  copy on top of the cached coverage, so the S1-T5 cache is never written), and the wiring in `simulateTick`/`calculateStats`.
+  The cut set for a tick comes from the previous tick's stats and changes once per in-game hour (`getRotationHour`).
+- Top bar: `UtilityChip` (power and water, amber < 100%, red < 80%); clicking a chip toggles its overlay. On mobile the chips
+  only show while supply is short.
+- `jal_sansthan_water_works`: 3×3, ₹6,000, ₹300/month on the water line, range 20. Needs power to be built and to supply.
+  Placement is checked in `placeBuilding` and explained in the preview ("must be within 3 tiles of the Ganga", or
+  "Can't build on water" when the footprint overlaps the river). Varanasi only (Riverfront group).
+- New random cities are topped up with plants/tanks (`ensureUtilityCapacity`) so they don't open in a blackout; the raw
+  generator (goldens, `?bench=`) is unchanged and runs with cuts. Golden fingerprint tests run with capacity switched off.
+- Tests: `utilities.test.ts`, `utilityCuts.test.ts`, `waterWorks.test.ts` (incl. "a dirtier Ganga lowers the works' supply").
 
 ---
 

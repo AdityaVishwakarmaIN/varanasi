@@ -256,7 +256,7 @@ const RIVERFRONT_ITEMS: MenuItem[] = RIVERFRONT_TOOLS.map((tool) => ({
   description: TOOL_INFO[tool].description,
   cost: TOOL_INFO[tool].cost,
   category: 'riverfront',
-  keywords: [tool.replace(/_/g, ' '), 'ganga', 'river', 'riverfront', 'ghat', 'sewage'],
+  keywords: [tool.replace(/_/g, ' '), 'ganga', 'river', 'riverfront', 'ghat', 'sewage', 'water'],
 }));
 
 /** Menu items for a map: hidden tools removed, Varanasi names applied, Riverfront added (S3-T1). */

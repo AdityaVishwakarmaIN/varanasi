@@ -49,6 +49,8 @@ export const WATER_CONFIG = {
   /** Jal Sansthan Water Works: size (tiles) and cost (₹). */
   worksSize: 3,
   worksCost: 6000,
+  /** Monthly upkeep of each works, charged to the water budget line (8 tanks' worth of water for 4 tanks' upkeep). */
+  worksUpkeepMonthly: 300,
   /** Demand per resident. */
   residentWeight: 1,
   amberBelow: 1,
@@ -59,8 +61,6 @@ export const WATER_CONFIG = {
   cutHappinessPenalty: 5,
   advisorMessage:
     'Taps are running dry in some neighbourhoods. Add water tanks, or build a Jal Sansthan Water Works by the Ganga.',
-  /** Red placement reason for the works. */
-  worksPlacementReason: 'Jal Sansthan Water Works must be within 3 tiles of the Ganga',
 } as const;
 
 /** One power plant or water tank as seen by the capacity model. */

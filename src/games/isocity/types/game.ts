@@ -26,7 +26,8 @@ export type Tool =
   | 'marina_docks_small' | 'pier_large' | 'roller_coaster_small'
   | 'community_garden' | 'pond_park' | 'park_gate' | 'mountain_lodge' | 'mountain_trailhead'
   // Varanasi riverfront (append only)
-  | 'ghat' | 'sewage_treatment_plant';
+  | 'ghat' | 'sewage_treatment_plant'
+  | 'jal_sansthan_water_works';
 
 export interface ToolInfo {
   name: string;
@@ -97,6 +98,7 @@ export const TOOL_INFO: Record<Tool, ToolInfo> = {
   mountain_trailhead: { name: msg('Trailhead'), cost: 400, description: msg('Hiking trail entrance (3x3)'), size: 3 },
   ghat: { name: msg('Ghat'), cost: 800, description: msg('Stone steps to the Ganga. Draws pilgrims and tourists.'), size: 1 },
   sewage_treatment_plant: { name: msg('Sewage Treatment Plant'), cost: 2500, description: msg('Cleans sewage before it reaches the Ganga. Treats a large area (2x2).'), size: 2 },
+  jal_sansthan_water_works: { name: msg('Jal Sansthan Water Works'), cost: 6000, description: msg('Draws and treats Ganga water for a large area. Needs power; must be within 3 tiles of the Ganga. A cleaner river gives more water (3x3).'), size: 3 },
 };
 
 export interface Tile {

@@ -13,7 +13,7 @@
  */
 import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
-import { getGhatPlacement } from '@/lib/ganga';
+import { getGhatPlacement, isWaterWorksPlacementValid } from '@/lib/ganga';
 import {
   bulldozeTile,
   getBuildingSize,
@@ -51,6 +51,7 @@ export const PLACEMENT_REASONS = {
   outsideMap: msg('Outside the map'),
   needsRoad: msg('Needs road access to grow'),
   ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
+  waterWorksNearGanga: msg('Jal Sansthan Water Works must be within 3 tiles of the Ganga'),
 } as const;
 
 /** Tools that are not a building of the same name (mirrors `toolBuildingMap` in GameContext). */
@@ -148,12 +149,23 @@ function explainRefusal(state: GameState, tool: Tool, building: BuildingType | n
     if (building === 'ghat' && !getGhatPlacement(state.grid, x, y, state.gridSize, state.mapId)) {
       return PLACEMENT_REASONS.ghatWestBank;
     }
+    if (building === 'jal_sansthan_water_works') {
+      if (footprintTouchesWater(state, x, y, size.width, size.height)) return PLACEMENT_REASONS.water;
+      if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return PLACEMENT_REASONS.waterWorksNearGanga;
+    }
     if (requiresWaterAdjacency(building)) {
       const waterCheck = getWaterAdjacency(state.grid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) return PLACEMENT_REASONS.needsWater;
     }
   }
   return PLACEMENT_REASONS.blocked;
+}
+
+function footprintTouchesWater(state: GameState, x: number, y: number, w: number, h: number): boolean {
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) if (state.grid[y + dy]?.[x + dx]?.building.type === 'water') return true;
+  }
+  return false;
 }
 
 /** Zones can be painted anywhere, but only grow with road access: warn (not block) when missing. */

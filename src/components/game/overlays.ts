@@ -124,6 +124,7 @@ export const TOOL_TO_OVERLAY_MAP: Record<string, OverlayMode> = {
   subway: 'subway',
   ghat: 'ganga',
   sewage_treatment_plant: 'ganga',
+  jal_sansthan_water_works: 'water',
 };
 
 /** Get the button class name for an overlay button */
@@ -253,7 +254,7 @@ export const OVERLAY_MODES: OverlayMode[] = [
 export const OVERLAY_TO_BUILDING_TYPES: Record<OverlayMode, string[]> = {
   none: [],
   power: ['power_plant'],
-  water: ['water_tower'],
+  water: ['water_tower', 'jal_sansthan_water_works'],
   fire: ['fire_station'],
   police: ['police_station'],
   health: ['hospital'],

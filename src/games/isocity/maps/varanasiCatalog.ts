@@ -57,10 +57,10 @@ export const VARANASI_HIDDEN_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
 ]);
 
 /** Tools that exist only on the Varanasi map. */
-export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['ghat', 'sewage_treatment_plant']);
+export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works']);
 
 /** The "Riverfront" build-menu group, listed first on the Varanasi map. */
-export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant'];
+export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works'];
 
 /** Should this tool appear in the build menu on this map? */
 export function isToolVisible(tool: Tool, mapId: MapId | undefined): boolean {

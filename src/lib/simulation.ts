@@ -49,7 +49,7 @@ import {
 import type { Rng } from '@/lib/rng';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
-import { gatherGangaInputs, getGhatPlacement, RIVERFRONT_CONFIG } from '@/lib/ganga';
+import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import {
@@ -1395,12 +1395,14 @@ export const SERVICE_CONFIG = {
   university: withRange(19, { type: 'education' as const }),
   power_plant: withRange(15, {}),
   water_tower: withRange(12, {}),
+  // Varanasi (S3-T8): a big piped network from one riverside plant
+  jal_sansthan_water_works: withRange(20, {}),
 } as const;
 
 // Building types that provide services
 export const SERVICE_BUILDING_TYPES = new Set([
   'police_station', 'fire_station', 'hospital', 'school', 'university',
-  'power_plant', 'water_tower'
+  'power_plant', 'water_tower', 'jal_sansthan_water_works'
 ]);
 
 // Service building upgrade constants
@@ -1439,6 +1441,7 @@ const SERVICE_TYPE_BY_CODE: readonly (keyof typeof SERVICE_CONFIG)[] = [
   'university',
   'power_plant',
   'water_tower',
+  'jal_sansthan_water_works',
 ];
 
 /** Numeric code of a service building type (see SERVICE_TYPE_BY_CODE), or 0. A switch is the fastest lookup here. */
@@ -1451,6 +1454,7 @@ function serviceTypeCode(type: BuildingType): number {
     case 'university': return 5;
     case 'power_plant': return 6;
     case 'water_tower': return 7;
+    case 'jal_sansthan_water_works': return 8;
     default: return 0;
   }
 }
@@ -1510,7 +1514,7 @@ function computeServiceCoverage(serviceList: number[], size: number): ServiceCov
     const maxX = Math.min(size - 1, x + range);
 
     // Handle power and water (boolean coverage)
-    if (type === 'power_plant' || type === 'water_tower') {
+    if (type === 'power_plant' || type === 'water_tower' || type === 'jal_sansthan_water_works') {
       const target = type === 'power_plant' ? services.power : services.water;
       for (let ny = minY; ny <= maxY; ny++) {
         const targetRow = target[ny];
@@ -2091,6 +2095,8 @@ interface GridTotals {
   universityCount: number;
   powerCount: number;
   waterCount: number;
+  /** Jal Sansthan Water Works (S3-T8), any state: for the water budget line. */
+  waterWorksCount: number;
   roadCount: number;
   unpoweredBuildings: number;
   unwateredBuildings: number;
@@ -2108,6 +2114,8 @@ interface GridTotals {
 interface UtilityTotals {
   plants: UtilityBuilding[];
   tanks: UtilityBuilding[];
+  /** Jal Sansthan Water Works; `working` includes being powered. */
+  works: UtilityBuilding[];
   powerPopulation: number;
   powerJobs: number;
   waterPopulation: number;
@@ -2137,7 +2145,7 @@ function scanGridTotals(
 ): GridTotals {
   const utility: UtilityTotals | undefined = coverage
     ? {
-        plants: [], tanks: [], powerPopulation: 0, powerJobs: 0, waterPopulation: 0, powerFeeders: [],
+        plants: [], tanks: [], works: [], powerPopulation: 0, powerJobs: 0, waterPopulation: 0, powerFeeders: [],
         waterFeeders: [], powerCutPopulation: 0, waterCutPopulation: 0, powerCutCommercialJobs: 0,
       }
     : undefined;
@@ -2166,6 +2174,7 @@ function scanGridTotals(
   let universityCount = 0;
   let powerCount = 0;
   let waterCount = 0;
+  let waterWorksCount = 0;
   let roadCount = 0;
   let unpoweredBuildings = 0;
   let unwateredBuildings = 0;
@@ -2227,6 +2236,7 @@ function scanGridTotals(
         case 'university': universityCount++; break;
         case 'power_plant': powerCount++; break;
         case 'water_tower': waterCount++; break;
+        case 'jal_sansthan_water_works': waterWorksCount++; break;
         case 'road': roadCount++; break;
         case 'airport': if (isComplete) hasAirport = true; break;
         case 'city_hall': if (isComplete) hasCityHall = true; break;
@@ -2247,6 +2257,9 @@ function scanGridTotals(
         if (type === 'power_plant' || type === 'water_tower') {
           const working = isComplete && !building.abandoned && !building.onFire;
           (type === 'power_plant' ? utility.plants : utility.tanks).push({ level: building.level, working });
+        } else if (type === 'jal_sansthan_water_works') {
+          const working = isComplete && !building.abandoned && !building.onFire && building.powered;
+          utility.works.push({ level: building.level, working });
         }
         const pop = building.population;
         if (pop > 0 || jobsFromTile > 0) {
@@ -2288,8 +2301,8 @@ function scanGridTotals(
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles, subwayStations,
     railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount, museumCount,
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
-    waterCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings, abandonedResidential,
-    abandonedCommercial, abandonedIndustrial, ghats, stps, utility,
+    waterCount, waterWorksCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings,
+    abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, utility,
   };
 }
 
@@ -2448,7 +2461,8 @@ function calculateStats(
   if (utility) {
     const powerSupply = calculatePowerSupply(utility.plants);
     const powerDemand = calculatePowerDemand(utility.powerPopulation, utility.powerJobs);
-    const waterSupply = calculateWaterSupply(utility.tanks);
+    // The works' output follows the river it draws from; maps without the Ganga have no works
+    const waterSupply = calculateWaterSupply(utility.tanks, utility.works, river?.gangaHealth ?? 100);
     const waterDemand = calculateWaterDemand(utility.waterPopulation);
     const sortNum = (a: number, b: number) => a - b;
     utilityStats = {
@@ -2514,7 +2528,13 @@ function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = 
   newBudget.transportation = { ...budget.transportation, cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 };
   newBudget.parks = { ...budget.parks, cost: parkCount * 10 };
   newBudget.power = { ...budget.power, cost: powerCount * 150 };
-  newBudget.water = { ...budget.water, cost: waterCount * 75 + totals.stps.length * RIVERFRONT_CONFIG.stpUpkeepMonthly };
+  newBudget.water = {
+    ...budget.water,
+    cost:
+      waterCount * 75 +
+      totals.stps.length * RIVERFRONT_CONFIG.stpUpkeepMonthly +
+      totals.waterWorksCount * WATER_CONFIG.worksUpkeepMonthly,
+  };
 
   return newBudget;
 }
@@ -2984,7 +3004,9 @@ export function simulateTick(
           tile.building.constructionProgress < 100 &&
           !NO_CONSTRUCTION_TYPES.includes(tile.building.type)) {
         const isUtilityBuilding = tile.building.type === 'power_plant' || tile.building.type === 'water_tower';
-        const canConstruct = isUtilityBuilding || (tile.building.powered && tile.building.watered);
+        // The water works is the water source, so it only needs power to be built (S3-T8)
+        const canConstruct = isUtilityBuilding ||
+          (tile.building.type === 'jal_sansthan_water_works' ? tile.building.powered : tile.building.powered && tile.building.watered);
         
         if (canConstruct) {
           const constructionSpeed = getConstructionSpeed(tile.building.type);
@@ -3353,6 +3375,7 @@ const BUILDING_SIZES: Partial<Record<BuildingType, { width: number; height: numb
   rail_station: { width: 2, height: 2 },
   // Varanasi riverfront
   sewage_treatment_plant: { width: 2, height: 2 },
+  jal_sansthan_water_works: { width: 3, height: 3 },
 };
 
 // Get the size of a building (how many tiles it spans)
@@ -3673,6 +3696,9 @@ export function placeBuilding(
       const ghat = getGhatPlacement(newGrid, x, y, state.gridSize, state.mapId);
       if (!ghat) return state;
       shouldFlip = ghat.flipped;
+    } else if (buildingType === 'jal_sansthan_water_works') {
+      // Draws from the Ganga, so it must stand close to the river (S3-T8)
+      if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return state;
     } else if (requiresWaterAdjacency(buildingType)) {
       const waterCheck = getWaterAdjacency(newGrid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) {
