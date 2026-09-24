@@ -132,8 +132,21 @@ export function calculateHappiness(inputs: HappinessInputs): number {
   );
 }
 
+/** Average coverage (0-100) of each percentage-based service grid. */
+export interface CoverageAverages {
+  police: number;
+  fire: number;
+  health: number;
+  education: number;
+}
+
 export interface RatingsInput {
   services: ServiceCoverage;
+  /**
+   * Optional precomputed `calculateAverageCoverage` of each `services` grid. The simulation caches
+   * these while coverage is unchanged; when omitted they are computed from `services`.
+   */
+  coverageAverages?: CoverageAverages;
   treeCount: number;
   parkCount: number;
   totalPollution: number;
@@ -160,16 +173,15 @@ export interface Ratings {
  * single entry point the simulation uses so scoring stays consistent everywhere.
  */
 export function calculateRatings(input: RatingsInput): Ratings {
-  const safety = calculateSafetyScore(
-    calculateAverageCoverage(input.services.police),
-    calculateAverageCoverage(input.services.fire)
-  );
-  const health = calculateHealthScore(
-    calculateAverageCoverage(input.services.health),
-    input.totalPollution,
-    input.totalTiles
-  );
-  const education = calculateEducationScore(calculateAverageCoverage(input.services.education));
+  const averages = input.coverageAverages ?? {
+    police: calculateAverageCoverage(input.services.police),
+    fire: calculateAverageCoverage(input.services.fire),
+    health: calculateAverageCoverage(input.services.health),
+    education: calculateAverageCoverage(input.services.education),
+  };
+  const safety = calculateSafetyScore(averages.police, averages.fire);
+  const health = calculateHealthScore(averages.health, input.totalPollution, input.totalTiles);
+  const education = calculateEducationScore(averages.education);
   const environment = calculateEnvironmentScore(
     input.treeCount,
     input.parkCount,

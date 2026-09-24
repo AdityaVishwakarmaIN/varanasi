@@ -67,8 +67,8 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 - [ ] S1-T2: Performance HUD and benchmark city
 - [ ] S1-T3: Record the baseline
 - [ ] S1-T4: A proper game loop (fixed timestep, pause when hidden)
-- [ ] S1-T5: Make the simulation cheaper
-- [ ] S1-T6: Simulation in a Web Worker (**only if S1-T5 is not enough**)
+- [x] S1-T5: Make the simulation cheaper
+- [ ] S1-T6: Simulation in a Web Worker (**only if S1-T5 is not enough**) — **decision needed**: the gate says "needed", but the design below would cost the main thread more than it saves (see Notes for later)
 - [ ] S1-T7: GPU renderer on by default, quality presets and auto-quality
 - [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
 - [ ] S1-T9: Reliable saves (IndexedDB)
@@ -484,3 +484,35 @@ mis-tap on an expensive building asks for confirmation.
 ## 7. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+**From S1-T5 (simulation cost):**
+
+- **S1-T6 as written would make things worse.** Sending the whole state to a worker and back every tick costs
+  far more main-thread time than the tick itself: on the 160 benchmark state (CI container, Node, under load)
+  `postMessage` took ~31–34 ms to serialise and ~52–59 ms to deserialise (`structuredClone` ~80–95 ms), against a tick of
+  ~6 ms (p50) after S1-T5. A worker only pays off if the worker owns the state, the main thread sends it small
+  player-action messages, and the worker sends back only the changed tiles in a packed, transferable form
+  (typed arrays; ~3,000 tiles change per tick on the benchmark), or if the grid moves to shared typed arrays
+  (`gridBuffer.ts`). Both are bigger refactors of `GameContext.tsx` than S1-T6 describes. Owner to decide.
+- **What is left in the tick** (after S1-T5): the per-tile work in the main loop (~4,000 of 25,600 tiles take
+  the full path each tick), one full-grid scan for the coverage key, one for the totals, and GC for the tiles
+  that really change. Further big wins need a typed-array grid rather than one JS object per tile.
+- **`hasRoadAccess` breaks on maps over 128×128.** Its reusable `roadAccessVisited` buffer is `128 * 128`; on a
+  160 map, indexes past 16,383 are silently ignored, so the search revisits tiles (capped by its queue) and can
+  give different answers than intended. Fix before/with S1-T8 (this changes results, so re-record the golden
+  fingerprints in `src/lib/__tests__/simulateTick.test.ts`).
+- **Random numbers drawn for nothing.** The random fire-start check calls `Math.random()` for every processed
+  tile, even fire-immune ones whose chance is 0. S1-T5 kept this so results stay identical; dropping it is a
+  cheap win but changes the random sequence (re-record the golden fingerprints).
+- **`structureVersion` gaps (pre-existing, kept):** a tree that grows in a row already written this tick does not
+  bump it; fire trucks put out fires by mutating the tile in place (`vehicleSystems.ts`) without a bump. The
+  coverage cache does not depend on `structureVersion`, but the renderer and the minimap (S1-T8) do.
+- **Benchmark city is mostly unpowered.** Most zoned buildings in `generateRandomAdvancedCity(160, …, 20260924)`
+  lack power or water, so the benchmark under-exercises the powered growth path. Consider a benchmark variant
+  with utility coverage.
+- **`export *` re-exports can be slow in hot loops.** Reading a binding re-exported through `@/types/game`
+  (`export *` chains) was a getter call per read in the test runner; `simulation.ts` now imports
+  `BUILDING_STATS` and the zone building lists from `@/games/isocity/types/buildings`. Worth checking the
+  renderer's per-tile loops the same way in S1-T7/S1-T8.
+- The old `simulateTick` sometimes wrote into the state it was given (building footprints reaching into rows it
+  had not copied yet, tree growth, budget cost objects). Fixed in S1-T5; a test now checks it.

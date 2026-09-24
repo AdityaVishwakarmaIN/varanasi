@@ -17,7 +17,7 @@ import {
 import {
   bulldozeTile,
   createInitialGameState,
-  DEFAULT_GRID_SIZE,
+  getDefaultGridSize,
   expandGrid,
   shrinkGrid,
   placeBuilding,
@@ -52,6 +52,10 @@ import {
   setIsoCityGridVersions,
   type IsoCityGridBuffer,
 } from '@/games/isocity/gridBuffer';
+import { isMobile } from 'react-device-detect';
+
+// Map size for new games. The UI layer decides desktop vs phone; simulation.ts stays device-agnostic.
+const DEFAULT_GRID_SIZE = getDefaultGridSize(isMobile);
 
 export type DayNightMode = 'auto' | 'day' | 'night';
 
