@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useMultiplayer } from '@/context/MultiplayerContext';
 import { GameState } from '@/types/game';
-import { createInitialGameState, DEFAULT_GRID_SIZE } from '@/lib/simulation';
+import { createInitialGameState, getDefaultGridSize } from '@/lib/simulation';
+import { isMobile } from 'react-device-detect';
 import { Copy, Check, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { T, useGT, Plural, Var } from 'gt-next';
 
@@ -103,7 +104,7 @@ export function CoopModal({
       // Use the current game state if provided, otherwise create a fresh city
       const stateToShare = currentGameState 
         ? { ...currentGameState, cityName } 
-        : createInitialGameState(DEFAULT_GRID_SIZE, cityName);
+        : createInitialGameState(getDefaultGridSize(isMobile), cityName);
       
       const code = await createRoom(cityName, stateToShare);
       // Update URL to show room code

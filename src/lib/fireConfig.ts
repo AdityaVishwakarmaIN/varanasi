@@ -110,16 +110,17 @@ export function countAdjacentBurningTiles(
   x: number,
   y: number
 ): number {
+  // Same neighbours as FIRE_ADJACENT_OFFSETS, written out: this runs for most tiles on every tick.
+  // Rows are only read when y is inside the grid, matching the bounds check of the offset loop.
   let adjacentFireCount = 0;
-
-  for (const [dx, dy] of FIRE_ADJACENT_OFFSETS) {
-    const nx = x + dx;
-    const ny = y + dy;
-
-    if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
-    if (grid[ny][nx].building.onFire) {
-      adjacentFireCount++;
-    }
+  if (y >= 0 && y < gridSize) {
+    const row = grid[y];
+    if (x - 1 >= 0 && x - 1 < gridSize && row[x - 1].building.onFire) adjacentFireCount++;
+    if (x + 1 >= 0 && x + 1 < gridSize && row[x + 1].building.onFire) adjacentFireCount++;
+  }
+  if (x >= 0 && x < gridSize) {
+    if (y - 1 >= 0 && y - 1 < gridSize && grid[y - 1][x].building.onFire) adjacentFireCount++;
+    if (y + 1 >= 0 && y + 1 < gridSize && grid[y + 1][x].building.onFire) adjacentFireCount++;
   }
 
   return adjacentFireCount;

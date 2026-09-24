@@ -16,12 +16,17 @@ import {
   WaterBody,
   BridgeType,
   BridgeOrientation,
+  TOOL_INFO,
+} from '@/types/game';
+// Imported from their defining module rather than through the `export *` chain of '@/types/game':
+// some module systems turn each read of a re-exported binding into a getter call, and simulateTick
+// reads these per tile (S1-T5 profile).
+import {
   BUILDING_STATS,
   RESIDENTIAL_BUILDINGS,
   COMMERCIAL_BUILDINGS,
   INDUSTRIAL_BUILDINGS,
-  TOOL_INFO,
-} from '@/types/game';
+} from '@/games/isocity/types/buildings';
 import { generateCityName, generateWaterName } from './names';
 import {
   FIRE_SIMULATION_CONFIG,
@@ -35,16 +40,26 @@ import {
 } from './fireConfig';
 import { tryGrowTree, TREE_GROWTH_CONFIG } from './treeGrowth';
 import {
+  calculateAverageCoverage,
   calculateRatings,
   calculateEnvironmentScore,
   isEnvironmentPlayableBuildingType,
+  type CoverageAverages,
 } from './scoring';
-import { isMobile } from 'react-device-detect';
 import type { Rng } from '@/lib/rng';
 import type { CloudWeatherMode } from '@/components/game/types';
 
-// Default grid size for new games
-export const DEFAULT_GRID_SIZE = isMobile ? 50 : 70;
+// Default grid size for new random games. Pure logic must not look at the device (README rule 7),
+// so the UI layer picks the value with getDefaultGridSize(isMobile).
+export const DEFAULT_GRID_SIZES = { desktop: 70, mobile: 50 } as const;
+
+/** Default map size for a new random game on this kind of device. */
+export function getDefaultGridSize(isMobile: boolean): number {
+  return isMobile ? DEFAULT_GRID_SIZES.mobile : DEFAULT_GRID_SIZES.desktop;
+}
+
+/** Desktop default, used when a caller does not pass a size. UI code should use getDefaultGridSize(). */
+export const DEFAULT_GRID_SIZE: number = DEFAULT_GRID_SIZES.desktop;
 
 // Check if a factory_small at this position would render as a farm
 // This matches the deterministic logic in Game.tsx for farm variant selection
@@ -92,6 +107,67 @@ const GREEN_POLLUTION_REDUCERS = new Set<BuildingType>([
   'campground',
   'mountain_trailhead',
 ]);
+
+interface PollutionCleanupEntry {
+  radius: number;
+  strength: number;
+  width: number;
+  height: number;
+  /**
+   * Every tile this reducer cleans, relative to its origin, as [offsetX, offsetY, amount] triples.
+   * Same tiles and same arithmetic as the loop over the bounding box it replaces.
+   */
+  targets: Float64Array;
+}
+
+function buildPollutionCleanupTargets(radius: number, strength: number, width: number, height: number): Float64Array {
+  const targets: number[] = [];
+  for (let offsetY = -radius; offsetY <= height - 1 + radius; offsetY++) {
+    for (let offsetX = -radius; offsetX <= width - 1 + radius; offsetX++) {
+      const dx = offsetX < 0 ? -offsetX : offsetX > width - 1 ? offsetX - (width - 1) : 0;
+      const dy = offsetY < 0 ? -offsetY : offsetY > height - 1 ? offsetY - (height - 1) : 0;
+      const distance = dx + dy;
+      if (distance > radius) continue;
+      const cleanupAmount = strength * (1 - distance / (radius + 1));
+      if (cleanupAmount <= 0) continue;
+      targets.push(offsetX, offsetY, cleanupAmount);
+    }
+  }
+  return Float64Array.from(targets);
+}
+
+// Reusable per-tick buffers for the pollution cleanup in simulateTick (grown when the map grows).
+let pollutionCleanupScratch: { pollution: Float64Array; changed: Uint8Array } | null = null;
+
+function getPollutionCleanupScratch(tileCount: number): { pollution: Float64Array; changed: Uint8Array } {
+  if (!pollutionCleanupScratch || pollutionCleanupScratch.pollution.length < tileCount) {
+    pollutionCleanupScratch = { pollution: new Float64Array(tileCount), changed: new Uint8Array(tileCount) };
+  }
+  return pollutionCleanupScratch;
+}
+
+// getPollutionCleanupProfile + getBuildingSize per building type, computed once (S1-T5: the tick used
+// to allocate two small objects per tree per tick here).
+const pollutionCleanupEntries = new Map<string, PollutionCleanupEntry | null>();
+
+function getPollutionCleanupEntry(buildingType: BuildingType): PollutionCleanupEntry | null {
+  let entry = pollutionCleanupEntries.get(buildingType);
+  if (entry === undefined) {
+    const profile = getPollutionCleanupProfile(buildingType);
+    const footprint = getBuildingSize(buildingType);
+    entry = profile
+      ? {
+          radius: profile.radius,
+          strength: profile.strength,
+          width: footprint.width,
+          height: footprint.height,
+          targets: buildPollutionCleanupTargets(profile.radius, profile.strength, footprint.width, footprint.height),
+        }
+      : null;
+    pollutionCleanupEntries.set(buildingType, entry);
+  }
+  return entry;
+}
 
 function getPollutionCleanupProfile(buildingType: BuildingType): { radius: number; strength: number } | null {
   if (!GREEN_POLLUTION_REDUCERS.has(buildingType)) return null;
@@ -1306,73 +1382,118 @@ export const SERVICE_MAX_LEVEL = 5;
 export const SERVICE_RANGE_INCREASE_PER_LEVEL = 0.2; // 20% per level (Level 1: 100%, Level 5: 180%)
 export const SERVICE_UPGRADE_COST_BASE = 2; // Cost = baseCost * (2 ^ currentLevel)
 
-// Calculate service coverage from service buildings - optimized version
-function calculateServiceCoverage(grid: Tile[][], size: number): ServiceCoverage {
-  const services = createServiceCoverage(size);
-  
-  // First pass: collect all service building positions (much faster than checking every tile)
-  const serviceBuildings: Array<{ x: number; y: number; type: BuildingType; level: number }> = [];
-  
+// ---------------------------------------------------------------------------
+// Service coverage, cached (S1-T5)
+//
+// Coverage depends ONLY on the grid size and on the list of active service buildings: the position,
+// type and level of every tile whose type is in SERVICE_BUILDING_TYPES, that has finished
+// construction and is not abandoned. Nothing else is read (not power, fire, money or budget).
+//
+// The cache is keyed on exactly that list, which one cheap scan per call collects. So the cache stays
+// correct even when some code path changes buildings without bumping `structureVersion` (fire trucks
+// put out fires in place, saves are loaded, grids are expanded, ...). `structureVersion` alone would
+// also be a poor key: it goes up on almost every tick in a growing city, so the cache would rarely hit.
+// Budget funding is part of the key as well, so the cache stays correct if coverage ever starts to
+// depend on funding.
+//
+// The cached ServiceCoverage object is shared between game states. It must be treated as read-only;
+// nothing in the codebase writes into it (checked in S1-T5).
+// ---------------------------------------------------------------------------
+
+/**
+ * Service building types by numeric code (index). Must match serviceTypeCode() and list the same types as
+ * SERVICE_BUILDING_TYPES / SERVICE_CONFIG. Code 0 means "not a service".
+ */
+const SERVICE_TYPE_BY_CODE: readonly (keyof typeof SERVICE_CONFIG)[] = [
+  'police_station', // placeholder for code 0, never used
+  'police_station',
+  'fire_station',
+  'hospital',
+  'school',
+  'university',
+  'power_plant',
+  'water_tower',
+];
+
+/** Numeric code of a service building type (see SERVICE_TYPE_BY_CODE), or 0. A switch is the fastest lookup here. */
+function serviceTypeCode(type: BuildingType): number {
+  switch (type) {
+    case 'police_station': return 1;
+    case 'fire_station': return 2;
+    case 'hospital': return 3;
+    case 'school': return 4;
+    case 'university': return 5;
+    case 'power_plant': return 6;
+    case 'water_tower': return 7;
+    default: return 0;
+  }
+}
+
+/** Number of values stored per service building in a service list: x, y, type code, level. */
+const SERVICE_LIST_STRIDE = 4;
+
+/**
+ * Collect every service building that currently provides coverage, in row-major order, as a flat
+ * list [x, y, typeCode, level, x, y, typeCode, level, ...] into `out` (reused to avoid allocations).
+ * Returns the number of burning tiles, which simulateTick uses to skip fire-spread checks.
+ */
+function collectActiveServiceBuildings(grid: Tile[][], size: number, out: number[]): number {
+  out.length = 0;
+  let burningTiles = 0;
   for (let y = 0; y < size; y++) {
+    const row = grid[y];
     for (let x = 0; x < size; x++) {
-      const tile = grid[y][x];
-      const buildingType = tile.building.type;
-      
+      const building = row[x].building;
+      if (building.onFire) burningTiles++;
       // Quick check if this is a service building
-      if (!SERVICE_BUILDING_TYPES.has(buildingType)) continue;
-      
+      const code = serviceTypeCode(building.type);
+      if (code === 0) continue;
       // Skip buildings under construction
-      if (tile.building.constructionProgress !== undefined && tile.building.constructionProgress < 100) {
-        continue;
-      }
-      
+      if (building.constructionProgress !== undefined && building.constructionProgress < 100) continue;
       // Skip abandoned buildings
-      if (tile.building.abandoned) {
-        continue;
-      }
-      
-      serviceBuildings.push({ x, y, type: buildingType, level: tile.building.level });
+      if (building.abandoned) continue;
+      out.push(x, y, code, building.level);
     }
   }
-  
-  // Second pass: apply coverage for each service building
-  for (const building of serviceBuildings) {
-    const { x, y, type, level } = building;
-    const config = SERVICE_CONFIG[type as keyof typeof SERVICE_CONFIG];
+  return burningTiles;
+}
+
+/** Compute the coverage grids from a service list made by collectActiveServiceBuildings. */
+function computeServiceCoverage(serviceList: number[], size: number): ServiceCoverage {
+  const services = createServiceCoverage(size);
+
+  for (let i = 0; i < serviceList.length; i += SERVICE_LIST_STRIDE) {
+    const x = serviceList[i];
+    const y = serviceList[i + 1];
+    const type = SERVICE_TYPE_BY_CODE[serviceList[i + 2]];
+    const level = serviceList[i + 3];
+    const config = SERVICE_CONFIG[type];
     if (!config) continue;
-    
+
     // Calculate effective range based on building level
     // Level 1: 100%, Level 2: 120%, Level 3: 140%, Level 4: 160%, Level 5: 180%
     const baseRange = config.range;
     const effectiveRange = baseRange * (1 + (level - 1) * SERVICE_RANGE_INCREASE_PER_LEVEL);
     const range = Math.floor(effectiveRange);
     const rangeSquared = range * range;
-    
+
     // Calculate bounds to avoid checking tiles outside the grid
     const minY = Math.max(0, y - range);
     const maxY = Math.min(size - 1, y + range);
     const minX = Math.max(0, x - range);
     const maxX = Math.min(size - 1, x + range);
-    
+
     // Handle power and water (boolean coverage)
-    if (type === 'power_plant') {
+    if (type === 'power_plant' || type === 'water_tower') {
+      const target = type === 'power_plant' ? services.power : services.water;
       for (let ny = minY; ny <= maxY; ny++) {
+        const targetRow = target[ny];
         for (let nx = minX; nx <= maxX; nx++) {
           const dx = nx - x;
           const dy = ny - y;
           // Use squared distance comparison (avoid Math.sqrt)
           if (dx * dx + dy * dy <= rangeSquared) {
-            services.power[ny][nx] = true;
-          }
-        }
-      }
-    } else if (type === 'water_tower') {
-      for (let ny = minY; ny <= maxY; ny++) {
-        for (let nx = minX; nx <= maxX; nx++) {
-          const dx = nx - x;
-          const dy = ny - y;
-          if (dx * dx + dy * dy <= rangeSquared) {
-            services.water[ny][nx] = true;
+            targetRow[nx] = true;
           }
         }
       }
@@ -1380,18 +1501,19 @@ function calculateServiceCoverage(grid: Tile[][], size: number): ServiceCoverage
       // Handle percentage-based coverage (police, fire, health, education)
       const serviceType = (config as { type: 'police' | 'fire' | 'health' | 'education' }).type;
       const currentCoverage = services[serviceType] as number[][];
-      
+
       for (let ny = minY; ny <= maxY; ny++) {
+        const coverageRow = currentCoverage[ny];
         for (let nx = minX; nx <= maxX; nx++) {
           const dx = nx - x;
           const dy = ny - y;
           const distSquared = dx * dx + dy * dy;
-          
+
           if (distSquared <= rangeSquared) {
             // Only compute sqrt when we need the actual distance for coverage falloff
             const distance = Math.sqrt(distSquared);
             const coverage = Math.max(0, (1 - distance / range) * 100);
-            currentCoverage[ny][nx] = Math.min(100, currentCoverage[ny][nx] + coverage);
+            coverageRow[nx] = Math.min(100, coverageRow[nx] + coverage);
           }
         }
       }
@@ -1399,6 +1521,93 @@ function calculateServiceCoverage(grid: Tile[][], size: number): ServiceCoverage
   }
 
   return services;
+}
+
+interface ServiceCoverageCacheEntry {
+  size: number;
+  fundingKey: string;
+  serviceList: number[];
+  services: ServiceCoverage;
+}
+
+let serviceCoverageCacheEnabled = true;
+let serviceCoverageCache: ServiceCoverageCacheEntry | null = null;
+const scratchServiceList: number[] = [];
+
+/** Turn the service coverage cache on or off (tests use this to compare results). Clears the cache. */
+export function setServiceCoverageCacheEnabled(enabled: boolean): void {
+  serviceCoverageCacheEnabled = enabled;
+  serviceCoverageCache = null;
+}
+
+/** Forget the cached service coverage. Never needed for correctness; useful in tests and benchmarks. */
+export function clearServiceCoverageCache(): void {
+  serviceCoverageCache = null;
+}
+
+function budgetFundingKey(budget: Budget | undefined): string {
+  if (!budget) return '';
+  let key = '';
+  for (const category in budget) {
+    key += `${category}:${budget[category as keyof Budget]?.funding};`;
+  }
+  return key;
+}
+
+function sameNumberList(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Service coverage for a grid. Returns the cached result when the active service buildings, grid size
+ * and budget funding are the same as for the previous call; otherwise recomputes it.
+ */
+function calculateServiceCoverage(grid: Tile[][], size: number, budget?: Budget): ServiceCoverage {
+  collectActiveServiceBuildings(grid, size, scratchServiceList);
+  return serviceCoverageForList(scratchServiceList, size, budget);
+}
+
+/** Cached coverage for a service list made by collectActiveServiceBuildings (see calculateServiceCoverage). */
+function serviceCoverageForList(serviceList: number[], size: number, budget?: Budget): ServiceCoverage {
+  const fundingKey = budgetFundingKey(budget);
+  const cached = serviceCoverageCache;
+  if (
+    serviceCoverageCacheEnabled &&
+    cached &&
+    cached.size === size &&
+    cached.fundingKey === fundingKey &&
+    sameNumberList(cached.serviceList, serviceList)
+  ) {
+    return cached.services;
+  }
+
+  const services = computeServiceCoverage(serviceList, size);
+  if (serviceCoverageCacheEnabled) {
+    serviceCoverageCache = { size, fundingKey, serviceList: serviceList.slice(), services };
+  }
+  return services;
+}
+
+// Average coverage per service grid, computed once per ServiceCoverage object (the grids are read-only
+// once built, see above). Saves four full-grid passes per tick while coverage is unchanged.
+const coverageAveragesCache = new WeakMap<ServiceCoverage, CoverageAverages>();
+
+function getCoverageAverages(services: ServiceCoverage): CoverageAverages {
+  let averages = coverageAveragesCache.get(services);
+  if (!averages) {
+    averages = {
+      police: calculateAverageCoverage(services.police),
+      fire: calculateAverageCoverage(services.fire),
+      health: calculateAverageCoverage(services.health),
+      education: calculateAverageCoverage(services.education),
+    };
+    coverageAveragesCache.set(services, averages);
+  }
+  return averages;
 }
 
 // Upgrade a service building by increasing its level (increases coverage range)
@@ -1445,7 +1654,7 @@ export function upgradeServiceBuilding(state: GameState, x: number, y: number): 
   };
   
   // Recalculate service coverage with new level
-  const services = calculateServiceCoverage(newGrid, state.gridSize);
+  const services = calculateServiceCoverage(newGrid, state.gridSize, state.budget);
   
   return {
     ...state,
@@ -1492,7 +1701,8 @@ function canSpawnMultiTileBuilding(
 // PERF: Pre-allocated arrays for hasRoadAccess BFS to avoid GC pressure
 // Queue stores [x, y, dist] tuples as flat array (3 values per entry)
 const roadAccessQueue = new Int16Array(3 * 256); // Max 256 tiles to check (8*8*4 directions)
-const roadAccessVisited = new Uint8Array(128 * 128); // Max 128x128 grid, reused between calls
+// Reused between calls; grows to fit the largest map seen (a fixed 128×128 buffer silently broke 160 maps).
+let roadAccessVisited = new Uint8Array(128 * 128);
 
 // Check if a tile has road access by looking for a path through the same zone
 // within a limited distance. This allows large contiguous zones to develop even
@@ -1507,6 +1717,9 @@ function hasRoadAccess(
   const startZone = grid[y][x].zone;
   if (startZone === 'none') {
     return false;
+  }
+  if (roadAccessVisited.length < size * size) {
+    roadAccessVisited = new Uint8Array(size * size);
   }
 
   // PERF: Use typed array for visited flags instead of Set<string>
@@ -1570,8 +1783,22 @@ function hasRoadAccess(
   return false;
 }
 
-// Evolve buildings based on conditions, reserving footprints as density increases
-function evolveBuilding(grid: Tile[][], x: number, y: number, services: ServiceCoverage, demand?: { residential: number; commercial: number; industrial: number }): Building {
+/**
+ * Returns the tile at (x, y) ready to be written. simulateTick passes its copy-on-write accessor so
+ * helpers never write into the previous state's tiles; other callers write into `grid` directly.
+ */
+type WritableTileAccessor = (x: number, y: number) => Tile;
+
+// Evolve buildings based on conditions, reserving footprints as density increases.
+// The tile at (x, y) must already be writable; other tiles are written through `writableTile`.
+function evolveBuilding(
+  grid: Tile[][],
+  x: number,
+  y: number,
+  services: ServiceCoverage,
+  demand?: { residential: number; commercial: number; industrial: number },
+  writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx]
+): Building {
   const tile = grid[y][x];
   const building = tile.building;
   const zone = tile.zone;
@@ -1652,7 +1879,7 @@ function evolveBuilding(grid: Tile[][], x: number, y: number, services: ServiceC
                 const clearedBuilding = createBuilding('grass');
                 clearedBuilding.powered = services.power[y + dy]?.[x + dx] ?? false;
                 clearedBuilding.watered = services.water[y + dy]?.[x + dx] ?? false;
-                clearTile.building = clearedBuilding;
+                writableTile(x + dx, y + dy).building = clearedBuilding;
               }
             }
           }
@@ -1778,7 +2005,7 @@ function evolveBuilding(grid: Tile[][], x: number, y: number, services: ServiceC
     const footprint = findFootprintIncludingTile(grid, x, y, size.width, size.height, zone, grid.length, allowBuildingConsolidation);
 
     if (footprint) {
-      const anchor = applyBuildingFootprint(grid, footprint.originX, footprint.originY, targetType, zone, targetLevel, services);
+      const anchor = applyBuildingFootprint(grid, footprint.originX, footprint.originY, targetType, zone, targetLevel, services, writableTile);
       anchor.level = targetLevel;
       anchorX = footprint.originX;
       anchorY = footprint.originY;
@@ -1789,7 +2016,7 @@ function evolveBuilding(grid: Tile[][], x: number, y: number, services: ServiceC
   }
 
   // Always refresh stats on the anchor tile
-  const anchorTile = grid[anchorY][anchorX];
+  const anchorTile = writableTile(anchorX, anchorY);
   const anchorBuilding = anchorTile.building;
   anchorBuilding.powered = services.power[anchorY][anchorX];
   anchorBuilding.watered = services.water[anchorY][anchorX];
@@ -1808,19 +2035,58 @@ function evolveBuilding(grid: Tile[][], x: number, y: number, services: ServiceC
   return grid[y][x].building;
 }
 
-// Calculate city stats
-// effectiveTaxRate is the lagged tax rate used for demand calculations
-function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: number, effectiveTaxRate: number, services: ServiceCoverage): Stats {
+/**
+ * Everything the end-of-tick bookkeeping (stats, budget costs, advisor messages) counts over the grid.
+ * S1-T5: collected in ONE pass instead of three separate full-grid loops. Sums are accumulated in the
+ * same row-major order as before, so the floating-point results are identical.
+ */
+interface GridTotals {
+  population: number;
+  jobs: number;
+  totalPollution: number;
+  playableTileCount: number;
+  treeCount: number;
+  /** park, park_large and tennis (used by both stats and budget) */
+  parkCount: number;
+  subwayTiles: number;
+  subwayStations: number;
+  railTiles: number;
+  railStations: number;
+  hasAirport: boolean;
+  hasCityHall: boolean;
+  hasSpaceProgram: boolean;
+  stadiumCount: number;
+  museumCount: number;
+  hasAmusementPark: boolean;
+  policeCount: number;
+  fireCount: number;
+  hospitalCount: number;
+  schoolCount: number;
+  universityCount: number;
+  powerCount: number;
+  waterCount: number;
+  roadCount: number;
+  unpoweredBuildings: number;
+  unwateredBuildings: number;
+  abandonedBuildings: number;
+  abandonedResidential: number;
+  abandonedCommercial: number;
+  abandonedIndustrial: number;
+}
+
+/**
+ * Optional extra output of scanGridTotals, used by simulateTick's pollution cleanup: every tile's
+ * pollution (index y * size + x) and the indices of green pollution reducers, in row-major order.
+ */
+interface PollutionCapture {
+  pollution: Float64Array;
+  reducerIndices: number[];
+}
+
+function scanGridTotals(grid: Tile[][], size: number, capture?: PollutionCapture): GridTotals {
   let population = 0;
   let jobs = 0;
   let totalPollution = 0;
-  let residentialZones = 0;
-  let commercialZones = 0;
-  let industrialZones = 0;
-  let developedResidential = 0;
-  let developedCommercial = 0;
-  let developedIndustrial = 0;
-  let totalLandValue = 0;
   let playableTileCount = 0;
   let treeCount = 0;
   let parkCount = 0;
@@ -1828,66 +2094,127 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   let subwayStations = 0;
   let railTiles = 0;
   let railStations = 0;
-  
-  // Special buildings that affect demand
   let hasAirport = false;
   let hasCityHall = false;
   let hasSpaceProgram = false;
   let stadiumCount = 0;
   let museumCount = 0;
   let hasAmusementPark = false;
+  let policeCount = 0;
+  let fireCount = 0;
+  let hospitalCount = 0;
+  let schoolCount = 0;
+  let universityCount = 0;
+  let powerCount = 0;
+  let waterCount = 0;
+  let roadCount = 0;
+  let unpoweredBuildings = 0;
+  let unwateredBuildings = 0;
+  let abandonedBuildings = 0;
+  let abandonedResidential = 0;
+  let abandonedCommercial = 0;
+  let abandonedIndustrial = 0;
+  let lastCleanupType: BuildingType | null = null;
+  let lastIsReducer = false;
 
-  // Count everything
   for (let y = 0; y < size; y++) {
+    const row = grid[y];
     for (let x = 0; x < size; x++) {
-      const tile = grid[y][x];
+      const tile = row[x];
       const building = tile.building;
+      const type = building.type;
+      const zone = tile.zone;
 
+      if (capture) {
+        const index = y * size + x;
+        capture.pollution[index] = tile.pollution;
+        // Neighbouring tiles often share a type, so remember the last lookup
+        if (type !== lastCleanupType) {
+          lastCleanupType = type;
+          lastIsReducer = getPollutionCleanupEntry(type) !== null;
+        }
+        if (lastIsReducer) capture.reducerIndices.push(index);
+      }
+
+      // --- stats ---
       // Apply subway commercial boost to jobs (tiles with subway get 15% boost to commercial jobs)
       let jobsFromTile = building.jobs;
-      if (tile.hasSubway && tile.zone === 'commercial') {
+      if (tile.hasSubway && zone === 'commercial') {
         jobsFromTile = Math.floor(jobsFromTile * 1.15);
       }
-      
       population += building.population;
       jobs += jobsFromTile;
       totalPollution += tile.pollution;
-      totalLandValue += tile.landValue;
 
-      if (isEnvironmentPlayableBuildingType(building.type)) {
-        playableTileCount++;
-      }
-
-      if (tile.zone === 'residential') {
-        residentialZones++;
-        if (building.type !== 'grass' && building.type !== 'empty') developedResidential++;
-      } else if (tile.zone === 'commercial') {
-        commercialZones++;
-        if (building.type !== 'grass' && building.type !== 'empty') developedCommercial++;
-      } else if (tile.zone === 'industrial') {
-        industrialZones++;
-        if (building.type !== 'grass' && building.type !== 'empty') developedIndustrial++;
-      }
-
-      if (building.type === 'tree') treeCount++;
-      if (building.type === 'park' || building.type === 'park_large') parkCount++;
-      if (building.type === 'tennis') parkCount++; // Tennis courts count as parks
+      if (isEnvironmentPlayableBuildingType(type)) playableTileCount++;
       if (tile.hasSubway) subwayTiles++;
-      if (building.type === 'subway_station') subwayStations++;
-      if (building.type === 'rail' || tile.hasRailOverlay) railTiles++;
-      if (building.type === 'rail_station') railStations++;
-      
+      if (type === 'rail' || tile.hasRailOverlay) railTiles++;
+
       // Track special buildings (only count if construction is complete)
-      if (building.constructionProgress === undefined || building.constructionProgress >= 100) {
-        if (building.type === 'airport') hasAirport = true;
-        if (building.type === 'city_hall') hasCityHall = true;
-        if (building.type === 'space_program') hasSpaceProgram = true;
-        if (building.type === 'stadium') stadiumCount++;
-        if (building.type === 'museum') museumCount++;
-        if (building.type === 'amusement_park') hasAmusementPark = true;
+      const isComplete = building.constructionProgress === undefined || building.constructionProgress >= 100;
+
+      // --- stats + budget: counts by building type ---
+      switch (type) {
+        case 'tree': treeCount++; break;
+        case 'park': case 'park_large': case 'tennis': parkCount++; break; // Tennis courts count as parks
+        case 'subway_station': subwayStations++; break;
+        case 'rail_station': railStations++; break;
+        case 'police_station': policeCount++; break;
+        case 'fire_station': fireCount++; break;
+        case 'hospital': hospitalCount++; break;
+        case 'school': schoolCount++; break;
+        case 'university': universityCount++; break;
+        case 'power_plant': powerCount++; break;
+        case 'water_tower': waterCount++; break;
+        case 'road': roadCount++; break;
+        case 'airport': if (isComplete) hasAirport = true; break;
+        case 'city_hall': if (isComplete) hasCityHall = true; break;
+        case 'space_program': if (isComplete) hasSpaceProgram = true; break;
+        case 'stadium': if (isComplete) stadiumCount++; break;
+        case 'museum': if (isComplete) museumCount++; break;
+        case 'amusement_park': if (isComplete) hasAmusementPark = true; break;
+      }
+
+      // --- advisor messages ---
+      // Only count zoned buildings (not grass)
+      if (zone !== 'none' && type !== 'grass') {
+        if (!building.powered) unpoweredBuildings++;
+        if (!building.watered) unwateredBuildings++;
+      }
+      if (building.abandoned) {
+        abandonedBuildings++;
+        if (zone === 'residential') abandonedResidential++;
+        else if (zone === 'commercial') abandonedCommercial++;
+        else if (zone === 'industrial') abandonedIndustrial++;
       }
     }
   }
+
+  return {
+    population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles, subwayStations,
+    railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount, museumCount,
+    hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
+    waterCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings, abandonedResidential,
+    abandonedCommercial, abandonedIndustrial,
+  };
+}
+
+// Calculate city stats
+// effectiveTaxRate is the lagged tax rate used for demand calculations
+function calculateStats(
+  grid: Tile[][],
+  size: number,
+  budget: Budget,
+  taxRate: number,
+  effectiveTaxRate: number,
+  services: ServiceCoverage,
+  totals: GridTotals = scanGridTotals(grid, size)
+): Stats {
+  const {
+    population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
+    subwayStations, railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount,
+    museumCount, hasAmusementPark,
+  } = totals;
 
   // Calculate demand - subway network boosts commercial demand
   // Tax rate affects demand as BOTH a multiplier and additive modifier:
@@ -1968,6 +2295,7 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
   // Calculate ratings — centralized in ./scoring (single source of truth)
   const { safety, health, education, environment, happiness } = calculateRatings({
     services,
+    coverageAverages: getCoverageAverages(services),
     treeCount,
     parkCount,
     totalPollution,
@@ -1999,87 +2327,42 @@ function calculateStats(grid: Tile[][], size: number, budget: Budget, taxRate: n
 
 // calculateAverageCoverage moved to ./scoring (single source of truth).
 
-// PERF: Update budget costs based on buildings - single pass through grid
-function updateBudgetCosts(grid: Tile[][], budget: Budget): Budget {
+// Update budget costs based on buildings (counts come from scanGridTotals)
+function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = scanGridTotals(grid, grid.length)): Budget {
   const newBudget = { ...budget };
-  
-  let policeCount = 0;
-  let fireCount = 0;
-  let hospitalCount = 0;
-  let schoolCount = 0;
-  let universityCount = 0;
-  let parkCount = 0;
-  let powerCount = 0;
-  let waterCount = 0;
-  let roadCount = 0;
-  let subwayTileCount = 0;
-  let subwayStationCount = 0;
+  const {
+    policeCount, fireCount, hospitalCount, schoolCount, universityCount, parkCount, powerCount, waterCount,
+    roadCount,
+  } = totals;
+  const subwayTileCount = totals.subwayTiles;
+  const subwayStationCount = totals.subwayStations;
 
-  // PERF: Single pass through grid instead of two separate loops
-  for (const row of grid) {
-    for (const tile of row) {
-      // Count subway tiles
-      if (tile.hasSubway) subwayTileCount++;
-      
-      // Count building types using switch for jump table optimization
-      switch (tile.building.type) {
-        case 'police_station': policeCount++; break;
-        case 'fire_station': fireCount++; break;
-        case 'hospital': hospitalCount++; break;
-        case 'school': schoolCount++; break;
-        case 'university': universityCount++; break;
-        case 'park': parkCount++; break;
-        case 'park_large': parkCount++; break;
-        case 'tennis': parkCount++; break;
-        case 'power_plant': powerCount++; break;
-        case 'water_tower': waterCount++; break;
-        case 'road': roadCount++; break;
-        case 'subway_station': subwayStationCount++; break;
-      }
-    }
-  }
-
-  newBudget.police.cost = policeCount * 50;
-  newBudget.fire.cost = fireCount * 50;
-  newBudget.health.cost = hospitalCount * 100;
-  newBudget.education.cost = schoolCount * 30 + universityCount * 100;
-  newBudget.transportation.cost = roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25;
-  newBudget.parks.cost = parkCount * 10;
-  newBudget.power.cost = powerCount * 150;
-  newBudget.water.cost = waterCount * 75;
+  // New category objects: the old code wrote into the input budget's category objects (shared by the
+  // shallow copy above), which changed the previous game state in place.
+  newBudget.police = { ...budget.police, cost: policeCount * 50 };
+  newBudget.fire = { ...budget.fire, cost: fireCount * 50 };
+  newBudget.health = { ...budget.health, cost: hospitalCount * 100 };
+  newBudget.education = { ...budget.education, cost: schoolCount * 30 + universityCount * 100 };
+  newBudget.transportation = { ...budget.transportation, cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 };
+  newBudget.parks = { ...budget.parks, cost: parkCount * 10 };
+  newBudget.power = { ...budget.power, cost: powerCount * 150 };
+  newBudget.water = { ...budget.water, cost: waterCount * 75 };
 
   return newBudget;
 }
 
-// PERF: Generate advisor messages - single pass through grid for all building counts
-function generateAdvisorMessages(stats: Stats, services: ServiceCoverage, grid: Tile[][]): AdvisorMessage[] {
+// Generate advisor messages (building counts come from scanGridTotals)
+function generateAdvisorMessages(
+  stats: Stats,
+  services: ServiceCoverage,
+  grid: Tile[][],
+  totals: GridTotals = scanGridTotals(grid, grid.length)
+): AdvisorMessage[] {
   const messages: AdvisorMessage[] = [];
-
-  // PERF: Single pass through grid to collect all building stats
-  let unpoweredBuildings = 0;
-  let unwateredBuildings = 0;
-  let abandonedBuildings = 0;
-  let abandonedResidential = 0;
-  let abandonedCommercial = 0;
-  let abandonedIndustrial = 0;
-  
-  for (const row of grid) {
-    for (const tile of row) {
-      // Only count zoned buildings (not grass)
-      if (tile.zone !== 'none' && tile.building.type !== 'grass') {
-        if (!tile.building.powered) unpoweredBuildings++;
-        if (!tile.building.watered) unwateredBuildings++;
-      }
-      
-      // Count abandoned buildings
-      if (tile.building.abandoned) {
-        abandonedBuildings++;
-        if (tile.zone === 'residential') abandonedResidential++;
-        else if (tile.zone === 'commercial') abandonedCommercial++;
-        else if (tile.zone === 'industrial') abandonedIndustrial++;
-      }
-    }
-  }
+  const {
+    unpoweredBuildings, unwateredBuildings, abandonedBuildings, abandonedResidential, abandonedCommercial,
+    abandonedIndustrial,
+  } = totals;
 
   // Power advisor
   if (unpoweredBuildings > 0) {
@@ -2186,15 +2469,17 @@ function generateAdvisorMessages(stats: Stats, services: ServiceCoverage, grid: 
 }
 
 export function recalculateDerivedState(state: GameState): GameState {
-  const services = calculateServiceCoverage(state.grid, state.gridSize);
-  const budget = updateBudgetCosts(state.grid, state.budget);
+  const services = calculateServiceCoverage(state.grid, state.gridSize, state.budget);
+  const totals = scanGridTotals(state.grid, state.gridSize);
+  const budget = updateBudgetCosts(state.grid, state.budget, totals);
   const stats = calculateStats(
     state.grid,
     state.gridSize,
     budget,
     state.taxRate,
     state.effectiveTaxRate,
-    services
+    services,
+    totals
   );
   stats.money = state.stats.money;
 
@@ -2203,46 +2488,182 @@ export function recalculateDerivedState(state: GameState): GameState {
     services,
     budget,
     stats,
-    advisorMessages: generateAdvisorMessages(stats, services, state.grid),
+    advisorMessages: generateAdvisorMessages(stats, services, state.grid, totals),
   };
 }
 
+
+// Every Tile and Building field, so the compiler flags sameTileValues() when a field is added.
+// (Record<keyof T, true> fails to compile if a key of T is missing here.)
+const TILE_FIELDS_COMPARED: Record<keyof Tile, true> = {
+  x: true, y: true, zone: true, building: true, landValue: true, pollution: true, crime: true,
+  traffic: true, hasSubway: true, hasRailOverlay: true,
+};
+const BUILDING_FIELDS_COMPARED: Record<keyof Building, true> = {
+  type: true, level: true, population: true, jobs: true, powered: true, watered: true, onFire: true,
+  fireProgress: true, age: true, constructionProgress: true, abandoned: true, flipped: true, cityId: true,
+  bridgeType: true, bridgeOrientation: true, bridgeVariant: true, bridgePosition: true, bridgeIndex: true,
+  bridgeSpan: true, bridgeTrackType: true,
+};
+void TILE_FIELDS_COMPARED;
+void BUILDING_FIELDS_COMPARED;
+
+/**
+ * True when two tiles hold the same values in every Tile and Building field. Written out by hand
+ * because a generic key loop was a large part of the tick time. Keep in sync with the two lists above.
+ */
+function sameTileValues(a: Tile, b: Tile): boolean {
+  if (
+    a.x !== b.x || a.y !== b.y || a.zone !== b.zone || a.landValue !== b.landValue ||
+    a.pollution !== b.pollution || a.crime !== b.crime || a.traffic !== b.traffic ||
+    a.hasSubway !== b.hasSubway || a.hasRailOverlay !== b.hasRailOverlay
+  ) {
+    return false;
+  }
+  const p = a.building;
+  const q = b.building;
+  if (p === q) return true;
+  return (
+    p.type === q.type && p.level === q.level && p.population === q.population && p.jobs === q.jobs &&
+    p.powered === q.powered && p.watered === q.watered && p.onFire === q.onFire &&
+    p.fireProgress === q.fireProgress && p.age === q.age && p.constructionProgress === q.constructionProgress &&
+    p.abandoned === q.abandoned && p.flipped === q.flipped && p.cityId === q.cityId &&
+    p.bridgeType === q.bridgeType && p.bridgeOrientation === q.bridgeOrientation &&
+    p.bridgeVariant === q.bridgeVariant && p.bridgePosition === q.bridgePosition &&
+    p.bridgeIndex === q.bridgeIndex && p.bridgeSpan === q.bridgeSpan && p.bridgeTrackType === q.bridgeTrackType
+  );
+}
+
+/**
+ * Copy-on-write grid for one simulation tick (S1-T5).
+ *
+ * The old tick cloned every tile of a row as soon as one tile in that row was written. In a built-up
+ * city every row is written each tick, so the whole grid (two objects per tile) was copied every tick,
+ * and most of the tick time went to allocation and garbage collection. This writer copies only the
+ * tiles that are written. `finish()` then puts back the original object for every copy whose values
+ * did not change, so unchanged tiles and rows keep their identity. The input grid is never modified
+ * (the old code sometimes wrote into it, for example footprints reaching into rows not cloned yet).
+ *
+ * "Touched" rows are the rows the old code had cloned so far. The tick only needs that for one rule it
+ * keeps from the old code (tree growth flags a structure change only in a row not written yet).
+ */
+class CopyOnWriteGrid {
+  /** The grid being built. Row arrays are copied on first write; other rows are shared with the input. */
+  readonly rows: Tile[][];
+  private readonly source: Tile[][];
+  private readonly size: number;
+  /** Rows the old algorithm would have cloned by now. */
+  private readonly rowTouched: Uint8Array;
+  /** Rows whose array has been copied (rows[y] !== source[y]). */
+  private readonly rowCopied: Uint8Array;
+  /** Per tile (y * size + x): 1 when rows[y][x] is this tick's private copy. */
+  private readonly copied: Uint8Array;
+  private readonly copiedList: number[] = [];
+
+  constructor(source: Tile[][], size: number) {
+    this.source = source;
+    this.size = size;
+    this.rows = new Array(size);
+    for (let y = 0; y < size; y++) this.rows[y] = source[y];
+    this.rowTouched = new Uint8Array(size);
+    this.rowCopied = new Uint8Array(size);
+    this.copied = new Uint8Array(size * size);
+  }
+
+  /** Mark row y as touched. Returns true if it was not touched before. */
+  touchRow(y: number): boolean {
+    if (this.rowTouched[y]) return false;
+    this.rowTouched[y] = 1;
+    return true;
+  }
+
+  /** The tile at (x, y), copied on first call, ready to write. Does not touch the row. */
+  writable(x: number, y: number): Tile {
+    const index = y * this.size + x;
+    let row = this.rows[y];
+    if (!this.copied[index]) {
+      if (!this.rowCopied[y]) {
+        row = this.source[y].slice();
+        this.rows[y] = row;
+        this.rowCopied[y] = 1;
+      }
+      const tile = row[x];
+      row[x] = { ...tile, building: { ...tile.building } };
+      this.copied[index] = 1;
+      this.copiedList.push(index);
+    }
+    return row[x];
+  }
+
+  /** Same as the old getModifiableTile: touches the row, then returns the writable tile. */
+  modifiable(x: number, y: number): Tile {
+    this.rowTouched[y] = 1;
+    return this.writable(x, y);
+  }
+
+  /** Put back original tiles (and rows) whose values did not change. Returns the finished grid. */
+  finish(): Tile[][] {
+    const size = this.size;
+    const changedPerRow = new Uint32Array(size);
+    for (let i = 0; i < this.copiedList.length; i++) {
+      const index = this.copiedList[i];
+      const y = (index / size) | 0;
+      const x = index - y * size;
+      const row = this.rows[y];
+      const original = this.source[y][x];
+      if (sameTileValues(row[x], original)) {
+        row[x] = original;
+      } else {
+        changedPerRow[y]++;
+      }
+    }
+    for (let y = 0; y < size; y++) {
+      if (this.rowCopied[y] && changedPerRow[y] === 0) this.rows[y] = this.source[y];
+    }
+    return this.rows;
+  }
+}
 
 // Main simulation tick
 export function simulateTick(
   state: GameState,
   cloudWeatherMode: CloudWeatherMode = 'clear'
 ): GameState {
-  // Optimized: shallow clone rows, deep clone tiles only when modified
   const size = state.gridSize;
   
-  // Pre-calculate service coverage once (read-only operation on original grid)
-  const services = calculateServiceCoverage(state.grid, size);
-  
-  // Track which rows have been modified to avoid unnecessary row cloning
-  const modifiedRows = new Set<number>();
-  let didStructureChange = false;
-  const newGrid: Tile[][] = new Array(size);
-  
-  // Initialize with references to original rows (will clone on write)
-  for (let y = 0; y < size; y++) {
-    newGrid[y] = state.grid[y];
+  // Pre-calculate service coverage once (read-only operation on original grid). The same scan counts
+  // burning tiles: with none, fire cannot spread, so the neighbour checks below can be skipped.
+  const burningInputTiles = collectActiveServiceBuildings(state.grid, size, scratchServiceList);
+  const services = serviceCoverageForList(scratchServiceList, size, state.budget);
+  // Upper bound of burning tiles per row (input fires plus fires started this tick). Buildings are
+  // only ever put out or replaced during the tick otherwise, so the bound stays valid; when rows
+  // y-1, y and y+1 are all 0 the neighbour count is 0 without looking at the tiles.
+  const burningPerRow = new Uint32Array(size);
+  if (burningInputTiles > 0) {
+    for (let y = 0; y < size; y++) {
+      const row = state.grid[y];
+      for (let x = 0; x < size; x++) {
+        if (row[x].building.onFire) burningPerRow[y]++;
+      }
+    }
   }
   
-  // Helper to get a modifiable tile (clones row and tile on first write)
-  const getModifiableTile = (x: number, y: number): Tile => {
-    if (!modifiedRows.has(y)) {
-      // Clone the row on first modification
-      newGrid[y] = state.grid[y].map(t => ({ ...t, building: { ...t.building } }));
-      modifiedRows.add(y);
-    }
-    return newGrid[y][x];
-  };
+  // Copy-on-write grid: only tiles that are written get copied (see CopyOnWriteGrid)
+  const cowGrid = new CopyOnWriteGrid(state.grid, size);
+  const newGrid = cowGrid.rows;
+  const writableTile: WritableTileAccessor = (tx, ty) => cowGrid.writable(tx, ty);
+  let didStructureChange = false;
 
   // Process all tiles
   for (let y = 0; y < size; y++) {
+    const inputRow = state.grid[y];
+    const powerRow = services.power[y];
+    const waterRow = services.water[y];
     for (let x = 0; x < size; x++) {
-      const originalTile = state.grid[y][x];
+      // Skip checks read the input tile, as before. Helpers only ever write into other ZONED tiles
+      // (footprints, clearing abandoned lots), and zoned tiles are never skipped, so reading the input
+      // here gives the same results as reading the tile being built.
+      const originalTile = inputRow[x];
       const originalBuilding = originalTile.building;
       
       // Fast path: skip tiles that definitely won't change
@@ -2252,8 +2673,8 @@ export function simulateTick(
       }
       
       // Check what updates this tile needs
-      const newPowered = services.power[y][x];
-      const newWatered = services.water[y][x];
+      const newPowered = powerRow[x];
+      const newWatered = waterRow[x];
       const needsPowerWaterUpdate = originalBuilding.powered !== newPowered ||
                                     originalBuilding.watered !== newWatered;
       
@@ -2282,9 +2703,57 @@ export function simulateTick(
       if (isCompletedServiceBuilding && !needsPowerWaterUpdate && originalTile.pollution < 0.01) {
         continue;
       }
+
+      // PERF (S1-T5): the two fast paths below replace the full path for tiles where it would change
+      // no value. They only apply to tiles not written earlier in this tick (newGrid still holds the
+      // input tile), so the input values they test are the current ones.
+      const unwrittenThisTick = newGrid[y][x] === originalTile;
+
+      // Unzoned tiles that nothing can change (typically trees: their negative pollution keeps them out
+      // of the grass/tree rule above). The full path's only effect would be to draw the random
+      // fire-start number, which always fails for a fire-immune type. Draw it anyway so the random
+      // sequence, and so every result, stays identical.
+      if (
+        unwrittenThisTick &&
+        originalTile.zone === 'none' &&
+        originalBuilding.type !== 'empty' &&
+        !needsPowerWaterUpdate &&
+        !originalBuilding.onFire &&
+        !isBuildingFireEligible(originalBuilding.type) &&
+        !(originalBuilding.constructionProgress < 100) &&
+        originalTile.pollution === 0 &&
+        (BUILDING_STATS[originalBuilding.type]?.pollution || 0) <= 0
+      ) {
+        if (state.disastersEnabled) Math.random();
+        cowGrid.touchRow(y); // the full path would have touched the row (see the tree-growth rule)
+        continue;
+      }
+
+      // Zoned 'empty' placeholder tiles (the non-origin tiles of multi-tile buildings) whose building
+      // still exists. For them the full path only re-sets powered/watered (unchanged here), sets
+      // population and jobs to 0 in evolveBuilding (already 0), decays pollution (already 0) and draws
+      // the random fire-start number, which always fails for fire-immune 'empty'. Draw it anyway to keep
+      // the random sequence identical. Orphaned placeholders take the full path.
+      if (
+        unwrittenThisTick &&
+        originalTile.zone !== 'none' &&
+        originalBuilding.type === 'empty' &&
+        !needsPowerWaterUpdate &&
+        !originalBuilding.onFire &&
+        !isBuildingFireEligible(originalBuilding.type) &&
+        originalBuilding.population === 0 &&
+        originalBuilding.jobs === 0 &&
+        originalTile.pollution === 0 &&
+        (BUILDING_STATS[originalBuilding.type]?.pollution || 0) <= 0 &&
+        findBuildingOrigin(newGrid, x, y, size) !== null
+      ) {
+        if (state.disastersEnabled) Math.random();
+        cowGrid.touchRow(y);
+        continue;
+      }
       
       // Get modifiable tile for this position
-      const tile = getModifiableTile(x, y);
+      const tile = cowGrid.modifiable(x, y);
       
       // Update utilities
       tile.building.powered = newPowered;
@@ -2353,35 +2822,30 @@ export function simulateTick(
           const candidateSize = getBuildingSize(candidate);
           if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
           didStructureChange = true;
-            // Pre-clone all rows that will be modified by the building footprint
+            // Touch all rows that will be modified by the building footprint (as the old row pre-clone did)
             for (let dy = 0; dy < candidateSize.height && y + dy < size; dy++) {
-              if (!modifiedRows.has(y + dy)) {
-                newGrid[y + dy] = state.grid[y + dy].map(t => ({ ...t, building: { ...t.building } }));
-                modifiedRows.add(y + dy);
-              }
+              cowGrid.touchRow(y + dy);
             }
-            applyBuildingFootprint(newGrid, x, y, candidate, tile.zone, 1, services);
+            applyBuildingFootprint(newGrid, x, y, candidate, tile.zone, 1, services, writableTile);
           }
         }
       } else if (tile.zone !== 'none' && tile.building.type !== 'grass') {
         // Evolve existing building - this may modify multiple tiles for multi-tile buildings
         // The evolveBuilding function handles its own row modifications internally
         const beforeBuilding = tile.building;
-        const beforeBuildingState = {
-          type: beforeBuilding.type,
-          level: beforeBuilding.level,
-          constructionProgress: beforeBuilding.constructionProgress,
-          onFire: beforeBuilding.onFire,
-          abandoned: beforeBuilding.abandoned,
-        };
-        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand);
+        const beforeType = beforeBuilding.type;
+        const beforeLevel = beforeBuilding.level;
+        const beforeConstructionProgress = beforeBuilding.constructionProgress;
+        const beforeOnFire = beforeBuilding.onFire;
+        const beforeAbandoned = beforeBuilding.abandoned;
+        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile);
         const evolvedBuilding = newGrid[y][x].building;
         const didEvolveStructureChange =
-          beforeBuildingState.type !== evolvedBuilding.type ||
-          beforeBuildingState.level !== evolvedBuilding.level ||
-          beforeBuildingState.constructionProgress !== evolvedBuilding.constructionProgress ||
-          beforeBuildingState.onFire !== evolvedBuilding.onFire ||
-          beforeBuildingState.abandoned !== evolvedBuilding.abandoned;
+          beforeType !== evolvedBuilding.type ||
+          beforeLevel !== evolvedBuilding.level ||
+          beforeConstructionProgress !== evolvedBuilding.constructionProgress ||
+          beforeOnFire !== evolvedBuilding.onFire ||
+          beforeAbandoned !== evolvedBuilding.abandoned;
         if (didEvolveStructureChange) {
           didStructureChange = true;
         }
@@ -2408,7 +2872,10 @@ export function simulateTick(
         !tile.building.onFire &&
         isBuildingFireEligible(tile.building.type)
       ) {
-        const adjacentFireCount = countAdjacentBurningTiles(newGrid, size, x, y);
+        // No burning tile in the three rows around means no burning neighbour (and no random number is drawn below)
+        const mayHaveBurningNeighbour =
+          burningPerRow[y] > 0 || (y > 0 && burningPerRow[y - 1] > 0) || (y + 1 < size && burningPerRow[y + 1] > 0);
+        const adjacentFireCount = mayHaveBurningNeighbour ? countAdjacentBurningTiles(newGrid, size, x, y) : 0;
 
         if (adjacentFireCount > 0) {
           const fireCoverage = services.fire[y][x];
@@ -2417,6 +2884,7 @@ export function simulateTick(
           if (Math.random() < spreadChance) {
             didStructureChange = true;
             igniteBuilding(tile.building);
+            burningPerRow[y]++;
           }
         }
       }
@@ -2429,6 +2897,7 @@ export function simulateTick(
       ) {
         didStructureChange = true;
         igniteBuilding(tile.building);
+        burningPerRow[y]++;
       }
     }
   }
@@ -2437,61 +2906,79 @@ export function simulateTick(
   // Early exit: skip entire pass for clear weather (0% growth chance)
   const treeGrowthChance = TREE_GROWTH_CONFIG[cloudWeatherMode];
   if (treeGrowthChance > 0) {
+    // tryGrowTree only reads and replaces `tile.building`, so it gets a reusable probe object and the
+    // real tile is copied only when a tree actually grows.
+    const growthProbe = { building: null } as unknown as Tile;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const tile = newGrid[y][x];
         if (tile.building.type === 'grass') {
-          // Only clone row AFTER tree actually grows (optimization: avoids cloning ~99.96% of rows)
-          const grew = tryGrowTree(tile, treeGrowthChance);
-          if (grew && !modifiedRows.has(y)) {
-            didStructureChange = true;
-            newGrid[y] = state.grid[y].map(t => ({ ...t, building: { ...t.building } }));
-            modifiedRows.add(y);
+          growthProbe.building = tile.building;
+          if (tryGrowTree(growthProbe, treeGrowthChance)) {
+            // Kept from the old code: a structure change is only flagged when the row was not written yet.
+            if (cowGrid.touchRow(y)) {
+              didStructureChange = true;
+            }
+            cowGrid.writable(x, y).building = growthProbe.building;
           }
         }
       }
     }
   }
 
+  // One pass over the grid for budget, stats and advisor counts. Pollution cleanup (below) changes
+  // only pollution, so everything else counted here is final. The same pass copies every tile's
+  // pollution into a typed array and lists the green pollution reducers for the cleanup.
+  const cleanupScratch = getPollutionCleanupScratch(size * size);
+  const pollutionCapture: PollutionCapture = { pollution: cleanupScratch.pollution, reducerIndices: [] };
+  const gridTotals = scanGridTotals(newGrid, size, pollutionCapture);
+
   // Green amenities clean up nearby pollution after all buildings have updated.
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const buildingType = newGrid[y][x].building.type;
-      const cleanupProfile = getPollutionCleanupProfile(buildingType);
-      if (!cleanupProfile) continue;
+  // S1-T5: runs on the pollution array instead of the tile objects. Reducers are still processed in
+  // row-major order and each one lowers each target once, with the same arithmetic, so every value is
+  // identical to the old tile-by-tile version. Only tiles whose pollution changed are copied.
+  const pollution = pollutionCapture.pollution;
+  const pollutionChanged = cleanupScratch.changed;
+  const changedIndices: number[] = [];
+  for (const reducerIndex of pollutionCapture.reducerIndices) {
+    const y = (reducerIndex / size) | 0;
+    const x = reducerIndex - y * size;
+    const targets = getPollutionCleanupEntry(newGrid[y][x].building.type)!.targets;
 
-      const footprint = getBuildingSize(buildingType);
-      const minX = Math.max(0, x - cleanupProfile.radius);
-      const maxX = Math.min(size - 1, x + footprint.width - 1 + cleanupProfile.radius);
-      const minY = Math.max(0, y - cleanupProfile.radius);
-      const maxY = Math.min(size - 1, y + footprint.height - 1 + cleanupProfile.radius);
+    for (let t = 0; t < targets.length; t += 3) {
+      const targetX = x + targets[t];
+      const targetY = y + targets[t + 1];
+      if (targetX < 0 || targetX >= size || targetY < 0 || targetY >= size) continue;
 
-      for (let targetY = minY; targetY <= maxY; targetY++) {
-        for (let targetX = minX; targetX <= maxX; targetX++) {
-          const dx =
-            targetX < x ? x - targetX :
-            targetX > x + footprint.width - 1 ? targetX - (x + footprint.width - 1) :
-            0;
-          const dy =
-            targetY < y ? y - targetY :
-            targetY > y + footprint.height - 1 ? targetY - (y + footprint.height - 1) :
-            0;
-          const distance = dx + dy;
-
-          if (distance > cleanupProfile.radius) continue;
-
-          const cleanupAmount = cleanupProfile.strength * (1 - distance / (cleanupProfile.radius + 1));
-          if (cleanupAmount <= 0) continue;
-
-          const targetTile = getModifiableTile(targetX, targetY);
-          targetTile.pollution = Math.max(0, targetTile.pollution - cleanupAmount);
+      const targetIndex = targetY * size + targetX;
+      const currentPollution = pollution[targetIndex];
+      const nextPollution = Math.max(0, currentPollution - targets[t + 2]);
+      if (nextPollution !== currentPollution) {
+        pollution[targetIndex] = nextPollution;
+        if (!pollutionChanged[targetIndex]) {
+          pollutionChanged[targetIndex] = 1;
+          changedIndices.push(targetIndex);
         }
       }
     }
   }
+  for (const index of changedIndices) {
+    pollutionChanged[index] = 0; // leave the scratch clean for the next tick
+    const y = (index / size) | 0;
+    cowGrid.writable(index - y * size, y).pollution = pollution[index];
+  }
+  if (changedIndices.length > 0) {
+    // Same row-major summation order as scanGridTotals, over the final values
+    let totalPollution = 0;
+    for (let i = 0; i < size * size; i++) totalPollution += pollution[i];
+    gridTotals.totalPollution = totalPollution;
+  }
+
+  // Drop copies whose values did not change, so unchanged tiles and rows keep their identity
+  cowGrid.finish();
 
   // Update budget costs
-  const newBudget = updateBudgetCosts(newGrid, state.budget);
+  const newBudget = updateBudgetCosts(newGrid, state.budget, gridTotals);
 
   // Gradually move effectiveTaxRate toward taxRate
   // This creates a lagging effect so tax changes don't immediately impact demand
@@ -2500,7 +2987,7 @@ export function simulateTick(
   const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services);
+  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals);
   newStats.money = state.stats.money;
 
   // Smooth demand to prevent flickering in large cities
@@ -2548,7 +3035,7 @@ export function simulateTick(
   }
 
   // Generate advisor messages
-  const advisorMessages = generateAdvisorMessages(newStats, services, newGrid);
+  const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // Keep existing notifications
   const newNotifications = [...state.notifications];
@@ -2639,8 +3126,11 @@ const BUILDING_SIZES: Partial<Record<BuildingType, { width: number; height: numb
 };
 
 // Get the size of a building (how many tiles it spans)
+// Shared (like the BUILDING_SIZES entries) so the per-tile callers in simulateTick do not allocate.
+const SINGLE_TILE_SIZE: { width: number; height: number } = Object.freeze({ width: 1, height: 1 });
+
 export function getBuildingSize(buildingType: BuildingType): { width: number; height: number } {
-  return BUILDING_SIZES[buildingType] || { width: 1, height: 1 };
+  return BUILDING_SIZES[buildingType] || SINGLE_TILE_SIZE;
 }
 
 // Get construction speed for a building type (larger buildings take longer)
@@ -2829,14 +3319,17 @@ function applyBuildingFootprint(
   buildingType: BuildingType,
   zone: ZoneType,
   level: number,
-  services?: ServiceCoverage
+  services?: ServiceCoverage,
+  writableTile?: WritableTileAccessor
 ): Building {
   const size = getBuildingSize(buildingType);
   const stats = BUILDING_STATS[buildingType] || { maxPop: 0, maxJobs: 0, pollution: 0, landValue: 0 };
 
   for (let dy = 0; dy < size.height; dy++) {
     for (let dx = 0; dx < size.width; dx++) {
-      const cell = grid[originY + dy][originX + dx];
+      const cell = writableTile
+        ? writableTile(originX + dx, originY + dy)
+        : grid[originY + dy][originX + dx];
       if (dx === 0 && dy === 0) {
         cell.building = createBuilding(buildingType);
         cell.building.level = level;
