@@ -197,3 +197,14 @@ export function getCutMask(ratio: number, feedersWithDemand: readonly number[], 
 export function isWaterWorksSiteValid(minDistanceToGanga: number): boolean {
   return minDistanceToGanga >= 1 && minDistanceToGanga <= WATER_CONFIG.worksMaxDistanceToGanga;
 }
+
+/**
+ * Ticks per in-game hour of the day/night cycle (24 hours per 450 ticks, see simulateTick).
+ * Cuts rotate once per such hour, so a neighbourhood's turn without power lasts a visible stretch of time.
+ */
+export const CUT_ROTATION_TICKS = 450 / 24;
+
+/** Monotonic rotation-hour counter for `getCutFeeders`, from the game's total tick count. */
+export function getRotationHour(totalTicks: number): number {
+  return Math.floor(totalTicks / CUT_ROTATION_TICKS);
+}
