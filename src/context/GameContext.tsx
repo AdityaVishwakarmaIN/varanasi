@@ -6,6 +6,7 @@ import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { serializeAndCompressAsync } from '@/lib/saveWorkerManager';
 import { simulateTick } from '@/lib/simulation';
 import { recordSave, recordTick } from '@/lib/perfStats';
+import { GAME_LOOP_CONFIG, SimulationScheduler, getTickIntervalMs } from '@/lib/gameLoop';
 import { isBenchmarkState } from '@/lib/benchmark';
 import {
   Budget,
@@ -866,51 +867,51 @@ export function GameProvider({ children, startFresh = false }: { children: React
   const tickCountRef = useRef(0);
   const lastUiSyncRef = useRef(0);
   
-  // Simulation loop - PERF: Runs simulation but throttles React updates aggressively
-  // Grid updates go to ref (canvas reads from ref), React only gets UI updates
+  // Simulation loop (S1-T4): fixed-timestep scheduler driven by requestAnimationFrame.
+  // PERF: Grid updates go to latestStateRef (canvas reads from it); React only gets UI updates.
+  const tickIntervalRef = useRef(Infinity); // current tick interval in ms (Infinity = speed 0)
+
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
+    const isMobileDevice = typeof window !== 'undefined' && (
+      window.innerWidth < 768 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    tickIntervalRef.current = getTickIntervalMs(state.speed, isMobileDevice);
+  }, [state.speed]);
 
-    if (state.speed > 0) {
-      // Check if running on mobile for performance optimization
-      const isMobileDevice = typeof window !== 'undefined' && (
-        window.innerWidth < 768 ||
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-      );
+  useEffect(() => {
+    const scheduler = new SimulationScheduler(() => {
+      tickCountRef.current++;
+      const now = performance.now();
 
-      // PERF: Balanced tick intervals
-      // Desktop: 500ms, 300ms, 200ms for speeds 1, 2, 3
-      // Mobile: 750ms, 450ms, 300ms for speeds 1, 2, 3
-      const interval = isMobileDevice
-        ? (state.speed === 1 ? 750 : state.speed === 2 ? 450 : 300)
-        : (state.speed === 1 ? 500 : state.speed === 2 ? 300 : 200);
+      // PERF: Run simulation and update ref immediately (for canvas)
+      const newState = simulateTick(latestStateRef.current, cloudWeatherModeRef.current);
+      recordTick(performance.now() - now);
+      latestStateRef.current = newState;
+      stateChangedRef.current = true;
 
-      timer = setInterval(() => {
-        tickCountRef.current++;
-        const now = performance.now();
-        
-        // PERF: Run simulation and update ref immediately (for canvas)
-        const newState = simulateTick(latestStateRef.current, cloudWeatherModeRef.current);
-        recordTick(performance.now() - now);
-        latestStateRef.current = newState;
-        stateChangedRef.current = true;
-        
-        // PERF: Only sync to React every 500ms to avoid expensive reconciliation
-        // Canvas reads from latestStateRef so it sees updates immediately
-        // React state is only needed for UI elements (stats, budget display)
-        if (now - lastUiSyncRef.current >= 500) {
-          lastUiSyncRef.current = now;
-          setState(newState);
-        }
-      }, interval);
-    }
+      // PERF: Only sync to React every 500ms to avoid expensive reconciliation
+      // Canvas reads from latestStateRef so it sees updates immediately
+      // React state is only needed for UI elements (stats, budget display)
+      if (now - lastUiSyncRef.current >= GAME_LOOP_CONFIG.uiSyncIntervalMs) {
+        lastUiSyncRef.current = now;
+        setState(newState);
+      }
+    }, () => tickIntervalRef.current);
+
+    // System pause while the tab is hidden: the game's own `speed` is not changed, and no
+    // time is owed on return (the in-game date does not move while hidden).
+    // Saving on hide is handled by the autosave rewrite (S1-T9).
+    const onVisibilityChange = () => scheduler.setPaused(document.hidden);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    scheduler.setPaused(document.hidden);
+    scheduler.start();
 
     return () => {
-      if (timer) {
-        clearInterval(timer);
-      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      scheduler.stop();
     };
-  }, [state.speed]);
+  }, []);
 
   const setTool = useCallback((tool: Tool) => {
     setState((prev) => ({ ...prev, selectedTool: tool, activePanel: 'none' }));
