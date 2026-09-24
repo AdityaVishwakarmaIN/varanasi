@@ -41,6 +41,35 @@ export const SCORING_CONFIG = {
     /** Each point of tax rate removes this many points from the tax sub-score. */
     taxRatePenaltyPerPoint: 3,
   },
+  /** Ganga Health (Varanasi map only). See documentation/game-plan/sprint-2-varanasi-and-the-ganga.md, S2-T7. */
+  ganga: {
+    /** Land tiles within this many tiles of the Ganga drain into it. */
+    catchmentRadius: 8,
+    /** Each point of tile pollution in the catchment adds this much load. */
+    industryWeight: 1.0,
+    /** Each untreated resident/worker in the catchment adds this much load. */
+    sewagePerPerson: 0.02,
+    /** Load the river already carries when it reaches the city. */
+    upstreamLoad: 30,
+    /** Each riverside tree/park tile removes this much load. */
+    riversideGreenCredit: 0.5,
+    /** Net load at which the river's target health reaches 0. */
+    riverCapacity: 120,
+    /** Each in-game day, health moves this fraction of the way to its target (slow stock). */
+    dailyApproach: 0.05,
+    /** Trend arrow shows up/down when target differs from current by more than this. */
+    trendThreshold: 2,
+    /** Population one powered Sewage Treatment Plant can treat. */
+    stpCapacity: 2000,
+    /** Radius (tiles) an STP collects sewage from. */
+    stpRadius: 14,
+    /** Below this health, residents in the catchment suffer a health-coverage penalty. */
+    lowHealthThreshold: 40,
+    /** Health-coverage points lost by catchment residents when the river is below the threshold. */
+    lowHealthCoveragePenalty: 20,
+    /** Weight of Ganga Health in the Happiness composite (Varanasi only; other weights are scaled down to keep the sum 1). */
+    happinessWeight: 0.05,
+  },
 } as const;
 
 const { environment: ENV, safety: SAFETY, health: HEALTH, happiness: HAPPINESS } =
@@ -187,4 +216,54 @@ export function calculateRatings(input: RatingsInput): Ratings {
   });
 
   return { safety, health, education, environment, jobSatisfaction, happiness };
+}
+
+// ---------------------------------------------------------------------------
+// Ganga Health (S2-T7)
+// ---------------------------------------------------------------------------
+
+const GANGA = SCORING_CONFIG.ganga;
+
+export interface GangaLoadInput {
+  /** Sum of tile pollution over catchment land tiles. */
+  catchmentPollution: number;
+  /** Residents and workers in the catchment whose sewage is NOT treated by an STP. */
+  untreatedPopulation: number;
+  /** Tree/park tiles on the west riverfront or east floodplain. */
+  riversideGreenTiles: number;
+}
+
+export interface GangaLoadResult {
+  industrialLoad: number;
+  sewageLoad: number;
+  upstreamLoad: number;
+  greenCredit: number;
+  netLoad: number;
+  /** 0-100: where Ganga Health is heading. */
+  targetHealth: number;
+}
+
+/** Target Ganga Health (0-100) from what drains into the river. Pure. */
+export function calculateGangaTargetHealth(input: GangaLoadInput): GangaLoadResult {
+  const industrialLoad = Math.max(0, input.catchmentPollution) * GANGA.industryWeight;
+  const sewageLoad = Math.max(0, input.untreatedPopulation) * GANGA.sewagePerPerson;
+  const upstreamLoad = GANGA.upstreamLoad;
+  const greenCredit = Math.max(0, input.riversideGreenTiles) * GANGA.riversideGreenCredit;
+  const netLoad = Math.max(0, industrialLoad + sewageLoad + upstreamLoad - greenCredit);
+  const targetHealth = 100 * (1 - Math.min(1, netLoad / GANGA.riverCapacity));
+  return { industrialLoad, sewageLoad, upstreamLoad, greenCredit, netLoad, targetHealth };
+}
+
+/** One in-game day of the slow stock: move a fixed fraction of the way toward the target. */
+export function stepGangaHealth(current: number, target: number): number {
+  const next = current + (target - current) * GANGA.dailyApproach;
+  return Math.min(100, Math.max(0, next));
+}
+
+export type GangaTrend = 'up' | 'down' | 'flat';
+
+export function getGangaTrend(current: number, target: number): GangaTrend {
+  if (target > current + GANGA.trendThreshold) return 'up';
+  if (target < current - GANGA.trendThreshold) return 'down';
+  return 'flat';
 }

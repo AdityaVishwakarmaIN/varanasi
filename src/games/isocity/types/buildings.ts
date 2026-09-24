@@ -26,7 +26,9 @@ export type BuildingType =
   | 'mini_golf_course' | 'bleachers_field' | 'go_kart_track' | 'amphitheater'
   | 'greenhouse_garden' | 'animal_pens_farm' | 'cabin_house' | 'campground'
   | 'marina_docks_small' | 'pier_large' | 'roller_coaster_small'
-  | 'community_garden' | 'pond_park' | 'park_gate' | 'mountain_lodge' | 'mountain_trailhead';
+  | 'community_garden' | 'pond_park' | 'park_gate' | 'mountain_lodge' | 'mountain_trailhead'
+  // Varanasi: riverfront (Sprint 2). Always append new types at the END (see documentation/game-plan/README.md rule 5).
+  | 'ghat' | 'sewage_treatment_plant';
 
 export type BridgeType = 'small' | 'medium' | 'large' | 'suspension';
 export type BridgeOrientation = 'ns' | 'ew';
@@ -126,4 +128,7 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   park_gate: { maxPop: 0, maxJobs: 1, pollution: -2, landValue: 8 },
   mountain_lodge: { maxPop: 0, maxJobs: 15, pollution: -5, landValue: 35 },
   mountain_trailhead: { maxPop: 0, maxJobs: 2, pollution: -10, landValue: 15 },
+  // Varanasi riverfront (append only)
+  ghat: { maxPop: 0, maxJobs: 4, pollution: 0, landValue: 10 },
+  sewage_treatment_plant: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: -5 },
 };
