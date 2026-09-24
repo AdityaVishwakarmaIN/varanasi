@@ -182,9 +182,11 @@ satellite map of Varanasi, where the river bends like a crescent with the city o
 1. In `src/games/isocity/maps/riverZones.ts`, write **pure** functions computed from `VARANASI_MAP` plus `gridSize`. They are **not saved**:
    ```ts
    export type RiverZone = 'river' | 'westRiverfront' | 'westBank' | 'eastFloodplain' | 'eastBank' | 'none';
-   export function getRiverZone(x: number, y: number, gridSize: number): RiverZone;
-   export function getDistanceToGanga(x: number, y: number, gridSize: number): number; // in tiles
+   export function getRiverZone(x: number, y: number, gridSize: number, mapId: MapId | undefined): RiverZone;
+   export function getDistanceToGanga(x: number, y: number, gridSize: number, mapId: MapId | undefined): number; // in tiles
    ```
+   (Implemented with an explicit `mapId` argument: a random map and a Varanasi map can have the same size, so size alone cannot tell them apart.
+   The river shape depends only on the map data and size, never on the seed, so zones are reproducible without saving them.)
    - `westRiverfront` = a land tile **west** of the Ganga centreline that touches a Ganga water tile (4-neighbour).
    - `eastFloodplain` = a land tile east of the centreline within `eastFloodplainFraction × size` tiles of the river.
 2. Because these are called often, **precompute once per gridSize** into typed arrays (`Uint8Array` for the zone, `Uint16Array` for the distance)
@@ -331,7 +333,7 @@ targetHealth     = 100 × (1 − min(1, netLoad / RIVER_CAPACITY (120)))
 
 ```
 for each ghat (and later, landmarks):
-  base          = GHAT_BASE_INCOME (₹12 per tick)
+  base          = GHAT_BASE_INCOME (₹12, a MONTHLY rate like stats.income; money is paid weekly as (income − expenses) / 4)
   riverFactor   = (gangaHealth / 100) ^ 1.5            // dirty river → far fewer visitors
   accessFactor  = road within 3 tiles ? 1.0 : 0.25
   commerceBonus = 1 + 0.08 × (commercial tiles within 4 tiles), capped at 1.8
