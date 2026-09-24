@@ -63,6 +63,7 @@ import { getCachedImage } from './imageLoader';
 import { gridToScreen } from './utils';
 import { findFireworkBuildings, findSmogFactories } from './gridFinders';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 const CLOUD_SPRITE_BLUR_PX = 2.5;
 
@@ -337,7 +338,7 @@ export function createEffectsSystems(
   const drawFireworks = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Early exit if no fireworks
     if (!currentGrid || currentGridSize <= 0 || fireworksRef.current.length === 0) {
@@ -580,7 +581,7 @@ export function createEffectsSystems(
   const drawSmog = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Early exit if no factories or zoom is too high (smog fades when zoomed in)
     if (!currentGrid || currentGridSize <= 0 || factorySmogRef.current.length === 0) {
@@ -837,7 +838,7 @@ export function createEffectsSystems(
   // overrideCloudType: when spawning a companion in a group, use same type as lead for coherent banks.
   const spawnCloud = (currentHour: number, opts?: { position?: { x: number; y: number }; cloudType?: CloudType }): { x: number; y: number; cloudType: CloudType } | null => {
     const { canvasSize, zoom, offset } = worldStateRef.current;
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const dpr = getRenderDpr();
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
 
     if (!weatherConfig.showClouds) {
@@ -922,7 +923,7 @@ export function createEffectsSystems(
       return;
     }
 
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const dpr = getRenderDpr();
     const viewWidth = canvasSize.width / (dpr * zoom);
     const viewHeight = canvasSize.height / (dpr * zoom);
     const viewLeft = -offset.x / zoom;
@@ -1023,7 +1024,7 @@ export function createEffectsSystems(
     }
 
     // Update existing clouds
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const dpr = getRenderDpr();
     const viewWidth = canvasSize.width / (dpr * zoom);
     const viewHeight = canvasSize.height / (dpr * zoom);
     const viewLeft = -offset.x / zoom;
@@ -1077,7 +1078,7 @@ export function createEffectsSystems(
   const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const dpr = getRenderDpr();
     const weatherConfig = CLOUD_WEATHER_CONFIG[cloudWeatherMode];
     const cloudSpriteSheet = getCachedImage(CLOUD_SPRITE_SHEET_SRC);
 

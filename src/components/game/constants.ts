@@ -82,7 +82,7 @@ export const LANE_MARKINGS_MIN_ZOOM = 0.5;        // Lane markings and road line
 export const LANE_MARKINGS_MEDIAN_MIN_ZOOM = 0.6; // Median markings for avenues/highways
 export const SIDEWALK_MIN_ZOOM = 0.25;            // Sidewalks on road edges (desktop)
 export const SIDEWALK_MIN_ZOOM_MOBILE = 0.25;     // Sidewalks on mobile (lower = visible when more zoomed out)
-export const SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD = 0.5; // Desktop: hide boats/helis/smog during pan/zoom when below this
+// SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD moved to QUALITY_PRESETS[level].skipSmallWhileMovingBelowZoom (src/lib/qualityConfig.ts)
 
 // Airplane system constants
 export const AIRPLANE_MIN_POPULATION = 2000; // Minimum population required for airplane activity

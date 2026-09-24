@@ -9,6 +9,7 @@ import {
 import { getSpriteRenderInfo, selectSpriteSource, type SpriteCoords } from './buildingSprite';
 import type { CloudWeatherMode, WorldRenderState } from './types';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 const WIND_DIRECTION_ANGLE = -0.28;
 const WIND_DIRECTION_X = Math.cos(WIND_DIRECTION_ANGLE);
@@ -73,7 +74,7 @@ export interface WindDrawInput {
 }
 
 function getPixelRatio(dpr?: number): number {
-  return dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+  return dpr ?? getRenderDpr();
 }
 
 export function createDefaultWindVisualState(): WindVisualState {

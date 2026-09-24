@@ -39,7 +39,6 @@ import {
   WorldRenderState,
 } from '@/components/game/types';
 import {
-  SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD,
   ZOOM_MIN,
   ZOOM_MAX,
   WATER_ASSET_PATH,
@@ -152,12 +151,20 @@ import {
 } from '@/lib/touchGestures';
 import { Check, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
-import { recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
+import { getPerfSnapshot, recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
 import { registerCameraController } from '@/components/game/cameraController';
+import { getActivePreset, getGraphicsSnapshot, getRenderDpr, initGraphicsSettings, reportGpuFailure, runAutoQualityCheck } from '@/lib/graphicsSettings';
+import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
+import { AUTO_QUALITY_CONFIG, QUALITY_PRESETS } from '@/lib/qualityConfig';
+import { getSceneLighting } from '@/components/game/sceneLighting';
 
-// P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
-// Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
-const GPU_RENDERER_ENABLED = process.env.NEXT_PUBLIC_GPU_RENDERER === '1';
+// S1-T7: the renderer (GPU or Canvas2D) is chosen at runtime (graphicsSettings.ts / rendererSelection.ts).
+// NEXT_PUBLIC_GPU_RENDERER=1|0 or ?renderer=gpu|canvas still force one for debugging.
+
+/** S1-T8: lighting worker gets the full grid at most this often while only `powered` flags change. */
+const LIGHTING_GRID_RESEND_MS = 3000;
+/** Hour sent to the lighting pass when night lighting is off (daylight: nothing is drawn). */
+const LIGHTING_OFF_HOUR = 12;
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -227,6 +234,25 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     roadNetworkVersion,
   } = state;
   
+  // S1-T7: renderer + quality preset (Settings → Graphics; auto-quality adjusts the level)
+  useEffect(() => {
+    initGraphicsSettings(isMobile);
+  }, [isMobile]);
+  const graphics = useGraphicsSettings();
+  const qualityPreset = QUALITY_PRESETS[graphics.qualityLevel];
+  const gpuEnabled = graphics.renderer === 'gpu';
+  const gpuEnabledRef = useRef(gpuEnabled);
+  useEffect(() => {
+    gpuEnabledRef.current = gpuEnabled;
+  }, [gpuEnabled]);
+  const lightingEnabled = qualityPreset.nightLighting;
+  const lightingWorkerSentRef = useRef<{ grid: Tile[][] | null; structureVersion: number; at: number; settingsKey: string }>({
+    grid: null,
+    structureVersion: -1,
+    at: 0,
+    settingsKey: '',
+  });
+
   // PERF: Use latestStateRef for real-time grid access in animation loops
   // This avoids waiting for React state sync which is throttled for performance
   const m = useMessages();
@@ -237,10 +263,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const pixiRendererRef = useRef<PixiRenderer | null>(null);
   // Step 4/6: fixed-timestep clock decoupled from React; drives GPU render interpolation.
   const gpuClockRef = useRef(new FixedTimestepClock());
-  // GPU/FPS heads-up display (only when the GPU flag is on) to aid local verification.
-  const hudRef = useRef<HTMLDivElement>(null);
-  const fpsFrameCountRef = useRef(0);
-  const fpsLastSampleRef = useRef(0);
   const lastSlowFrameLogRef = useRef(0);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -845,7 +867,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const drawAirplanes = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Early exit if no airplanes
     if (!currentGrid || currentGridSize <= 0 || airplanesRef.current.length === 0) {
@@ -875,7 +897,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const drawHelicopters = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Early exit if no helicopters
     if (!currentGrid || currentGridSize <= 0 || helicoptersRef.current.length === 0) {
@@ -905,7 +927,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const drawSeaplanes = useCallback((ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
 
     // Early exit if no seaplanes
     if (!currentGrid || currentGridSize <= 0 || seaplanesRef.current.length === 0) {
@@ -1075,7 +1097,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current && canvasRef.current) {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getRenderDpr();
         const rect = containerRef.current.getBoundingClientRect();
         
         // Set display size
@@ -1124,7 +1146,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     updateSize();
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
-  }, []);
+    // S1-T7: re-run when the quality preset changes the device-pixel-ratio cap
+  }, [qualityPreset.dprCap]);
 
   useEffect(() => {
     if (lightingCanvasTransferredRef.current) return;
@@ -1172,22 +1195,44 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const manager = renderWorkerManagerRef.current;
     if (!isLightingWorkerEnabled || !manager) return;
 
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-
-    manager.updateLightingState({
-      grid,
-      gridSize,
-      cloudWeatherMode: worldStateRef.current.cloudWeatherMode,
-      visualHour,
-      isMobile,
-      viewport: {
-        offset,
-        zoom,
-        canvasSize,
-        dpr,
-        isInteractionActive: isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current,
-      },
-    });
+    const dpr = getRenderDpr();
+    const viewport = {
+      offset,
+      zoom,
+      canvasSize,
+      dpr,
+      isInteractionActive: isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current,
+    };
+    // S1-T8: posting the whole grid to the worker structured-clones every tile (tens of ms on a
+    // 160 map), so it was the biggest cost while panning. Send the grid only when the lighting
+    // is visible and the city changed; camera moves only send the small viewport message.
+    // With night lighting off (quality preset) the worker gets daylight and draws nothing.
+    const hour = lightingEnabled ? visualHour : LIGHTING_OFF_HOUR;
+    const weather = lightingEnabled ? worldStateRef.current.cloudWeatherMode : 'clear';
+    const lightingVisible = getSceneLighting(hour, weather).overlayAlpha > 0.01;
+    const sent = lightingWorkerSentRef.current;
+    const now = performance.now();
+    const settingsKey = `${hour}|${weather}|${isMobile}|${gridSize}|${gameVersion}`;
+    const gridStale = lightingVisible && sent.grid !== grid &&
+      (sent.structureVersion !== structureVersion || now - sent.at >= LIGHTING_GRID_RESEND_MS);
+    if (sent.settingsKey !== settingsKey || gridStale) {
+      manager.updateLightingState({
+        grid: lightingVisible ? grid : [],
+        gridSize,
+        cloudWeatherMode: weather,
+        visualHour: hour,
+        isMobile,
+        viewport,
+      });
+      lightingWorkerSentRef.current = {
+        grid: lightingVisible ? grid : null,
+        structureVersion,
+        at: now,
+        settingsKey,
+      };
+    } else {
+      manager.updateViewport(viewport);
+    }
     manager.notifyGridVersion({
       gameVersion,
       structureVersion,
@@ -1212,6 +1257,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     structureVersion,
     visualHour,
     zoom,
+    lightingEnabled,
   ]);
   
   // Main render function - PERF: Uses requestAnimationFrame throttling to batch multiple state updates
@@ -1243,7 +1289,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
       lastMainRenderTimeRef.current = now;
       
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = getRenderDpr();
     
       // Disable image smoothing for crisp pixel art
       ctx.imageSmoothingEnabled = false;
@@ -1396,6 +1442,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       trafficLightTimer: trafficLightTimerRef.current,
     };
     const activePack = getActiveSpritePack();
+    const treeSway = qualityPreset.treeSway;
     
     
     // Draw isometric tile base
@@ -2286,7 +2333,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // PERF: Use for loop instead of forEach
         for (let i = 0; i < buildingQueue.length; i++) {
           const { tile, screenX, screenY } = buildingQueue[i];
-          if (tile.building.type === 'tree') {
+          // S1-T7: with tree sway off (quality preset) trees are drawn here once, like other sprites
+          if (tile.building.type === 'tree' && treeSway) {
             try {
               const tileMetadata = getTileMetadata(tile.x, tile.y);
               const treeRenderItem = buildWindTreeRenderItem(
@@ -2568,7 +2616,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           applyWorld(gpuMain);
           for (let i = 0; i < buildingQueue.length; i++) {
             const { tile, screenX, screenY } = buildingQueue[i];
-            if (tile.building.type === 'tree') {
+            if (tile.building.type === 'tree' && treeSway) {
               if (tile.building.onFire) drawTileFireEffect(gpuMain, screenX, screenY);
               continue;
             }
@@ -2672,7 +2720,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, qualityPreset]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   const placementPreview = useMemo(() => {
@@ -2689,7 +2737,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Clear the hover canvas
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2891,7 +2939,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     paintHighlights(ctx);
     const pixiHover = pixiRendererRef.current;
     if (pixiHover) {
-      const dprHover = window.devicePixelRatio || 1;
+      const dprHover = getRenderDpr();
       pixiHover.redrawLayer('hover', () => {
         pixiHover.save();
         pixiHover.scale(dprHover, dprHover);
@@ -2905,10 +2953,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile, placementPreview]);
   
-  // P4: bootstrap the opt-in GPU (PixiJS) backend alongside the Canvas2D path.
-  // Flag-gated and client-only; default OFF leaves the Canvas2D renderer untouched.
+  // P4 / S1-T7: bootstrap the GPU (PixiJS) backend when the runtime renderer choice is 'gpu'.
+  // If it fails to start or loses its WebGL context, report it: graphicsSettings switches the
+  // renderer to Canvas2D for the rest of the session (warning logged once).
   useEffect(() => {
-    if (!GPU_RENDERER_ENABLED) return;
+    if (!gpuEnabled) return;
     const canvas = gpuCanvasRef.current;
     if (!canvas) return;
     let disposed = false;
@@ -2916,7 +2965,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const layers = new LayerStack();
     const renderer = new PixiRenderer(canvas, layers);
     renderer.enableBitmapText(); // Step 7: route fillText/strokeText labels through BitmapText
-    pixiRendererRef.current = renderer;
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      reportGpuFailure('WebGL context lost');
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
     createPixiApp({ canvas, width: canvasSize.width, height: canvasSize.height })
       .then((created) => {
         if (disposed) {
@@ -2926,17 +2979,33 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         created.stage.addChild(layers.root);
         app = created;
         pixiAppRef.current = created;
+        pixiRendererRef.current = renderer;
+        // Retained layers (base/buildings/hover) are drawn by the main render effect: redraw now.
+        setImageLoadVersion(v => v + 1);
       })
-      .catch(() => {
-        // GPU init failed (no WebGPU/WebGL2): the Canvas2D path keeps running.
+      .catch((error: unknown) => {
+        if (!disposed) reportGpuFailure(error);
       });
     return () => {
       disposed = true;
+      canvas.removeEventListener('webglcontextlost', onContextLost);
       pixiAppRef.current = null;
       pixiRendererRef.current = null;
       if (app) app.destroy(true);
     };
-  }, [canvasSize.width, canvasSize.height]);
+  }, [gpuEnabled, canvasSize.width, canvasSize.height]);
+
+  // S1-T7: auto-quality. Every 2 s feed the frame p95 into the hysteresis state machine
+  // (qualityConfig.ts); it never changes the level while the player is panning or zooming.
+  useEffect(() => {
+    if (graphics.qualitySetting !== 'auto') return;
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      const interacting = isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current;
+      runAutoQualityCheck(getPerfSnapshot().frameP95, interacting);
+    }, AUTO_QUALITY_CONFIG.checkIntervalMs);
+    return () => clearInterval(id);
+  }, [graphics.qualitySetting]);
 
   // Perf HUD (S1-T2): frame time = time between consecutive animation frames, so it includes
   // React re-renders, the main tile render and GC (what the player actually sees). Runs in its
@@ -2961,7 +3030,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setEntityCount('barges', bargesRef.current.length);
       setEntityCount('aircraft', airplanesRef.current.length + helicoptersRef.current.length + seaplanesRef.current.length);
       setEntityCount('clouds', cloudsRef.current.length);
-      setPerfRenderer(GPU_RENDERER_ENABLED ? (pixiAppRef.current ? 'gpu' : 'gpu (starting)') : 'canvas');
+      setPerfRenderer(gpuEnabledRef.current ? (pixiAppRef.current ? 'gpu' : 'gpu (starting)') : 'canvas');
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     frameId = requestAnimationFrame(measure);
@@ -3033,25 +3102,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const delta = Math.min((time - lastTime) / 1000, 0.3);
       lastTime = time;
       lastRenderTime = time;
-      const profileFrame = GPU_RENDERER_ENABLED && time - lastSlowFrameLogRef.current > 2000;
+      const gpuActive = !!(pixiRendererRef.current && pixiAppRef.current);
+      const profileFrame = gpuActive && time - lastSlowFrameLogRef.current > 2000;
       const profileStart = profileFrame ? performance.now() : 0;
       let profileAfterUpdates = profileStart;
       let profileAfterCanvas = profileStart;
       let profileAfterGpuDraw = profileStart;
       let profileAfterPixiRender = profileStart;
 
-      if (GPU_RENDERER_ENABLED) {
-        fpsFrameCountRef.current++;
-        const elapsed = time - fpsLastSampleRef.current;
-        if (elapsed >= 500) {
-          const fps = Math.round((fpsFrameCountRef.current * 1000) / elapsed);
-          fpsFrameCountRef.current = 0;
-          fpsLastSampleRef.current = time;
-          const hud = hudRef.current;
-          if (hud) hud.textContent = `GPU ON (${pixiAppRef.current ? 'active' : 'init/fallback'}) \u00b7 ${fps} fps`;
-        }
-      }
-      
       // PERF: Skip ALL vehicle/entity updates during mobile panning/zooming (not just drawing)
       // This provides a massive performance boost for big cities on mobile
       // S1-T11: one rule for pan, pinch and wheel zoom (see getInteractionSkips)
@@ -3061,7 +3119,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         pinching: isPinchZoomingRef.current,
         wheelZooming: isWheelZoomingRef.current,
         zoom: zoomRef.current,
-      }, SKIP_SMALL_ELEMENTS_ZOOM_THRESHOLD);
+      }, getActivePreset().skipSmallWhileMovingBelowZoom);
       const skipMobileUpdates = interactionSkips.skipUpdates;
       
       if (delta > 0 && !skipMobileUpdates) {
@@ -3124,7 +3182,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       // PERF: Skip small elements (boats, helis, smog) when panning/zooming while very zoomed out
       const skipSmallElements = interactionSkips.skipSmall;
       
-      if (skipAnimatedElements || GPU_RENDERER_ENABLED) {
+      if (skipAnimatedElements || gpuActive) {
         // In GPU mode Pixi owns animated entities; keep legacy CPU layers empty to avoid double work.
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3262,6 +3320,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     isPanning,
     isWheelZooming,
     disabled: isLightingWorkerEnabled,
+    enabled: lightingEnabled,
     transferredRef: lightingCanvasTransferredRef,
   });
   
@@ -4043,23 +4102,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         className="absolute top-0 left-0 pointer-events-none"
         style={{ mixBlendMode: 'multiply' }}
       />
-      {/* P4: opt-in GPU (PixiJS) backend canvas — only mounted when the flag is on */}
-      {GPU_RENDERER_ENABLED && (
+      {/* S1-T7: GPU (PixiJS) backend canvas — only mounted when the runtime renderer is 'gpu' */}
+      {gpuEnabled && (
         <canvas
           ref={gpuCanvasRef}
           width={canvasSize.width}
           height={canvasSize.height}
           className="absolute top-0 left-0 pointer-events-none"
         />
-      )}
-      {GPU_RENDERER_ENABLED && (
-        <div
-          ref={hudRef}
-          className="absolute top-2 left-2 pointer-events-none"
-          style={{ zIndex: 50, fontFamily: 'monospace', fontSize: 12, color: '#7CFC00', background: 'rgba(0,0,0,0.55)', padding: '2px 6px', borderRadius: 4 }}
-        >
-          GPU ON
-        </div>
       )}
       
       {selectedTile && selectedTool === 'select' && !isMobile && (

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { WorldRenderState } from './types';
 import { renderLightingFrame } from './lightingRenderer';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 export interface LightingSystemConfig {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -21,6 +22,8 @@ export interface LightingSystemConfig {
   /** Boolean state value to trigger re-render when wheel zooming stops */
   isWheelZooming: boolean;
   disabled?: boolean;
+  /** S1-T7: night lighting from the quality preset. When false the canvas is kept empty. */
+  enabled?: boolean;
   /**
    * Ref that flips true the instant the lighting canvas is handed to a
    * worker via transferControlToOffscreen. Checked synchronously at effect
@@ -51,6 +54,7 @@ export function useLightingSystem(config: LightingSystemConfig): void {
     isPanning,
     isWheelZooming,
     disabled = false,
+    enabled = true,
     transferredRef,
   } = config;
 
@@ -70,6 +74,12 @@ export function useLightingSystem(config: LightingSystemConfig): void {
     }
     if (!ctx) return;
 
+    if (!enabled) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
     renderLightingFrame({
       ctx,
       canvas,
@@ -82,8 +92,8 @@ export function useLightingSystem(config: LightingSystemConfig): void {
       offset,
       zoom,
       isMobile,
-      dpr: window.devicePixelRatio || 1,
+      dpr: getRenderDpr(),
       isInteractionActive: isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current,
     });
-  }, [canvasRef, worldStateRef, visualHour, offset, zoom, canvasWidth, canvasHeight, isMobile, isPanningRef, isPinchZoomingRef, isWheelZoomingRef, isPanning, isWheelZooming, disabled]);
+  }, [canvasRef, worldStateRef, visualHour, offset, zoom, canvasWidth, canvasHeight, isMobile, isPanningRef, isPinchZoomingRef, isWheelZoomingRef, isPanning, isWheelZooming, disabled, enabled]);
 }

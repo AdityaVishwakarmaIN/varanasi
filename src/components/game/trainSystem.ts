@@ -38,6 +38,7 @@ import {
 } from './railSystem';
 import { gridToScreen } from './utils';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 // ============================================================================
 // Curve Interpolation Helpers
@@ -1497,7 +1498,7 @@ export function drawTrains(
   visualHour: number,
   isMobile: boolean = false
 ): void {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = getRenderDpr();
   
   ctx.save();
   ctx.scale(dpr * zoom, dpr * zoom);
