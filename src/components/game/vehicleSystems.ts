@@ -26,6 +26,10 @@ import {
   getRandomBeachTile,
   spawnPedestrianAtBeach,
 } from './pedestrianSystem';
+import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
+import { ENTITY_CULL_CONFIG, deviceValue, scaledEntityLimit } from '@/lib/qualityConfig';
+import { buildCountPrefix, countInBounds, expandBounds, filterInBounds, isInBounds, randomTileInBounds, type TileBounds } from '@/lib/entityCulling';
+import { getWorldTileBounds } from '@/components/game/visibleArea';
 
 /** Train type for crossing detection (minimal interface) */
 export interface TrainForCrossing {
@@ -75,6 +79,32 @@ export interface VehicleSystemState {
   isMobile: boolean;
 }
 
+// S1-T8: caches that outlive the per-render system objects. The finder lists (homes, shops, …)
+// only change when buildings change (structureVersion); the road prefix sum only when roads change.
+// `invalidateVehicleSystemCaches()` clears them when a different city is loaded.
+type FinderCache = {
+  key: string;
+  residentials?: { x: number; y: number }[];
+  destinations?: { x: number; y: number; type: PedestrianDestType }[];
+  recreation?: ReturnType<typeof findRecreationAreas>;
+  enterable?: ReturnType<typeof findEnterableBuildings>;
+  beach?: ReturnType<typeof findBeachTiles>;
+  busStops?: { x: number; y: number }[];
+};
+let finderCache: FinderCache = { key: '' };
+let roadPrefixCache: { key: string; prefix: Int32Array | null } = { key: '', prefix: null };
+
+export function invalidateVehicleSystemCaches(): void {
+  finderCache = { key: '' };
+  roadPrefixCache = { key: '', prefix: null };
+}
+
+function getFinderCache(gridSize: number, structureVersion: number): FinderCache {
+  const key = `${gridSize}:${structureVersion}`;
+  if (finderCache.key !== key) finderCache = { key };
+  return finderCache;
+}
+
 export function createVehicleSystems(
   refs: VehicleSystemRefs,
   systemState: VehicleSystemState
@@ -114,8 +144,10 @@ export function createVehicleSystems(
     if (!currentGrid || currentGridSize <= 0) return false;
     
     for (let attempt = 0; attempt < 20; attempt++) {
-      const tileX = Math.floor(Math.random() * currentGridSize);
-      const tileY = Math.floor(Math.random() * currentGridSize);
+      // S1-T8: spawn only near the visible area
+      const { x: tileX, y: tileY } = spawnBounds
+        ? randomTileInBounds(spawnBounds)
+        : { x: Math.floor(Math.random() * currentGridSize), y: Math.floor(Math.random() * currentGridSize) };
       if (!isRoadTile(currentGrid, currentGridSize, tileX, tileY)) continue;
       
       const options = getDirectionOptions(currentGrid, currentGridSize, tileX, tileY);
@@ -150,19 +182,55 @@ export function createVehicleSystems(
     return false;
   };
 
+  // S1-T8: each finder scans the whole map, so results are cached per structureVersion.
+  const finders = () => {
+    const { gridSize: currentGridSize } = worldStateRef.current;
+    return getFinderCache(currentGridSize, gridVersionRef.current);
+  };
+
   const findResidentialBuildingsCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findResidentialBuildings(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.residentials ??= findResidentialBuildings(currentGrid, currentGridSize));
   };
 
   const findPedestrianDestinationsCallback = (): { x: number; y: number; type: PedestrianDestType }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findPedestrianDestinations(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.destinations ??= findPedestrianDestinations(currentGrid, currentGridSize));
   };
 
   const findBusStopsCallback = (): { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findBusStops(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.busStops ??= findBusStops(currentGrid, currentGridSize));
+  };
+
+  /** Road tiles inside `bounds` (O(1) after the prefix sum is built for the current roads). */
+  const countRoadTilesIn = (bounds: TileBounds): number => {
+    const { grid: currentGrid, gridSize: n } = worldStateRef.current;
+    const key = `${n}:${roadNetworkVersionRef.current}`;
+    if (roadPrefixCache.key !== key || !roadPrefixCache.prefix) {
+      roadPrefixCache = {
+        key,
+        prefix: buildCountPrefix(n, (x, y) => {
+          const type = currentGrid[y][x].building.type;
+          return type === 'road' || type === 'bridge';
+        }),
+      };
+    }
+    return countInBounds(roadPrefixCache.prefix!, n, bounds);
+  };
+
+  /** Spawn area: visible tiles + ENTITY_CULL_CONFIG.spawnMarginTiles (set once per update). */
+  let spawnBounds: TileBounds | null = null;
+
+  /** Refreshes `spawnBounds` from the camera and returns the (larger) area outside which entities are removed. */
+  const refreshEntityBounds = (): TileBounds => {
+    const world = worldStateRef.current;
+    const visible = getWorldTileBounds(world);
+    spawnBounds = expandBounds(visible, ENTITY_CULL_CONFIG.spawnMarginTiles, world.gridSize);
+    return expandBounds(visible, ENTITY_CULL_CONFIG.despawnMarginTiles, world.gridSize);
   };
 
   const buildBusRoute = () => {
@@ -254,31 +322,36 @@ export function createVehicleSystems(
   // Find recreation areas
   const findRecreationAreasCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findRecreationAreas(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.recreation ??= findRecreationAreas(currentGrid, currentGridSize));
   };
 
   // Find enterable buildings
   const findEnterableBuildingsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findEnterableBuildings(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.enterable ??= findEnterableBuildings(currentGrid, currentGridSize));
   };
 
   // Find beach tiles (water tiles adjacent to land)
   const findBeachTilesCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findBeachTiles(currentGrid, currentGridSize);
+    const cache = finders();
+    return (cache.beach ??= findBeachTiles(currentGrid, currentGridSize));
   };
 
   const spawnPedestrian = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return false;
     
-    const residentials = findResidentialBuildingsCallback();
+    // S1-T8: homes, destinations and activity spots near the visible area only
+    const near = <T extends { x: number; y: number }>(list: T[]): T[] => (spawnBounds ? filterInBounds(list, spawnBounds) : list);
+    const residentials = near(findResidentialBuildingsCallback());
     if (residentials.length === 0) {
       return false;
     }
     
-    const destinations = findPedestrianDestinationsCallback();
+    const destinations = near(findPedestrianDestinationsCallback());
     if (destinations.length === 0) {
       return false;
     }
@@ -288,7 +361,8 @@ export function createVehicleSystems(
     
     // 10% - Pedestrian at the beach (swimming or on mat)
     if (spawnType < 0.10) {
-      const beachTiles = findBeachTilesCallback();
+      const allBeach = findBeachTilesCallback();
+      const beachTiles = spawnBounds ? allBeach.filter((b) => isInBounds(b.waterX, b.waterY, spawnBounds!)) : allBeach;
       if (beachTiles.length > 0) {
         const beachInfo = getRandomBeachTile(beachTiles);
         if (beachInfo) {
@@ -390,7 +464,7 @@ export function createVehicleSystems(
     
     // 18% - Pedestrian already at a recreation area
     if (spawnType < 0.83) {
-      const recreationAreas = findRecreationAreasCallback();
+      const recreationAreas = near(findRecreationAreasCallback());
       if (recreationAreas.length === 0) return false;
       
       let area = recreationAreas[Math.floor(Math.random() * recreationAreas.length)];
@@ -425,7 +499,7 @@ export function createVehicleSystems(
     
     // 5% - Pedestrian already inside a shop/building (shopping, working, etc.)
     if (spawnType < 0.88) {
-      const enterableBuildings = findEnterableBuildingsCallback();
+      const enterableBuildings = near(findEnterableBuildingsCallback());
       if (enterableBuildings.length === 0) return false;
       
       // Prefer shops/commercial buildings for more visible shopping activity
@@ -456,7 +530,7 @@ export function createVehicleSystems(
     
     // 7% - Pedestrian approaching a shop (visible at entrance)
     if (spawnType < 0.95) {
-      const enterableBuildings = findEnterableBuildingsCallback();
+      const enterableBuildings = near(findEnterableBuildingsCallback());
       const shopBuildings = enterableBuildings.filter(b => 
         b.buildingType === 'shop_small' || b.buildingType === 'shop_medium' || b.buildingType === 'mall'
       );
@@ -484,7 +558,7 @@ export function createVehicleSystems(
     }
     
     // 5% - Pedestrian exiting from a building
-    const enterableBuildings = findEnterableBuildingsCallback();
+    const enterableBuildings = near(findEnterableBuildingsCallback());
     if (enterableBuildings.length === 0) return false;
     
     const building = enterableBuildings[Math.floor(Math.random() * enterableBuildings.length)];
@@ -947,33 +1021,19 @@ export function createVehicleSystems(
     
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
-    // Scale car count with road tiles (similar to pedestrians) for proper density on large maps
-    // Use cached road tile count for performance
-    const currentGridVersion = roadNetworkVersionRef.current;
-    let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
-      roadTileCount = cachedRoadTileCountRef.current.count;
-    } else {
-      roadTileCount = 0;
-      for (let y = 0; y < currentGridSize; y++) {
-        for (let x = 0; x < currentGridSize; x++) {
-          const type = currentGrid[y][x].building.type;
-          if (type === 'road' || type === 'bridge') {
-            roadTileCount++;
-          }
-        }
-      }
-      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
-    }
-    
+    // S1-T8: cars live near the view. Their number follows the road tiles in the spawn area
+    // (O(1) prefix-sum lookup), scaled and capped by the quality preset; far-away cars are removed.
+    const despawnBounds = refreshEntityBounds();
+    const roadTileCount = countRoadTilesIn(spawnBounds!);
     // Target ~0.5 cars per road tile on desktop, ~0.15 on mobile (for performance)
-    // This ensures large maps with more roads get proportionally more cars
     const carDensity = isMobile ? 0.15 : 0.5;
-    const targetCars = Math.floor(roadTileCount * carDensity);
-    // Cap at 800 for desktop, 60 for mobile - minimum 10/15 for small cities
-    const maxCars = isMobile 
-      ? Math.min(60, Math.max(10, targetCars))
-      : Math.min(800, Math.max(15, targetCars));
+    const baseCars = roadTileCount > 0 ? Math.max(isMobile ? 10 : 15, Math.floor(roadTileCount * carDensity)) : 0;
+    const preset = getActivePreset();
+    const maxCars = scaledEntityLimit(baseCars, preset.vehicleFraction, deviceValue(preset.maxCars, isMobile));
+    if (carsRef.current.length > 0) {
+      carsRef.current = carsRef.current.filter((car) => isInBounds(car.tileX, car.tileY, despawnBounds));
+      if (carsRef.current.length > maxCars) carsRef.current.length = maxCars;
+    }
     
     carSpawnTimerRef.current -= delta;
     if (carsRef.current.length < maxCars && carSpawnTimerRef.current <= 0) {
@@ -1363,31 +1423,19 @@ export function createVehicleSystems(
     
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
-    // Cache road tile count (expensive to calculate every frame)
-    const currentGridVersion = roadNetworkVersionRef.current;
-    let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
-      roadTileCount = cachedRoadTileCountRef.current.count;
-    } else {
-      roadTileCount = 0;
-      for (let y = 0; y < currentGridSize; y++) {
-        for (let x = 0; x < currentGridSize; x++) {
-          const type = currentGrid[y][x].building.type;
-          if (type === 'road' || type === 'bridge') {
-            roadTileCount++;
-          }
-        }
-      }
-      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
-    }
-    
-    // Scale pedestrian count with city size (road tiles), with a reasonable cap
-    // Mobile: use lower density and max count for performance
+    // S1-T8: pedestrians live near the view, like cars (road tiles in the spawn area, preset density and cap)
+    const despawnBounds = refreshEntityBounds();
+    const roadTileCount = countRoadTilesIn(spawnBounds!);
     const pedDensity = isMobile ? PEDESTRIAN_ROAD_TILE_DENSITY_MOBILE : PEDESTRIAN_ROAD_TILE_DENSITY;
     const pedMaxCount = isMobile ? PEDESTRIAN_MAX_COUNT_MOBILE : PEDESTRIAN_MAX_COUNT;
     const pedMinCount = isMobile ? 20 : 150;
-    const targetPedestrians = roadTileCount * pedDensity;
-    const maxPedestrians = Math.min(pedMaxCount, Math.max(pedMinCount, targetPedestrians));
+    const basePedestrians = roadTileCount > 0 ? Math.min(pedMaxCount, Math.max(pedMinCount, roadTileCount * pedDensity)) : 0;
+    const preset = getActivePreset();
+    const maxPedestrians = scaledEntityLimit(basePedestrians, preset.pedestrianDensity, deviceValue(preset.maxPedestrians, isMobile));
+    if (pedestriansRef.current.length > 0) {
+      pedestriansRef.current = pedestriansRef.current.filter((p) => isInBounds(p.tileX, p.tileY, despawnBounds));
+      if (pedestriansRef.current.length > maxPedestrians) pedestriansRef.current.length = maxPedestrians;
+    }
     pedestrianSpawnTimerRef.current -= delta;
     
     if (pedestriansRef.current.length < maxPedestrians && pedestrianSpawnTimerRef.current <= 0) {
@@ -1452,7 +1500,7 @@ export function createVehicleSystems(
   const drawCars = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1521,7 +1569,7 @@ export function createVehicleSystems(
   const drawBuses = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
 
     if (currentZoom < BUS_MIN_ZOOM) {
       return;
@@ -1589,7 +1637,7 @@ export function createVehicleSystems(
   const drawPedestrians = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Skip drawing pedestrians when zoomed out too far
     const pedestrianMinZoom = isMobile ? PEDESTRIAN_MIN_ZOOM_MOBILE : PEDESTRIAN_MIN_ZOOM;
@@ -1625,7 +1673,7 @@ export function createVehicleSystems(
   const drawRecreationPedestrians = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Skip drawing recreation pedestrians when zoomed out too far
     const pedestrianMinZoom = isMobile ? PEDESTRIAN_MIN_ZOOM_MOBILE : PEDESTRIAN_MIN_ZOOM;
@@ -1659,7 +1707,7 @@ export function createVehicleSystems(
   const drawEmergencyVehicles = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     if (!currentGrid || currentGridSize <= 0 || emergencyVehiclesRef.current.length === 0) {
       return;
@@ -1791,7 +1839,7 @@ export function createVehicleSystems(
   const drawIncidentIndicators = (ctx: IsoRenderer, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     if (!currentGrid || currentGridSize <= 0) return;
     

@@ -188,7 +188,13 @@ export interface ViewportBounds {
 }
 
 /**
- * Calculate which tiles are visible in the current viewport
+ * Calculate which tiles are visible in the current viewport.
+ *
+ * `canvasWidth` / `canvasHeight` are in CSS pixels (the same space as `offset`). A tile at
+ * grid (x, y) has its screen box at ((x - y)·W/2, (x + y)·H/2), so for a screen point (sx, sy):
+ * x = sx/W + sy/H and y = sy/H − sx/W. The smallest x is at the top-left corner of the view,
+ * the largest at the bottom-right; the smallest y at the top-right, the largest at the bottom-left.
+ * `padding` extra tiles are added on every side (S1-T8 uses it as the entity spawn margin).
  */
 export function getVisibleTileBounds(
   offset: { x: number; y: number },
@@ -197,27 +203,19 @@ export function getVisibleTileBounds(
   canvasHeight: number,
   gridSize: number,
   tileWidth: number = 64,
-  tileHeight: number = 38.4
+  tileHeight: number = 38.4,
+  padding: number = 2
 ): ViewportBounds {
-  // Convert screen bounds to tile coordinates with padding
-  const padding = 2; // Extra tiles for smooth scrolling
-  
   const viewLeft = -offset.x / zoom;
   const viewTop = -offset.y / zoom;
   const viewRight = (canvasWidth - offset.x) / zoom;
   const viewBottom = (canvasHeight - offset.y) / zoom;
-  
-  // Convert to rough tile coordinates (isometric projection)
-  // This is an approximation - actual conversion is more complex
-  const halfWidth = tileWidth / 2;
-  const halfHeight = tileHeight / 2;
-  
-  // Estimate visible tile range
-  const minTileX = Math.max(0, Math.floor((viewLeft / halfWidth + viewTop / halfHeight) / 2) - padding);
-  const minTileY = Math.max(0, Math.floor((-viewLeft / halfWidth + viewTop / halfHeight) / 2) - padding);
-  const maxTileX = Math.min(gridSize - 1, Math.ceil((viewRight / halfWidth + viewBottom / halfHeight) / 2) + padding);
-  const maxTileY = Math.min(gridSize - 1, Math.ceil((-viewRight / halfWidth + viewBottom / halfHeight) / 2) + padding);
-  
+
+  const minTileX = Math.max(0, Math.floor(viewLeft / tileWidth + viewTop / tileHeight) - padding);
+  const maxTileX = Math.min(gridSize - 1, Math.ceil(viewRight / tileWidth + viewBottom / tileHeight) + padding);
+  const minTileY = Math.max(0, Math.floor(viewTop / tileHeight - viewRight / tileWidth) - padding);
+  const maxTileY = Math.min(gridSize - 1, Math.ceil(viewBottom / tileHeight - viewLeft / tileWidth) + padding);
+
   return { minTileX, minTileY, maxTileX, maxTileY };
 }
 

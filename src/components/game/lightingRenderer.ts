@@ -8,6 +8,7 @@ import {
 import { getSceneLighting } from './sceneLighting';
 import { gridToScreen } from './utils';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 export function pseudoRandom(seed: number, n: number): number {
   const s = Math.sin(seed + n * 12.9898) * 43758.5453;
@@ -240,7 +241,7 @@ export function renderLightingFrame({
     return;
   }
 
-  const pixelRatio = dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+  const pixelRatio = dpr ?? getRenderDpr();
   const { overlayAlpha, ambientColor, lightIntensity } = getSceneLighting(visualHour, worldState.cloudWeatherMode);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);

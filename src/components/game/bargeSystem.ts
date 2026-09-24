@@ -24,6 +24,7 @@ import {
   isOverWater,
 } from './gridFinders';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
+import { getRenderDpr } from '@/lib/graphicsSettings';
 
 export interface BargeSystemRefs {
   bargesRef: React.MutableRefObject<Barge[]>;
@@ -336,7 +337,7 @@ export function createBargeSystem(
   const drawBarges = (ctx: IsoRenderer) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     const canvas = ctx.canvas;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getRenderDpr();
     
     // Don't draw barges if zoomed out
     if (currentZoom < BARGE_MIN_ZOOM) {
