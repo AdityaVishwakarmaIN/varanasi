@@ -66,6 +66,7 @@ import {
   type IsoCityGridBuffer,
 } from '@/games/isocity/gridBuffer';
 import { isMobile } from 'react-device-detect';
+import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
 
 // Map size for new games. The UI layer decides desktop vs phone; simulation.ts stays device-agnostic.
 const DEFAULT_GRID_SIZE = getDefaultGridSize(isMobile);
@@ -106,7 +107,7 @@ type GameContextValue = {
   checkAndDiscoverCities: (onDiscover?: (city: { id: string; direction: 'north' | 'south' | 'east' | 'west'; name: string }) => void) => void;
   setDisastersEnabled: (enabled: boolean) => void;
   setCloudWeatherMode: (mode: CloudWeatherMode) => void;
-  newGame: (name?: string, size?: number) => void;
+  newGame: (options?: NewGameOptions) => void;
   loadState: (stateString: string) => boolean;
   exportState: () => string;
   generateRandomCity: () => void;
@@ -591,9 +592,20 @@ function deleteCityState(cityId: string): void {
   });
 }
 
-export function GameProvider({ children, startFresh = false }: { children: React.ReactNode; startFresh?: boolean }) {
+export function GameProvider({
+  children,
+  startFresh = false,
+  newGameOptions,
+}: {
+  children: React.ReactNode;
+  startFresh?: boolean;
+  /** With startFresh: the map and name for the new city (S2-T3). Without it, a Varanasi city is created. */
+  newGameOptions?: NewGameOptions;
+}) {
   // Start with a default state, we'll load from IndexedDB after mount (unless startFresh is true)
   const [state, setState] = useState<GameState>(() => createInitialGameState(DEFAULT_GRID_SIZE, 'IsoCity'));
+  // Read once at load time; later prop changes must not restart the city.
+  const newGameOptionsRef = useRef(newGameOptions);
   
   const [hasExistingGame, setHasExistingGame] = useState(false);
   const [isStateReady, setIsStateReady] = useState(false);
@@ -710,6 +722,10 @@ export function GameProvider({ children, startFresh = false }: { children: React
         setState(saved);
         setHasExistingGame(true);
       } else {
+        // No save (or a fresh start): create the chosen map (default: Varanasi)
+        const fresh = createNewGameState(newGameOptionsRef.current, isMobile);
+        latestStateRef.current = fresh;
+        setState(fresh);
         setHasExistingGame(false);
       }
     };
@@ -1185,10 +1201,10 @@ export function GameProvider({ children, startFresh = false }: { children: React
       ? 12  // Noon - full daylight
       : 22; // Night time
 
-  const newGame = useCallback((name?: string, size?: number) => {
+  const newGame = useCallback((options?: NewGameOptions) => {
     clearGameState(); // Clear saved state when starting fresh
     cloudWeatherModeRef.current = 'clear';
-    const fresh = createInitialGameState(size ?? DEFAULT_GRID_SIZE, name || 'IsoCity');
+    const fresh = createNewGameState(options, isMobile);
     // Increment gameVersion from current state to ensure vehicles/entities are cleared
     setState((prev) => ({
       ...fresh,

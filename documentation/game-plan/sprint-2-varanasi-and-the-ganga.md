@@ -51,7 +51,7 @@ By the end of this sprint, a player can:
 
 - [ ] S2-T1: Indian number formatting and population scale
 - [ ] S2-T2: Varanasi map data and generator
-- [ ] S2-T3: Map choice on the new-game screen, and branding
+- [x] S2-T3: Map choice on the new-game screen, and branding
 - [ ] S2-T4: River zones (bank and floodplain helpers)
 - [ ] S2-T5: The Ghat building
 - [ ] S2-T6: Sewage Treatment Plant (STP)

@@ -154,6 +154,7 @@ import { Check, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
 import { registerCameraController } from '@/components/game/cameraController';
+import { getInitialFocusTile } from '@/lib/mapConfig';
 
 // P4: opt-in GPU renderer path. Default OFF — the Canvas2D path is unchanged.
 // Enable by building with NEXT_PUBLIC_GPU_RENDERER=1.
@@ -2672,7 +2673,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   const placementPreview = useMemo(() => {
@@ -3435,6 +3436,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       if (z !== ws.zoom) setZoom(z);
     },
   }), [getMapBounds]);
+
+  // Centre the camera on the map's focus tile once per opened city (new game, load, benchmark).
+  // Varanasi opens on the ghat bank of the Ganga's crescent, other maps on their centre.
+  const centeredCityRef = useRef<string | null>(null);
+  const cityKey = `${state.id}:${gameVersion}:${gridSize}`;
+  useEffect(() => {
+    if (canvasSize.width === 0 || centeredCityRef.current === cityKey) return;
+    centeredCityRef.current = cityKey;
+    const focus = getInitialFocusTile(state.mapId, gridSize);
+    const { screenX, screenY } = gridToScreen(focus.x, focus.y, 0, 0);
+    const bounds = getMapBounds(zoom, canvasSize.width, canvasSize.height);
+    setOffset({ // one-shot camera placement per city
+      x: Math.max(bounds.minOffsetX, Math.min(bounds.maxOffsetX, canvasSize.width / 2 - screenX * zoom)),
+      y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, canvasSize.height / 2 - screenY * zoom)),
+    });
+  }, [cityKey, canvasSize.width, canvasSize.height, gridSize, state.mapId, zoom, getMapBounds]);
 
   // Handle minimap navigation - center the view on the target tile
   useEffect(() => {
