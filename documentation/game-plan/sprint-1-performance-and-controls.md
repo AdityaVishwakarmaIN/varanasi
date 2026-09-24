@@ -65,12 +65,12 @@ Do them **in this order**. Tick each box when it is done (see Definition of Done
 
 - [x] S1-T1: Unit test setup and seeded random numbers
 - [x] S1-T2: Performance HUD and benchmark city
-- [ ] S1-T3: Record the baseline
+- [x] S1-T3: Record the baseline — `[CI container rows recorded in perf-log.md; real-hardware rows still owed in S1-T13]`
 - [x] S1-T4: A proper game loop (fixed timestep, pause when hidden)
 - [x] S1-T5: Make the simulation cheaper
 - [x] S1-T6: Simulation in a Web Worker (**only if S1-T5 is not enough**) — `[deferred: decision recorded]` The gate said "needed", but the design below would cost the main thread more than it saves: serialising the 160 state takes 80+ ms against a ~6 ms tick. Decision (lead): keep the tick on the main thread for v1, re-check the frame and hitch targets in S1-T13 on a quiet machine, and plan a worker that **owns** a typed-array grid (small action messages in, changed tiles out) as a post-v1 project. See Notes for later
-- [ ] S1-T7: GPU renderer on by default, quality presets and auto-quality
-- [ ] S1-T8: Support big maps (160×160 desktop, 120×120 mobile)
+- [x] S1-T7: GPU renderer on by default, quality presets and auto-quality — `[presets, auto-quality and the Settings picker shipped; GPU stays opt-in (gpuByDefault: false) until S1-T13 measures it on real hardware, since it ran at ~1 FPS under software GL]`
+- [x] S1-T8: Support big maps (160×160 desktop, 120×120 mobile) — `[culling and entity caps shipped; the benchmark load race was fixed in 4de2a54]`
 - [x] S1-T9: Reliable saves (IndexedDB)
 - [x] S1-T10: Desktop controls
 - [x] S1-T11: Touch controls
