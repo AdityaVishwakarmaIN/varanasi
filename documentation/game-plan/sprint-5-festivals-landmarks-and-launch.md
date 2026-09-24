@@ -282,3 +282,15 @@ A **"Reset tips"** button in Settings.
 ## 6. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+- **Pure logic landed first (S5 part 1).** `src/lib/landmarks.ts`, `festivals.ts`, `citizenVoices.ts` and `advisors.ts` hold the data,
+  rules and unit tests; the GameState/UI wiring is still to do.
+- **BHU flood-zone check** takes an `isFloodZone(x, y)` callback (wire it to the Sprint 4 flood mask, "floods at any level"). Without it,
+  the east floodplain and west riverfront count as flood zones.
+- **Starting values not in the doc** (tune later): the "success" outcome's +2 happiness lasts 30 days; `EVENT_TRAFFIC_LIMIT = 60` on a
+  0–100 traffic scale. `tile.traffic` is never written by the simulation today, so the access check needs a real traffic measure.
+- **Mohallas are assigned by geography:** each feeder block goes to the nearest of ~30 real neighbourhoods placed on the map
+  (u, v). At 160×160 (10×10 feeders) about 25 names appear; some central ones (Chowk, Lahurabir) only show on larger feeder grids.
+- **Advisor message type** is `AdvisorNote` in `advisors.ts` (the old `AdvisorMessage` in `types/game.ts` has a different shape and
+  should be migrated when the panel is reworked).
+- **Owner review needed:** the citizen-voice templates and first-name list in `citizenVoices.ts`.
