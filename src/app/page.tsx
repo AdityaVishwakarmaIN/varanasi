@@ -24,11 +24,13 @@ import { T } from 'gt-next';
 import { Users, X } from 'lucide-react';
 import {
   clearIsoCityStoredGameData,
+  copyIsoCitySavedCityToAutosave,
+  deleteIsoCitySavedCityData,
+  flushPendingSaves,
   hasIsoCityAutosave,
-  ISOCITY_SAVED_CITIES_INDEX_KEY,
-  ISOCITY_SAVED_CITY_PREFIX,
-  ISOCITY_STORAGE_KEY,
   loadIsoCitySavedCities,
+  updateIsoCitySavedCities,
+  writeIsoCityAutosaveRaw,
 } from '@/lib/isocityStorage';
 
 // Background color to filter from sprite sheets (red)
@@ -79,11 +81,9 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 // Save a city to the saved cities index (for multiplayer cities)
-function saveCityToIndex(state: GameState, roomCode?: string): void {
+async function saveCityToIndex(state: GameState, roomCode?: string): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const cities = loadIsoCitySavedCities();
-    
     // Create city meta
     const cityMeta: SavedCityMeta = {
       id: state.id || `city-${Date.now()}`,
@@ -97,23 +97,24 @@ function saveCityToIndex(state: GameState, roomCode?: string): void {
       roomCode: roomCode,
     };
     
-    // Check if city already exists (by id or roomCode)
-    const existingIndex = cities.findIndex(c => 
-      c.id === cityMeta.id || (roomCode && c.roomCode === roomCode)
-    );
-    
-    if (existingIndex >= 0) {
-      // Update existing entry
-      cities[existingIndex] = cityMeta;
-    } else {
-      // Add new entry at the beginning
-      cities.unshift(cityMeta);
-    }
-    
-    // Keep only the last 20 cities
-    const trimmed = cities.slice(0, 20);
-    
-    localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(trimmed));
+    await updateIsoCitySavedCities((stored) => {
+      const cities = [...stored];
+      // Check if city already exists (by id or roomCode)
+      const existingIndex = cities.findIndex(c => 
+        c.id === cityMeta.id || (roomCode && c.roomCode === roomCode)
+      );
+      
+      if (existingIndex >= 0) {
+        // Update existing entry
+        cities[existingIndex] = cityMeta;
+      } else {
+        // Add new entry at the beginning
+        cities.unshift(cityMeta);
+      }
+      
+      // Keep only the last 20 cities
+      return cities.slice(0, 20);
+    });
   } catch (e) {
     console.error('Failed to save city to index:', e);
   }
@@ -350,10 +351,18 @@ export default function HomePage() {
 
   // Check for saved game and room code in URL after mount
   useEffect(() => {
-    const checkSavedGame = () => {
+    let cancelled = false;
+    const checkSavedGame = async () => {
+      // Saves live in IndexedDB (async); the first read also migrates old
+      // localStorage saves. Keep showing "Loading..." until this is done.
+      const [cities, saved] = await Promise.all([
+        loadIsoCitySavedCities(),
+        hasIsoCityAutosave(),
+      ]);
+      if (cancelled) return;
+      setSavedCities(cities);
+      setHasSaved(saved);
       setIsChecking(false);
-      setSavedCities(loadIsoCitySavedCities());
-      setHasSaved(hasIsoCityAutosave());
       
       // Check for room code in URL (legacy format) - redirect to new format
       const params = new URLSearchParams(window.location.search);
@@ -366,8 +375,13 @@ export default function HomePage() {
       // Always show landing page - don't auto-load into game
       // User can select from saved cities or start new
     };
-    // Use requestAnimationFrame to avoid synchronous setState in effect
-    requestAnimationFrame(checkSavedGame);
+    checkSavedGame().catch((e) => {
+      console.error('Failed to read saved cities:', e);
+      if (!cancelled) setIsChecking(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Handle exit from game - refresh saved cities list
@@ -375,14 +389,24 @@ export default function HomePage() {
     setShowGame(false);
     setIsMultiplayer(false);
     setStartFreshGame(false);
-    setSavedCities(loadIsoCitySavedCities());
-    setHasSaved(hasIsoCityAutosave());
     // Clear room code from URL
     window.history.replaceState({}, '', '/');
+    // Wait for the game's final saves (started on unmount) before listing.
+    // The macrotask yield lets React commit the unmount first.
+    void (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushPendingSaves();
+      const [cities, saved] = await Promise.all([
+        loadIsoCitySavedCities(),
+        hasIsoCityAutosave(),
+      ]);
+      setSavedCities(cities);
+      setHasSaved(saved);
+    })();
   };
 
-  const handleStartFreshGame = () => {
-    clearIsoCityStoredGameData();
+  const handleStartFreshGame = async () => {
+    await clearIsoCityStoredGameData();
     setShowResetDialog(false);
     setShowCoopModal(false);
     setPendingRoomCode(null);
@@ -404,49 +428,49 @@ export default function HomePage() {
       return;
     }
     
-    // Otherwise load from local storage
-    try {
-      const saved = localStorage.getItem(ISOCITY_SAVED_CITY_PREFIX + city.id);
-      if (saved) {
-        localStorage.setItem(ISOCITY_STORAGE_KEY, saved);
-        setStartFreshGame(false);
-        setShowGame(true);
-      }
-    } catch {
-      console.error('Failed to load saved city');
-    }
+    // Otherwise copy it into the autosave slot, which GameProvider loads
+    copyIsoCitySavedCityToAutosave(city.id)
+      .then((found) => {
+        if (found) {
+          setStartFreshGame(false);
+          setShowGame(true);
+        }
+      })
+      .catch(() => {
+        console.error('Failed to load saved city');
+      });
   };
 
   // Delete a saved city from the index
   const deleteSavedCity = (city: SavedCityMeta) => {
-    try {
-      // Remove from saved cities index
-      const updatedCities = savedCities.filter(c => c.id !== city.id);
-      localStorage.setItem(ISOCITY_SAVED_CITIES_INDEX_KEY, JSON.stringify(updatedCities));
-      setSavedCities(updatedCities);
-      
-      // Also remove the city state data if it exists
-      if (!city.roomCode) {
-        localStorage.removeItem(ISOCITY_SAVED_CITY_PREFIX + city.id);
-      }
-    } catch {
+    // Remove from saved cities index
+    const remove = (cities: SavedCityMeta[]) => cities.filter(c => c.id !== city.id);
+    setSavedCities(remove);
+    updateIsoCitySavedCities(remove).catch(() => {
       console.error('Failed to delete saved city');
+    });
+    
+    // Also remove the city state data if it exists
+    if (!city.roomCode) {
+      deleteIsoCitySavedCityData(city.id).catch(() => {
+        console.error('Failed to delete saved city data');
+      });
     }
   };
 
   // Handle co-op game start
-  const handleCoopStart = (isHost: boolean, initialState?: GameState, roomCode?: string) => {
+  const handleCoopStart = async (isHost: boolean, initialState?: GameState, roomCode?: string) => {
     setIsMultiplayer(true);
     
     if (isHost && initialState) {
       // Host starts with the state they created - save it so GameProvider loads it
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
+        await writeIsoCityAutosaveRaw(compressed);
         
         // Also save to saved cities index so it appears on homepage
         if (roomCode) {
-          saveCityToIndex(initialState, roomCode);
+          await saveCityToIndex(initialState, roomCode);
         }
       } catch (e) {
         console.error('Failed to save co-op state:', e);
@@ -459,11 +483,11 @@ export default function HomePage() {
       // Guest received state from host - save it so GameProvider loads it
       try {
         const compressed = compressToUTF16(JSON.stringify(initialState));
-        localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
+        await writeIsoCityAutosaveRaw(compressed);
         
         // Also save to saved cities index so it appears on homepage
         if (roomCode) {
-          saveCityToIndex(initialState, roomCode);
+          await saveCityToIndex(initialState, roomCode);
         }
       } catch (e) {
         console.error('Failed to save co-op state:', e);
@@ -553,7 +577,7 @@ export default function HomePage() {
                 const exampleState = await response.json();
                 try {
                   const compressed = compressToUTF16(JSON.stringify(exampleState));
-                  localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
+                  await writeIsoCityAutosaveRaw(compressed);
                 } catch (e) {
                   console.error('Failed to save example state:', e);
                 }
@@ -678,7 +702,7 @@ export default function HomePage() {
                   const exampleState = await response.json();
                   try {
                     const compressed = compressToUTF16(JSON.stringify(exampleState));
-                    localStorage.setItem(ISOCITY_STORAGE_KEY, compressed);
+                    await writeIsoCityAutosaveRaw(compressed);
                   } catch (e) {
                     console.error('Failed to save example state:', e);
                   }
