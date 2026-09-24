@@ -88,6 +88,7 @@ import { useBuildingHelpers } from '@/components/game/buildingHelpers';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
 import { createBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
+import { getFloodplainSand } from '@/components/game/floodplainSand';
 import { createSeaplaneSystem, SeaplaneSystemRefs, SeaplaneSystemState } from '@/components/game/seaplaneSystem';
 import { createEffectsSystems, EffectsSystemRefs, EffectsSystemState } from '@/components/game/effectsSystems';
 import {
@@ -157,6 +158,7 @@ import { getActivePreset, getGraphicsSnapshot, getRenderDpr, initGraphicsSetting
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import { AUTO_QUALITY_CONFIG, QUALITY_PRESETS } from '@/lib/qualityConfig';
 import { getSceneLighting } from '@/components/game/sceneLighting';
+import { getInitialFocusTile } from '@/lib/mapConfig';
 
 // S1-T7: the renderer (GPU or Canvas2D) is chosen at runtime (graphicsSettings.ts / rendererSelection.ts).
 // NEXT_PUBLIC_GPU_RENDERER=1|0 or ?renderer=gpu|canvas still force one for debugging.
@@ -584,6 +586,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     worldStateRef,
     isMobile,
     visualHour,
+    mapId: state.mapId,
+    gameVersion,
+    structureVersionRef: gridVersionRef,
   };
 
   const {
@@ -1443,6 +1448,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     };
     const activePack = getActiveSpritePack();
     const treeSway = qualityPreset.treeSway;
+    // S2-T4: sandy east floodplain (Varanasi map only). Precomputed per map size; one typed-array read per tile.
+    const floodplainSand = getFloodplainSand(gridSize, state.mapId);
+    const floodplainSandScheme = (tile: Tile) => {
+      if (!floodplainSand || tile.zone !== 'none') return undefined;
+      const type = tile.building.type;
+      if (type !== 'grass' && type !== 'tree') {
+        if (type !== 'empty') return undefined;
+        // 'empty' tiles inside parks or multi-tile buildings keep their own base
+        const meta = getTileMetadata(tile.x, tile.y);
+        if (meta?.isPartOfParkBuilding || meta?.needsGreyBase) return undefined;
+      }
+      const sandIdx = floodplainSand.index[tile.y * gridSize + tile.x];
+      return sandIdx === 0 ? undefined : floodplainSand.palette[sandIdx - 1];
+    };
     
     
     // Draw isometric tile base
@@ -1500,6 +1519,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           topColor = '#6a4a2a';
         }
         strokeColor = '#f59e0b';
+      }
+      if (floodplainSand && !isPark && !hasGreyBase) {
+        const sand = floodplainSandScheme(tile);
+        if (sand) {
+          topColor = sand.top;
+          strokeColor = sand.stroke;
+        }
       }
       
       // Skip drawing green base for tiles adjacent to water (will be drawn later over water)
@@ -2165,7 +2191,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     insertionSortByDepth(greenBaseTileQueue);
     for (let i = 0; i < greenBaseTileQueue.length; i++) {
       const { tile, screenX, screenY } = greenBaseTileQueue[i];
-      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom);
+      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
     }
     
     // Draw roads (above water, needs full redraw including base tile)
@@ -2559,7 +2585,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
           for (let i = 0; i < greenBaseTileQueue.length; i++) {
             const { tile, screenX, screenY } = greenBaseTileQueue[i];
-            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom);
+            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
           }
           for (let i = 0; i < roadQueue.length; i++) {
             const { tile, screenX, screenY } = roadQueue[i];
@@ -2720,7 +2746,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, qualityPreset]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   const placementPreview = useMemo(() => {
@@ -3494,6 +3520,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       if (z !== ws.zoom) setZoom(z);
     },
   }), [getMapBounds]);
+
+  // Centre the camera on the map's focus tile once per opened city (new game, load, benchmark).
+  // Varanasi opens on the ghat bank of the Ganga's crescent, other maps on their centre.
+  const centeredCityRef = useRef<string | null>(null);
+  const cityKey = `${state.id}:${gameVersion}:${gridSize}`;
+  useEffect(() => {
+    if (canvasSize.width === 0 || centeredCityRef.current === cityKey) return;
+    centeredCityRef.current = cityKey;
+    const focus = getInitialFocusTile(state.mapId, gridSize);
+    const { screenX, screenY } = gridToScreen(focus.x, focus.y, 0, 0);
+    const bounds = getMapBounds(zoom, canvasSize.width, canvasSize.height);
+    setOffset({ // one-shot camera placement per city
+      x: Math.max(bounds.minOffsetX, Math.min(bounds.maxOffsetX, canvasSize.width / 2 - screenX * zoom)),
+      y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, canvasSize.height / 2 - screenY * zoom)),
+    });
+  }, [cityKey, canvasSize.width, canvasSize.height, gridSize, state.mapId, zoom, getMapBounds]);
 
   // Handle minimap navigation - center the view on the target tile
   useEffect(() => {

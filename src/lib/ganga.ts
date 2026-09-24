@@ -180,7 +180,8 @@ export function computeGangaTileEffects(
 }
 
 /** River colour for Ganga Health: 0 = brown, 50 = murky green, 100 = clean blue. */
-export function getGangaRiverColor(gangaHealth: number, alpha = 0.55): string {
+/** Default alpha is strong enough that mid-range health (murky green) reads clearly over the water sprite. */
+export function getGangaRiverColor(gangaHealth: number, alpha = 0.7): string {
   const stops = [
     { h: 0, c: [0x6b, 0x4f, 0x2a] },
     { h: 50, c: [0x5f, 0x7f, 0x5a] },
@@ -192,3 +193,118 @@ export function getGangaRiverColor(gangaHealth: number, alpha = 0.55): string {
   const mix = a.c.map((v, i) => Math.round(v + (b.c[i] - v) * t));
   return `rgba(${mix[0]}, ${mix[1]}, ${mix[2]}, ${alpha})`;
 }
+
+// ---------------------------------------------------------------------------
+// Cached per-grid helpers for the UI (S2-T8)
+// ---------------------------------------------------------------------------
+
+const stpCache = new WeakMap<Tile[][], { x: number; y: number }[]>();
+const tileEffectsCache = new WeakMap<Tile[][], GangaTileEffects>();
+
+/**
+ * Origin tiles of every Sewage Treatment Plant. Cached by grid identity (a new grid comes with each tick or edit),
+ * so the full-map scan runs at most once per simulation step, however many UI parts ask.
+ */
+export function findStps(grid: Tile[][], gridSize: number): { x: number; y: number }[] {
+  const cached = stpCache.get(grid);
+  if (cached) return cached;
+  const stps: { x: number; y: number }[] = [];
+  for (let y = 0; y < gridSize; y++) {
+    const row = grid[y];
+    if (!row) continue;
+    for (let x = 0; x < gridSize; x++) {
+      if (row[x]?.building.type === 'sewage_treatment_plant') stps.push({ x, y });
+    }
+  }
+  stpCache.set(grid, stps);
+  return stps;
+}
+
+/** `computeGangaTileEffects` memoized by grid identity. */
+export function getCachedGangaTileEffects(grid: Tile[][], gridSize: number): GangaTileEffects {
+  const cached = tileEffectsCache.get(grid);
+  if (cached) return cached;
+  const effects = computeGangaTileEffects(grid, gridSize, findStps(grid, gridSize));
+  tileEffectsCache.set(grid, effects);
+  return effects;
+}
+
+/** What one catchment tile does to the Ganga (tile info). */
+export interface GangaTileEffectInfo {
+  /** Load this tile's pollution adds (tile.pollution × industry weight). */
+  pollutionLoad: number;
+  /** Simulation population on this tile whose sewage reaches the river untreated. */
+  untreatedPopulation: number;
+  /** Simulation population on this tile whose sewage an STP treats. */
+  treatedPopulation: number;
+  /** Riverside greenery that earns the green credit. */
+  riversideGreen: boolean;
+}
+
+/** River-zone code of Ganga water tiles in riverZones. */
+const RIVER_ZONE_CODE = 1;
+
+/**
+ * The Ganga effect of one tile, or null when the tile is not a land tile in the Ganga catchment
+ * (or the map is not Varanasi). Uses the same rules as the Ganga overlay.
+ */
+export function getGangaTileEffectInfo(
+  grid: Tile[][],
+  gridSize: number,
+  mapId: MapId | undefined,
+  x: number,
+  y: number
+): GangaTileEffectInfo | null {
+  if (mapId !== 'varanasi' || x < 0 || y < 0 || x >= gridSize || y >= gridSize) return null;
+  const tile = grid[y]?.[x];
+  if (!tile || tile.building.type === 'water') return null;
+  const idx = y * gridSize + x;
+  const { zone, distance } = getRiverZoneArrays(gridSize);
+  if (zone[idx] === RIVER_ZONE_CODE || distance[idx] > GANGA.catchmentRadius) return null;
+  const effects = getCachedGangaTileEffects(grid, gridSize);
+  const population = producesSewage(tile) ? tile.building.population : 0;
+  const treatedPopulation = Math.min(population, effects.treated[idx]);
+  return {
+    pollutionLoad: Math.max(0, tile.pollution) * GANGA.industryWeight,
+    untreatedPopulation: Math.max(0, population - treatedPopulation),
+    treatedPopulation,
+    riversideGreen: GANGA_GREEN_TYPES.has(tile.building.type) && RIVERSIDE_ZONE_CODES.has(zone[idx]),
+  };
+}
+
+export type GangaEffectTone = 'hurts' | 'cleans' | 'neutral';
+
+/**
+ * Player-facing lines for the "Effect on Ganga" tile-info row.
+ * @param formatPeople formats a SIMULATION population for display (pass `formatPopulation`).
+ */
+export function describeGangaTileEffect(
+  info: GangaTileEffectInfo,
+  formatPeople: (simPopulation: number) => string
+): { text: string; tone: GangaEffectTone }[] {
+  const lines: { text: string; tone: GangaEffectTone }[] = [];
+  if (info.pollutionLoad > 0) {
+    lines.push({ text: `Adds pollution (+${Math.max(1, Math.round(info.pollutionLoad))})`, tone: 'hurts' });
+  }
+  if (info.untreatedPopulation > 0) {
+    lines.push({ text: `Untreated sewage from ${formatPeople(info.untreatedPopulation)} people`, tone: 'hurts' });
+  }
+  if (info.treatedPopulation > 0) {
+    lines.push({ text: info.untreatedPopulation > 0 ? 'Partly treated by STP' : 'Treated by STP', tone: 'cleans' });
+  }
+  if (info.riversideGreen && lines.length === 0) {
+    lines.push({ text: 'Cleans the river (riverside greenery)', tone: 'cleans' });
+  }
+  if (lines.length === 0) lines.push({ text: 'No effect', tone: 'neutral' });
+  return lines;
+}
+
+/** Colour band for a Ganga Health number: good ≥ 70, fair 40–69, poor < 40 (on the rounded value the player sees). */
+export function getGangaHealthLevel(gangaHealth: number): 'good' | 'fair' | 'poor' {
+  const h = Math.round(gangaHealth);
+  if (h >= 70) return 'good';
+  if (h >= 40) return 'fair';
+  return 'poor';
+}
+
+export const GANGA_TREND_ARROW = { up: '↑', down: '↓', flat: '→' } as const;

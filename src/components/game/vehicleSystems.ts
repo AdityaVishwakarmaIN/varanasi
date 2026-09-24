@@ -28,7 +28,7 @@ import {
 } from './pedestrianSystem';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 import { ENTITY_CULL_CONFIG, deviceValue, scaledEntityLimit } from '@/lib/qualityConfig';
-import { buildCountPrefix, countInBounds, filterInBounds, isInBounds, randomTileInBounds, type TileBounds } from '@/lib/entityCulling';
+import { buildCountPrefix, countInBounds, expandBounds, filterInBounds, isInBounds, randomTileInBounds, type TileBounds } from '@/lib/entityCulling';
 import { getWorldTileBounds } from '@/components/game/visibleArea';
 
 /** Train type for crossing detection (minimal interface) */
@@ -225,6 +225,14 @@ export function createVehicleSystems(
   /** Spawn area: visible tiles + ENTITY_CULL_CONFIG.spawnMarginTiles (set once per update). */
   let spawnBounds: TileBounds | null = null;
 
+  /** Refreshes `spawnBounds` from the camera and returns the (larger) area outside which entities are removed. */
+  const refreshEntityBounds = (): TileBounds => {
+    const world = worldStateRef.current;
+    const visible = getWorldTileBounds(world);
+    spawnBounds = expandBounds(visible, ENTITY_CULL_CONFIG.spawnMarginTiles, world.gridSize);
+    return expandBounds(visible, ENTITY_CULL_CONFIG.despawnMarginTiles, world.gridSize);
+  };
+
   const buildBusRoute = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) return null;
@@ -353,7 +361,8 @@ export function createVehicleSystems(
     
     // 10% - Pedestrian at the beach (swimming or on mat)
     if (spawnType < 0.10) {
-      const beachTiles = near(findBeachTilesCallback());
+      const allBeach = findBeachTilesCallback();
+      const beachTiles = spawnBounds ? allBeach.filter((b) => isInBounds(b.waterX, b.waterY, spawnBounds!)) : allBeach;
       if (beachTiles.length > 0) {
         const beachInfo = getRandomBeachTile(beachTiles);
         if (beachInfo) {
@@ -1012,33 +1021,19 @@ export function createVehicleSystems(
     
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
-    // Scale car count with road tiles (similar to pedestrians) for proper density on large maps
-    // Use cached road tile count for performance
-    const currentGridVersion = roadNetworkVersionRef.current;
-    let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
-      roadTileCount = cachedRoadTileCountRef.current.count;
-    } else {
-      roadTileCount = 0;
-      for (let y = 0; y < currentGridSize; y++) {
-        for (let x = 0; x < currentGridSize; x++) {
-          const type = currentGrid[y][x].building.type;
-          if (type === 'road' || type === 'bridge') {
-            roadTileCount++;
-          }
-        }
-      }
-      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
-    }
-    
+    // S1-T8: cars live near the view. Their number follows the road tiles in the spawn area
+    // (O(1) prefix-sum lookup), scaled and capped by the quality preset; far-away cars are removed.
+    const despawnBounds = refreshEntityBounds();
+    const roadTileCount = countRoadTilesIn(spawnBounds!);
     // Target ~0.5 cars per road tile on desktop, ~0.15 on mobile (for performance)
-    // This ensures large maps with more roads get proportionally more cars
     const carDensity = isMobile ? 0.15 : 0.5;
-    const targetCars = Math.floor(roadTileCount * carDensity);
-    // Cap at 800 for desktop, 60 for mobile - minimum 10/15 for small cities
-    const maxCars = isMobile 
-      ? Math.min(60, Math.max(10, targetCars))
-      : Math.min(800, Math.max(15, targetCars));
+    const baseCars = roadTileCount > 0 ? Math.max(isMobile ? 10 : 15, Math.floor(roadTileCount * carDensity)) : 0;
+    const preset = getActivePreset();
+    const maxCars = scaledEntityLimit(baseCars, preset.vehicleFraction, deviceValue(preset.maxCars, isMobile));
+    if (carsRef.current.length > 0) {
+      carsRef.current = carsRef.current.filter((car) => isInBounds(car.tileX, car.tileY, despawnBounds));
+      if (carsRef.current.length > maxCars) carsRef.current.length = maxCars;
+    }
     
     carSpawnTimerRef.current -= delta;
     if (carsRef.current.length < maxCars && carSpawnTimerRef.current <= 0) {
@@ -1428,31 +1423,19 @@ export function createVehicleSystems(
     
     const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
     
-    // Cache road tile count (expensive to calculate every frame)
-    const currentGridVersion = roadNetworkVersionRef.current;
-    let roadTileCount: number;
-    if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
-      roadTileCount = cachedRoadTileCountRef.current.count;
-    } else {
-      roadTileCount = 0;
-      for (let y = 0; y < currentGridSize; y++) {
-        for (let x = 0; x < currentGridSize; x++) {
-          const type = currentGrid[y][x].building.type;
-          if (type === 'road' || type === 'bridge') {
-            roadTileCount++;
-          }
-        }
-      }
-      cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
-    }
-    
-    // Scale pedestrian count with city size (road tiles), with a reasonable cap
-    // Mobile: use lower density and max count for performance
+    // S1-T8: pedestrians live near the view, like cars (road tiles in the spawn area, preset density and cap)
+    const despawnBounds = refreshEntityBounds();
+    const roadTileCount = countRoadTilesIn(spawnBounds!);
     const pedDensity = isMobile ? PEDESTRIAN_ROAD_TILE_DENSITY_MOBILE : PEDESTRIAN_ROAD_TILE_DENSITY;
     const pedMaxCount = isMobile ? PEDESTRIAN_MAX_COUNT_MOBILE : PEDESTRIAN_MAX_COUNT;
     const pedMinCount = isMobile ? 20 : 150;
-    const targetPedestrians = roadTileCount * pedDensity;
-    const maxPedestrians = Math.min(pedMaxCount, Math.max(pedMinCount, targetPedestrians));
+    const basePedestrians = roadTileCount > 0 ? Math.min(pedMaxCount, Math.max(pedMinCount, roadTileCount * pedDensity)) : 0;
+    const preset = getActivePreset();
+    const maxPedestrians = scaledEntityLimit(basePedestrians, preset.pedestrianDensity, deviceValue(preset.maxPedestrians, isMobile));
+    if (pedestriansRef.current.length > 0) {
+      pedestriansRef.current = pedestriansRef.current.filter((p) => isInBounds(p.tileX, p.tileY, despawnBounds));
+      if (pedestriansRef.current.length > maxPedestrians) pedestriansRef.current.length = maxPedestrians;
+    }
     pedestrianSpawnTimerRef.current -= delta;
     
     if (pedestriansRef.current.length < maxPedestrians && pedestrianSpawnTimerRef.current <= 0) {

@@ -16,6 +16,7 @@ import {
   SERVICE_UPGRADE_COST_BASE,
 } from '@/lib/simulation';
 import { formatINR, formatPopulation } from '@/lib/format';
+import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -77,6 +78,12 @@ export function TileInfoPanel({
       nextEffectiveRange,
     };
   }, [isServiceBuilding, tile.building, state.stats.money]);
+  
+  // S2-T8: what this tile does to the Ganga (Varanasi catchment tiles only). Effects are memoized per grid in ganga.ts.
+  const gangaEffectLines = useMemo(() => {
+    const info = getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, x, y);
+    return info ? describeGangaTileEffect(info, formatPopulation) : null;
+  }, [state.grid, state.gridSize, state.mapId, x, y]);
   
   const handleUpgrade = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -161,6 +168,21 @@ export function TileInfoPanel({
             {Math.round(tile.pollution)}%
           </span>
         </div>
+        {gangaEffectLines && (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Effect on Ganga</span>
+            <span className="flex flex-col">
+              {gangaEffectLines.map(line => (
+                <span
+                  key={line.text}
+                  className={line.tone === 'hurts' ? 'text-red-400' : line.tone === 'cleans' ? 'text-green-400' : 'text-muted-foreground'}
+                >
+                  {line.text}
+                </span>
+              ))}
+            </span>
+          </div>
+        )}
         
         {tile.building.onFire && (
           <>

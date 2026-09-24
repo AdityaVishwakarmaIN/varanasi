@@ -51,7 +51,7 @@ By the end of this sprint, a player can:
 
 - [ ] S2-T1: Indian number formatting and population scale
 - [ ] S2-T2: Varanasi map data and generator
-- [ ] S2-T3: Map choice on the new-game screen, and branding
+- [x] S2-T3: Map choice on the new-game screen, and branding
 - [ ] S2-T4: River zones (bank and floodplain helpers)
 - [ ] S2-T5: The Ghat building
 - [ ] S2-T6: Sewage Treatment Plant (STP)
@@ -391,3 +391,14 @@ tourismIncome   = Σ ghatIncome
 ## 6. Notes for later
 
 *(Implementers: add things you noticed but did not do here.)*
+
+- **S2-T8 (UI, steps 3–5):** the top-bar Ganga chip *toggles* the Ganga overlay (a second click turns it off), because the
+  desktop overlay panel can be hidden. On mobile the chip sits in the second (R/C/I) row; the tile-info "Effect on Ganga" is an
+  extra line under the mobile tile row. A home only partly covered by an STP shows "Partly treated by STP" next to its untreated
+  sewage. In the screenshot session the Ganga overlay tinted catchment land red/green as expected, but the **river water tiles did not
+  visibly change colour** by Ganga Health. *Fixed:* the tint was drawn, but `Game.tsx` did not pass `mapId` to `OverlayModeToggle` (no Ganga button, no active state), and at alpha 0.55 mid-range health was too subtle; the river tint alpha is now 0.7.
+- The new tile-info and chip strings are plain English (TileInfoPanel was already untranslated); wrap them in `msg()` when the panels are translated.
+- **S2-T11 step 1:** the three Ganga tips run inside the existing 5-second tip check. `ganga_falling` and `needs_stp` read a context
+  that `useTipSystem` refreshes once per in-game day (a counter of consecutive "down" days, and sewageLoad vs netLoad from
+  `gatherGangaInputs`); a day jump of more than 30 days (a loaded save) restarts the count. Thresholds are in `GANGA_TIPS_CONFIG`
+  (`src/lib/gangaTips.ts`). Steps 2–3 (45-minute playtest, Varanasi benchmark) are not done.

@@ -64,6 +64,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const m = useMessages();
   const { state, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  // S2-T8: the top-bar Ganga Health chip toggles the Ganga overlay.
+  const toggleGangaOverlay = useCallback(() => {
+    setOverlayMode(mode => (mode === 'ganga' ? 'none' : 'ganga'));
+  }, []);
   // Read from localStorage on first client render so we never persist the default `true,true`
   // in the same effect flush as hydration (that was overwriting saved prefs on every mount).
   const [showOverlayPanel, setShowOverlayPanel] = useState(() =>
@@ -313,6 +317,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             selectedTile={selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool) ? state.grid[selectedTile.y][selectedTile.x] : null}
             services={state.services}
             onCloseTile={() => setSelectedTile(null)}
+            gangaOverlayActive={overlayMode === 'ganga'}
+            onToggleGangaOverlay={toggleGangaOverlay}
             onShare={FEATURES.coop ? () => setShowShareModal(true) : undefined}
             onExit={onExit}
           />
@@ -415,6 +421,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             showMinimap={showMinimap}
             onToggleOverlayPanel={setShowOverlayPanel}
             onToggleMinimap={setShowMinimap}
+            gangaOverlayActive={overlayMode === 'ganga'}
+            onToggleGangaOverlay={toggleGangaOverlay}
           />
           <StatsPanel />
           <div className="flex-1 relative overflow-visible">
@@ -429,7 +437,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               controlsRef={controlsRef}
             />
             {showOverlayPanel && (
-              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} />
+              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}
             {showMinimap && (
               <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} onViewportSubscribe={subscribeMiniMapViewport} />

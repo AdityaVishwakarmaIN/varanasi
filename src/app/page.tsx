@@ -26,7 +26,7 @@ import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { T } from 'gt-next';
 import { Users, X } from 'lucide-react';
 import {
-  clearIsoCityStoredGameData,
+  clearIsoCityAutosave,
   copyIsoCitySavedCityToAutosave,
   deleteIsoCitySavedCityData,
   flushPendingSaves,
@@ -35,6 +35,11 @@ import {
   updateIsoCitySavedCities,
   writeIsoCityAutosaveRaw,
 } from '@/lib/isocityStorage';
+import { MapChoiceCards } from '@/components/MapChoiceCards';
+import { Input } from '@/components/ui/input';
+import type { MapId } from '@/games/isocity/maps/varanasi';
+import { DEFAULT_CITY_NAMES } from '@/lib/mapConfig';
+import type { NewGameOptions } from '@/lib/newGame';
 
 // Background color to filter from sprite sheets (red)
 const BACKGROUND_COLOR = { r: 255, g: 0, b: 0 };
@@ -295,40 +300,58 @@ function NewGameResetButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function ResetGameDialog({
+function NewGameDialog({
   open,
   onOpenChange,
+  hasSaved,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  hasSaved: boolean;
+  onConfirm: (options: NewGameOptions) => void;
 }) {
+  const [mapId, setMapId] = useState<MapId>('varanasi');
+  const [name, setName] = useState('');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            <T>Start New Game</T>
+            <T>Start a New City</T>
           </DialogTitle>
           <DialogDescription>
-            <T>This will clear your current saved city and start fresh. Continue?</T>
+            <T>Choose where to build.</T>
           </DialogDescription>
         </DialogHeader>
+
+        <MapChoiceCards value={mapId} onChange={setMapId} />
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={DEFAULT_CITY_NAMES[mapId]}
+          aria-label="City name"
+          maxLength={40}
+        />
+        {hasSaved && (
+          <p className="text-xs text-amber-300/90">
+            <T>This replaces your current autosave. Cities saved from Settings are kept.</T>
+          </p>
+        )}
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto min-h-[44px]"
           >
             <T>Cancel</T>
           </Button>
           <Button
-            onClick={onConfirm}
-            className="w-full sm:w-auto"
+            onClick={() => onConfirm({ mapId, name })}
+            className="w-full sm:w-auto min-h-[44px]"
           >
-            <T>Start New Game</T>
+            <T>Start Building</T>
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -343,6 +366,7 @@ export default function HomePage() {
   const [hasSaved, setHasSaved] = useState(false);
   const [showCoopModal, setShowCoopModal] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [newGameOptions, setNewGameOptions] = useState<NewGameOptions | undefined>(undefined);
   const [, setIsMultiplayer] = useState(false);
   const [startFreshGame, setStartFreshGame] = useState(false);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
@@ -413,14 +437,15 @@ export default function HomePage() {
     })();
   };
 
-  const handleStartFreshGame = async () => {
-    await clearIsoCityStoredGameData();
+  const handleStartFreshGame = async (options: NewGameOptions = {}) => {
+    // Only the autosave is replaced; cities saved from Settings stay in the list.
+    await clearIsoCityAutosave();
     setShowResetDialog(false);
     setShowCoopModal(false);
     setPendingRoomCode(null);
-    setSavedCities([]);
     setHasSaved(false);
     setIsMultiplayer(false);
+    setNewGameOptions(options);
     setStartFreshGame(true);
     window.history.replaceState({}, '', '/');
     setShowGame(true);
@@ -529,7 +554,7 @@ export default function HomePage() {
     // Always wrap in MultiplayerContextProvider so players can invite others from within the game
     return (
       <MultiplayerContextProvider>
-        <GameProvider startFresh={startFreshGame}>
+        <GameProvider startFresh={startFreshGame} newGameOptions={newGameOptions}>
           {gameContent}
         </GameProvider>
       </MultiplayerContextProvider>
@@ -545,9 +570,10 @@ export default function HomePage() {
           <div className="flex-shrink-0 h-4 sm:h-8" />
           
           {/* Title - smaller on very small screens */}
-          <h1 className="text-4xl sm:text-5xl font-light tracking-wider text-white/90 mb-4 sm:mb-6 flex-shrink-0">
-            IsoCity
+          <h1 className="text-4xl sm:text-5xl font-light tracking-wider text-white/90 mb-1 flex-shrink-0">
+            Varanasi
           </h1>
+          <p className="text-sm text-amber-200/70 tracking-wide mb-4 sm:mb-6 flex-shrink-0"><T>A city on the Ganga</T></p>
           
           {/* Sprite Gallery - smaller on mobile, contained */}
           <div className="mb-4 sm:mb-6 flex-shrink-0">
@@ -558,6 +584,10 @@ export default function HomePage() {
           <div className="flex flex-col gap-2 sm:gap-3 w-full max-w-xs flex-shrink-0">
             <Button 
               onClick={() => {
+                if (!hasSaved) {
+                  setShowResetDialog(true);
+                  return;
+                }
                 setStartFreshGame(false);
                 setShowGame(true);
               }}
@@ -602,20 +632,12 @@ export default function HomePage() {
             <div className="grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
               <div className="flex flex-col">
                 <a
-                  href="https://cursor.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
-                >
-                  <T>Made with Cursor</T>
-                </a>
-                <a
                   href="https://github.com/amilich/isometric-city"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
                 >
-                  <T>Open GitHub</T>
+                  <T>Built on IsoCity (MIT licence)</T>
                 </a>
               </div>
               <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
@@ -661,9 +683,10 @@ export default function HomePage() {
               pendingRoomCode={pendingRoomCode}
             />
           )}
-          <ResetGameDialog
+          <NewGameDialog
             open={showResetDialog}
             onOpenChange={setShowResetDialog}
+            hasSaved={hasSaved}
             onConfirm={handleStartFreshGame}
           />
         </main>
@@ -679,12 +702,19 @@ export default function HomePage() {
           
           {/* Left - Title and Start Button */}
           <div className="flex flex-col items-center lg:items-start justify-center space-y-12">
-            <h1 className="text-8xl font-light tracking-wider text-white/90">
-              IsoCity
-            </h1>
+            <div>
+              <h1 className="text-8xl font-light tracking-wider text-white/90">
+                Varanasi
+              </h1>
+              <p className="mt-3 text-xl font-light tracking-wide text-amber-200/70"><T>A city on the Ganga</T></p>
+            </div>
             <div className="flex flex-col gap-3">
               <Button 
                 onClick={() => {
+                  if (!hasSaved) {
+                    setShowResetDialog(true);
+                    return;
+                  }
                   setStartFreshGame(false);
                   setShowGame(true);
                 }}
@@ -727,20 +757,12 @@ export default function HomePage() {
               <div className="grid w-64 grid-cols-[1fr_auto] items-start gap-x-4">
                 <div className="flex flex-col">
                   <a
-                    href="https://cursor.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
-                  >
-                    <T>Made with Cursor</T>
-                  </a>
-                  <a
                     href="https://github.com/amilich/isometric-city"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
                   >
-                    <T>Open GitHub</T>
+                    <T>Built on IsoCity (MIT licence)</T>
                   </a>
                 </div>
                 <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
@@ -790,9 +812,10 @@ export default function HomePage() {
             pendingRoomCode={pendingRoomCode}
           />
         )}
-        <ResetGameDialog
+        <NewGameDialog
           open={showResetDialog}
           onOpenChange={setShowResetDialog}
+          hasSaved={hasSaved}
           onConfirm={handleStartFreshGame}
         />
       </main>

@@ -14,12 +14,19 @@ const UI_LABELS = {
   income: msg('Income'),
   expenses: msg('Expenses'),
   net: msg('Net'),
+  taxes: msg('Taxes'),
+  tourism: msg('Tourism'),
 };
 
 export function BudgetPanel() {
   const { state, setActivePanel, setBudgetFunding } = useGame();
   const { budget, stats } = state;
   const m = useMessages();
+  // S2-T9: income = taxes + tourism (tourism only on the Varanasi map). Old saves have no taxIncome.
+  const taxIncome = stats.taxIncome ?? stats.income;
+  const showTourism = state.mapId === 'varanasi';
+  const tourismIncome = stats.tourismIncome ?? 0;
+  const tourismShare = stats.income > 0 ? Math.round((tourismIncome / stats.income) * 100) : 0;
   
   const categories = [
     { key: 'police', ...budget.police },
@@ -44,6 +51,18 @@ export function BudgetPanel() {
             <div>
               <div className="text-muted-foreground text-xs mb-1">{m(UI_LABELS.income)}</div>
               <div className="text-green-400 font-mono">{formatINR(stats.income)}/mo</div>
+              <div className="mt-1 space-y-0.5 text-xs">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">{m(UI_LABELS.taxes)}</span>
+                  <span className="font-mono">{formatINR(taxIncome)}</span>
+                </div>
+                {showTourism && (
+                  <div className="flex justify-between gap-2" title={`${tourismShare}% of income`}>
+                    <span className="text-muted-foreground">{m(UI_LABELS.tourism)}</span>
+                    <span className="font-mono text-cyan-400">{formatINR(tourismIncome)}</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <div className="text-muted-foreground text-xs mb-1">{m(UI_LABELS.expenses)}</div>

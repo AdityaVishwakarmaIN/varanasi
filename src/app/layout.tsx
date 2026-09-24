@@ -22,22 +22,22 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   metadataBase: new URL('https://iso-city.com'),
   title: {
-    default: 'ISOCITY — Metropolis Builder',
-    template: 'ISOCITY — %s',
+    default: 'Varanasi — City on the Ganga',
+    template: 'Varanasi — %s',
   },
-  description: 'A richly detailed isometric city builder. Build your metropolis and manage resources with cars, planes, helicopters, boats, trains, citizens, and more.',
+  description: 'A city builder set in Varanasi. Plan a living city on the Ganga: ghats, bazaars, monsoon floods, festivals and a river that depends on you.',
   openGraph: {
     title: 'ISOCITY — Metropolis Builder',
-    description: 'A richly detailed isometric city builder. Build your metropolis and manage resources with cars, planes, helicopters, boats, trains, citizens, and more.',
+    description: 'A city builder set in Varanasi. Plan a living city on the Ganga: ghats, bazaars, monsoon floods, festivals and a river that depends on you.',
     type: 'website',
-    siteName: 'IsoCity',
+    siteName: 'Varanasi',
     images: [
       {
         url: '/opengraph-image.png',
         width: 1179,
         height: 1406,
         type: 'image/png',
-        alt: 'ISOCITY - Isometric city builder game screenshot'
+        alt: 'Varanasi - isometric city builder on the Ganga'
       }
     ],
   },
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'IsoCity'
+    title: 'Varanasi'
   },
   formatDetection: {
     telephone: false

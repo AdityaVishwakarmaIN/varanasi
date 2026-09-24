@@ -365,6 +365,19 @@ export type Boat = {
   // Home dock screen position (for return trip)
   homeScreenX: number;
   homeScreenY: number;
+  // S2-T10 ghat boats (Varanasi): route between two ghat docks, followed exactly (not steered)
+  ghatRoute?: {
+    tiles: Int32Array;        // tile indices of the route (all Ganga water)
+    poly: Float32Array;       // screen-space polyline, xy pairs
+    length: number;           // polyline length in px
+    progress: number;         // px travelled along the polyline
+    segment: number;          // current polyline segment (index of its start point)
+    segmentStart: number;     // px along the polyline where `segment` starts
+    fromDock: number;
+    toDock: number;
+    revision: number;         // network revision the route was last checked against
+    waitTime: number;         // seconds to stay docked before the next trip
+  };
 };
 
 // Barge types for ocean cargo transport

@@ -17,6 +17,8 @@ import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { loadBenchmarkCity } from '@/lib/benchmark';
+import { MapChoiceCards } from '@/components/MapChoiceCards';
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -127,6 +129,7 @@ export function SettingsPanel() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [newCityName, setNewCityName] = useState(cityName);
+  const [newMapId, setNewMapId] = useState<MapId>(state.mapId ?? 'varanasi');
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [saveCitySuccess, setSaveCitySuccess] = useState(false);
   const [cityToDelete, setCityToDelete] = useState<SavedCityMeta | null>(null);
@@ -517,6 +520,7 @@ export function SettingsPanel() {
           ) : (
             <div className="space-y-3">
               <p className="text-muted-foreground text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
+              <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
               <Input
                 value={newCityName}
                 onChange={(e) => setNewCityName(e.target.value)}
@@ -534,7 +538,7 @@ export function SettingsPanel() {
                   variant="destructive"
                   className="flex-1"
                   onClick={() => {
-                    newGame(newCityName || 'New City', gridSize);
+                    newGame({ name: newCityName, mapId: newMapId, size: gridSize });
                     setActivePanel('none');
                   }}
                 >

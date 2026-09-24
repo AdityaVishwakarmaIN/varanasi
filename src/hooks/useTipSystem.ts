@@ -3,6 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState } from '@/types/game';
 import { msg } from 'gt-next';
+import { calculateGangaTargetHealth, getGangaTrend } from '@/lib/scoring';
+import { findStps, gatherGangaInputs } from '@/lib/ganga';
+import {
+  gameDayIndex,
+  isGangaFallingLongEnough,
+  isSewageDominant,
+  needsFirstGhat,
+  nextGangaFallingDays,
+} from '@/lib/gangaTips';
 
 // Tip definitions with their conditions and messages
 export type TipId = 
@@ -11,13 +20,27 @@ export type TipId =
   | 'negative_demand'
   | 'needs_safety_services'
   | 'needs_parks'
-  | 'needs_health_education';
+  | 'needs_health_education'
+  | 'build_first_ghat'
+  | 'ganga_falling'
+  | 'needs_stp';
+
+/**
+ * Ganga numbers the tips need that are not in GameState. Updated once per in-game day (never per frame)
+ * by useTipSystem; see S2-T11.
+ */
+export interface TipContext {
+  /** Consecutive in-game days the Ganga Health trend has pointed down. */
+  gangaFallingDays: number;
+  /** Untreated sewage is more than half of the river's net load (as of the last in-game day). */
+  sewageDominant: boolean;
+}
 
 export interface TipDefinition {
   id: TipId;
   message: string;
   priority: number; // Lower number = higher priority
-  check: (state: GameState) => boolean;
+  check: (state: GameState, context: TipContext) => boolean;
 }
 
 // Define all tips with their conditions
@@ -145,6 +168,34 @@ const TIP_DEFINITIONS: TipDefinition[] = [
       return state.stats.population >= 100 && (!hasHospital || !hasSchool);
     },
   },
+  // Varanasi map only (S2-T11)
+  {
+    id: 'build_first_ghat',
+    message: msg("Pilgrims come to Varanasi for the ghats. Build some on the Ganga's west bank to earn tourism income."),
+    priority: 6,
+    check: (state: GameState) => {
+      if (state.mapId !== 'varanasi' || !needsFirstGhat(state.stats.population, 0)) return false;
+      for (let y = 0; y < state.gridSize; y++) {
+        for (let x = 0; x < state.gridSize; x++) {
+          if (state.grid[y][x].building.type === 'ghat') return false;
+        }
+      }
+      return true;
+    },
+  },
+  {
+    id: 'ganga_falling',
+    message: msg("The Ganga is getting dirtier. Open the Ganga overlay to see what's polluting it."),
+    priority: 7,
+    check: (state: GameState, context: TipContext) =>
+      state.mapId === 'varanasi' && isGangaFallingLongEnough(context.gangaFallingDays),
+  },
+  {
+    id: 'needs_stp',
+    message: msg('Untreated sewage is flowing into the Ganga. A Sewage Treatment Plant near homes will help.'),
+    priority: 8,
+    check: (state: GameState, context: TipContext) => state.mapId === 'varanasi' && context.sewageDominant,
+  },
 ];
 
 const STORAGE_KEY = 'isocity-tips-disabled';
@@ -174,6 +225,32 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
   // Use a ref to always have the latest state without causing effect re-runs
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Ganga tip context, refreshed once per in-game day (S2-T11).
+  const tipContextRef = useRef<TipContext>({ gangaFallingDays: 0, sewageDominant: false });
+  const lastObservedDayRef = useRef<number | null>(null);
+  const { year, month, day, mapId } = state;
+  useEffect(() => {
+    const current = stateRef.current;
+    const today = gameDayIndex(year, month, day);
+    const lastDay = lastObservedDayRef.current;
+    lastObservedDayRef.current = today;
+    const { gangaHealth, gangaHealthTarget } = current.stats;
+    if (mapId !== 'varanasi' || gangaHealth === undefined || gangaHealthTarget === undefined) {
+      tipContextRef.current = { gangaFallingDays: 0, sewageDominant: false };
+      return;
+    }
+    const trend = getGangaTrend(gangaHealth, gangaHealthTarget);
+    const gangaFallingDays = lastDay === null
+      ? 0
+      : nextGangaFallingDays(tipContextRef.current.gangaFallingDays, trend, today - lastDay);
+    const { grid, gridSize } = current;
+    const load = calculateGangaTargetHealth(gatherGangaInputs(grid, gridSize, findStps(grid, gridSize)));
+    tipContextRef.current = {
+      gangaFallingDays,
+      sewageDominant: isSewageDominant(load.sewageLoad, load.netLoad),
+    };
+  }, [year, month, day, mapId]);
 
   // Load preferences from localStorage
   useEffect(() => {
@@ -253,7 +330,7 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     
     // Find the first applicable tip that hasn't been shown
     const applicableTips = TIP_DEFINITIONS
-      .filter(tip => !currentShownTips.has(tip.id) && tip.check(currentState))
+      .filter(tip => !currentShownTips.has(tip.id) && tip.check(currentState, tipContextRef.current))
       .sort((a, b) => a.priority - b.priority);
     
     if (applicableTips.length > 0) {
