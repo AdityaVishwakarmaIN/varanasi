@@ -4,7 +4,7 @@
 - `npm run dev` - Start development server
 - `npm run build` - Production build (also type-checks)
 - `npm run lint` - Run ESLint
-- No test framework configured
+- `npm test` - Run unit tests (Vitest, `src/**/*.test.ts`)
 
 ## Architecture
 Next.js 16 + React 19 isometric city-builder game with canvas rendering.

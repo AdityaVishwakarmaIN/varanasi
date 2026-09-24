@@ -40,6 +40,7 @@ import {
   isEnvironmentPlayableBuildingType,
 } from './scoring';
 import { isMobile } from 'react-device-detect';
+import type { Rng } from '@/lib/rng';
 import type { CloudWeatherMode } from '@/components/game/types';
 
 // Default grid size for new games
@@ -159,7 +160,7 @@ export function perlinNoise(x: number, y: number, seed: number, octaves: number 
 }
 
 // Generate 2-3 large, round lakes and return water bodies
-function generateLakes(grid: Tile[][], size: number, seed: number): WaterBody[] {
+function generateLakes(grid: Tile[][], size: number, seed: number, rng: Rng = Math.random): WaterBody[] {
   // Use noise to find potential lake centers - look for low points
   const lakeNoise = (x: number, y: number) => perlinNoise(x, y, seed + 1000, 3);
   
@@ -231,7 +232,7 @@ function generateLakes(grid: Tile[][], size: number, seed: number): WaterBody[] 
   
   // Sort by noise value (lowest first) and pick 2-3 best candidates
   lakeCenters.sort((a, b) => a.noise - b.noise);
-  const numLakes = 2 + Math.floor(Math.random() * 2); // 2 or 3 lakes
+  const numLakes = 2 + Math.floor(rng() * 2); // 2 or 3 lakes
   const selectedCenters = lakeCenters.slice(0, Math.min(numLakes, lakeCenters.length));
   
   const waterBodies: WaterBody[] = [];
@@ -240,7 +241,7 @@ function generateLakes(grid: Tile[][], size: number, seed: number): WaterBody[] 
   // Grow lakes from each center using radial expansion for rounder shapes
   for (const center of selectedCenters) {
     // Target size: 40-80 tiles for bigger lakes
-    const targetSize = 40 + Math.floor(Math.random() * 41);
+    const targetSize = 40 + Math.floor(rng() * 41);
     const lakeTiles: { x: number; y: number }[] = [{ x: center.x, y: center.y }];
     const candidates: { x: number; y: number; dist: number; noise: number }[] = [];
     
@@ -270,7 +271,7 @@ function generateLakes(grid: Tile[][], size: number, seed: number): WaterBody[] 
       });
       
       // Pick from top candidates (closest/lowest noise)
-      const pickIndex = Math.floor(Math.random() * Math.min(5, candidates.length));
+      const pickIndex = Math.floor(rng() * Math.min(5, candidates.length));
       const picked = candidates.splice(pickIndex, 1)[0];
       
       // Check if already in lake
@@ -328,7 +329,7 @@ function generateLakes(grid: Tile[][], size: number, seed: number): WaterBody[] 
 }
 
 // Generate ocean connections on map edges (sometimes) with organic coastlines
-function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[] {
+function generateOceans(grid: Tile[][], size: number, seed: number, rng: Rng = Math.random): WaterBody[] {
   const waterBodies: WaterBody[] = [];
   const oceanChance = 0.4; // 40% chance per edge
   
@@ -352,8 +353,8 @@ function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[]
     const tiles: { x: number; y: number }[] = [];
     
     // Randomize the span of the ocean (40-80% of edge, not full length)
-    const spanStart = Math.floor(size * (0.05 + Math.random() * 0.25));
-    const spanEnd = Math.floor(size * (0.7 + Math.random() * 0.25));
+    const spanStart = Math.floor(size * (0.05 + rng() * 0.25));
+    const spanEnd = Math.floor(size * (0.7 + rng() * 0.25));
     
     for (let i = spanStart; i < spanEnd; i++) {
       // Use noise to determine depth at this position, with fade at edges
@@ -396,7 +397,7 @@ function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[]
   };
   
   // North edge (top, y=0, extends downward)
-  if (Math.random() < oceanChance) {
+  if (rng() < oceanChance) {
     const tiles = generateOceanEdge(true, 0, 1);
     if (tiles.length > 0) {
       edges.push({ side: 'north', tiles });
@@ -404,7 +405,7 @@ function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[]
   }
   
   // South edge (bottom, y=size-1, extends upward)
-  if (Math.random() < oceanChance) {
+  if (rng() < oceanChance) {
     const tiles = generateOceanEdge(true, size - 1, -1);
     if (tiles.length > 0) {
       edges.push({ side: 'south', tiles });
@@ -412,7 +413,7 @@ function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[]
   }
   
   // East edge (right, x=size-1, extends leftward)
-  if (Math.random() < oceanChance) {
+  if (rng() < oceanChance) {
     const tiles = generateOceanEdge(false, size - 1, -1);
     if (tiles.length > 0) {
       edges.push({ side: 'east', tiles });
@@ -420,7 +421,7 @@ function generateOceans(grid: Tile[][], size: number, seed: number): WaterBody[]
   }
   
   // West edge (left, x=0, extends rightward)
-  if (Math.random() < oceanChance) {
+  if (rng() < oceanChance) {
     const tiles = generateOceanEdge(false, 0, 1);
     if (tiles.length > 0) {
       edges.push({ side: 'west', tiles });
@@ -556,9 +557,9 @@ export function getConnectableCities(
 }
 
 // Generate terrain - grass with scattered trees, lakes, and oceans
-function generateTerrain(size: number): { grid: Tile[][]; waterBodies: WaterBody[] } {
+function generateTerrain(size: number, rng: Rng = Math.random): { grid: Tile[][]; waterBodies: WaterBody[] } {
   const grid: Tile[][] = [];
-  const seed = Math.random() * 1000;
+  const seed = rng() * 1000;
 
   // First pass: create base terrain with grass
   for (let y = 0; y < size; y++) {
@@ -570,10 +571,10 @@ function generateTerrain(size: number): { grid: Tile[][]; waterBodies: WaterBody
   }
   
   // Second pass: add lakes (small contiguous water regions)
-  const lakeBodies = generateLakes(grid, size, seed);
+  const lakeBodies = generateLakes(grid, size, seed, rng);
   
   // Third pass: add oceans on edges (sometimes)
-  const oceanBodies = generateOceans(grid, size, seed);
+  const oceanBodies = generateOceans(grid, size, seed, rng);
   
   // Combine all water bodies
   const waterBodies = [...lakeBodies, ...oceanBodies];
@@ -584,11 +585,11 @@ function generateTerrain(size: number): { grid: Tile[][]; waterBodies: WaterBody
       if (grid[y][x].building.type === 'water') continue; // Don't place trees on water
       
       const treeNoise = perlinNoise(x * 2, y * 2, seed + 500, 2);
-      const isTree = treeNoise > 0.72 && Math.random() > 0.65;
+      const isTree = treeNoise > 0.72 && rng() > 0.65;
       
       // Also add some trees near water for visual appeal
       const nearWater = isNearWater(grid, x, y, size);
-      const isTreeNearWater = nearWater && Math.random() > 0.7;
+      const isTreeNearWater = nearWater && rng() > 0.7;
 
       if (isTree || isTreeNearWater) {
         grid[y][x].building = createBuilding('tree');
@@ -1200,8 +1201,8 @@ function generateUUID(): string {
   });
 }
 
-export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityName: string = 'New City'): GameState {
-  const { grid, waterBodies } = generateTerrain(size);
+export function createInitialGameState(size: number = DEFAULT_GRID_SIZE, cityName: string = 'New City', rng: Rng = Math.random): GameState {
+  const { grid, waterBodies } = generateTerrain(size, rng);
   const adjacentCities = generateAdjacentCities();
   let totalTiles = 0;
   let treeCount = 0;
@@ -3346,9 +3347,9 @@ export function placeLandTerraform(state: GameState, x: number, y: number): Game
 }
 
 // Generate a random advanced city state with developed zones, infrastructure, and buildings
-export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cityName: string = 'Metropolis'): GameState {
+export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cityName: string = 'Metropolis', rng: Rng = Math.random): GameState {
   // Start with a base state (terrain generation)
-  const baseState = createInitialGameState(size, cityName);
+  const baseState = createInitialGameState(size, cityName, rng);
   const grid = baseState.grid;
   
   // Helper to check if a region is clear (no water)
@@ -3375,13 +3376,13 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   function createAdvancedBuilding(type: BuildingType): Building {
     return {
       type,
-      level: type === 'grass' || type === 'empty' || type === 'water' || type === 'road' || type === 'bridge' ? 0 : Math.floor(Math.random() * 3) + 3,
+      level: type === 'grass' || type === 'empty' || type === 'water' || type === 'road' || type === 'bridge' ? 0 : Math.floor(rng() * 3) + 3,
       population: 0,
       jobs: 0,
       powered: true,
       watered: true,
       ...createDefaultFireState(),
-      age: Math.floor(Math.random() * 100) + 50,
+      age: Math.floor(rng() * 100) + 50,
       constructionProgress: 100, // Fully built
       abandoned: false,
     };
@@ -3393,7 +3394,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
     if (tile && tile.building.type !== 'water' && tile.building.type !== 'road') {
       tile.zone = zone;
       tile.building = createAdvancedBuilding(buildingType);
-      tile.building.level = Math.floor(Math.random() * 3) + 3;
+      tile.building.level = Math.floor(rng() * 3) + 3;
       const stats = BUILDING_STATS[buildingType];
       if (stats) {
         tile.building.population = Math.floor(stats.maxPop * tile.building.level * 0.7);
@@ -3443,7 +3444,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   const cityRadius = Math.floor(size * 0.35);
   
   // Create main road grid - major arteries
-  const roadSpacing = 6 + Math.floor(Math.random() * 3); // 6-8 tile spacing
+  const roadSpacing = 6 + Math.floor(rng() * 3); // 6-8 tile spacing
   
   // Main horizontal roads
   for (let roadY = centerY - cityRadius; roadY <= centerY + cityRadius; roadY += roadSpacing) {
@@ -3473,21 +3474,21 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   
   // Place service buildings first (they need good placement)
   const serviceBuildings: Array<{ type: BuildingType; count: number }> = [
-    { type: 'power_plant', count: 4 + Math.floor(Math.random() * 3) },
-    { type: 'water_tower', count: 8 + Math.floor(Math.random() * 4) },
-    { type: 'police_station', count: 6 + Math.floor(Math.random() * 4) },
-    { type: 'fire_station', count: 6 + Math.floor(Math.random() * 4) },
-    { type: 'hospital', count: 3 + Math.floor(Math.random() * 2) },
-    { type: 'school', count: 5 + Math.floor(Math.random() * 3) },
-    { type: 'university', count: 2 + Math.floor(Math.random() * 2) },
+    { type: 'power_plant', count: 4 + Math.floor(rng() * 3) },
+    { type: 'water_tower', count: 8 + Math.floor(rng() * 4) },
+    { type: 'police_station', count: 6 + Math.floor(rng() * 4) },
+    { type: 'fire_station', count: 6 + Math.floor(rng() * 4) },
+    { type: 'hospital', count: 3 + Math.floor(rng() * 2) },
+    { type: 'school', count: 5 + Math.floor(rng() * 3) },
+    { type: 'university', count: 2 + Math.floor(rng() * 2) },
   ];
   
   for (const service of serviceBuildings) {
     let placed = 0;
     let attempts = 0;
     while (placed < service.count && attempts < 500) {
-      const x = centerX - cityRadius + Math.floor(Math.random() * cityRadius * 2);
-      const y = centerY - cityRadius + Math.floor(Math.random() * cityRadius * 2);
+      const x = centerX - cityRadius + Math.floor(rng() * cityRadius * 2);
+      const y = centerY - cityRadius + Math.floor(rng() * cityRadius * 2);
       if (placeMultiTileBuilding(x, y, service.type)) {
         placed++;
       }
@@ -3504,8 +3505,8 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   for (const building of specialBuildings) {
     let attempts = 0;
     while (attempts < 200) {
-      const x = centerX - cityRadius + Math.floor(Math.random() * cityRadius * 2);
-      const y = centerY - cityRadius + Math.floor(Math.random() * cityRadius * 2);
+      const x = centerX - cityRadius + Math.floor(rng() * cityRadius * 2);
+      const y = centerY - cityRadius + Math.floor(rng() * cityRadius * 2);
       if (placeMultiTileBuilding(x, y, building)) break;
       attempts++;
     }
@@ -3517,12 +3518,12 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
     'playground_large', 'swimming_pool', 'skate_park', 'community_garden', 'pond_park'
   ];
   
-  for (let i = 0; i < 25 + Math.floor(Math.random() * 15); i++) {
-    const parkType = parkBuildings[Math.floor(Math.random() * parkBuildings.length)];
+  for (let i = 0; i < 25 + Math.floor(rng() * 15); i++) {
+    const parkType = parkBuildings[Math.floor(rng() * parkBuildings.length)];
     let attempts = 0;
     while (attempts < 100) {
-      const x = centerX - cityRadius + Math.floor(Math.random() * cityRadius * 2);
-      const y = centerY - cityRadius + Math.floor(Math.random() * cityRadius * 2);
+      const x = centerX - cityRadius + Math.floor(rng() * cityRadius * 2);
+      const y = centerY - cityRadius + Math.floor(rng() * cityRadius * 2);
       if (placeMultiTileBuilding(x, y, parkType)) break;
       attempts++;
     }
@@ -3554,29 +3555,29 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
       let zone: ZoneType;
       let buildingType: BuildingType;
       
-      const rand = Math.random();
+      const rand = rng();
       
       if (normalizedDist < 0.3) {
         // Downtown - mostly commercial with some high-density residential
         if (rand < 0.6) {
           zone = 'commercial';
           const commercialTypes: BuildingType[] = ['shop_small', 'shop_medium', 'office_low', 'office_high', 'mall'];
-          buildingType = commercialTypes[Math.floor(Math.random() * commercialTypes.length)];
+          buildingType = commercialTypes[Math.floor(rng() * commercialTypes.length)];
         } else {
           zone = 'residential';
           const residentialTypes: BuildingType[] = ['apartment_low', 'apartment_high'];
-          buildingType = residentialTypes[Math.floor(Math.random() * residentialTypes.length)];
+          buildingType = residentialTypes[Math.floor(rng() * residentialTypes.length)];
         }
       } else if (normalizedDist < 0.6) {
         // Mid-city - mixed use
         if (rand < 0.5) {
           zone = 'residential';
           const residentialTypes: BuildingType[] = ['house_medium', 'mansion', 'apartment_low'];
-          buildingType = residentialTypes[Math.floor(Math.random() * residentialTypes.length)];
+          buildingType = residentialTypes[Math.floor(rng() * residentialTypes.length)];
         } else if (rand < 0.8) {
           zone = 'commercial';
           const commercialTypes: BuildingType[] = ['shop_small', 'shop_medium', 'office_low'];
-          buildingType = commercialTypes[Math.floor(Math.random() * commercialTypes.length)];
+          buildingType = commercialTypes[Math.floor(rng() * commercialTypes.length)];
         } else {
           zone = 'industrial';
           buildingType = 'factory_small';
@@ -3586,11 +3587,11 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
         if (rand < 0.5) {
           zone = 'residential';
           const residentialTypes: BuildingType[] = ['house_small', 'house_medium'];
-          buildingType = residentialTypes[Math.floor(Math.random() * residentialTypes.length)];
+          buildingType = residentialTypes[Math.floor(rng() * residentialTypes.length)];
         } else if (rand < 0.7) {
           zone = 'industrial';
           const industrialTypes: BuildingType[] = ['factory_small', 'factory_medium', 'warehouse'];
-          buildingType = industrialTypes[Math.floor(Math.random() * industrialTypes.length)];
+          buildingType = industrialTypes[Math.floor(rng() * industrialTypes.length)];
         } else {
           zone = 'commercial';
           buildingType = 'shop_small';
@@ -3611,7 +3612,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const tile = grid[y][x];
-      if (tile.building.type === 'grass' && Math.random() < 0.15) {
+      if (tile.building.type === 'grass' && rng() < 0.15) {
         tile.building = createAdvancedBuilding('tree');
       }
     }
@@ -3624,7 +3625,7 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
       if (tile && tile.building.type !== 'water') {
         // Place subway along main roads
         const onMainRoad = (x % roadSpacing === centerX % roadSpacing) || (y % roadSpacing === centerY % roadSpacing);
-        if (onMainRoad && Math.random() < 0.7) {
+        if (onMainRoad && rng() < 0.7) {
           tile.hasSubway = true;
         }
       }
@@ -3686,30 +3687,30 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
     ...baseState,
     grid,
     cityName,
-    year: 2024 + Math.floor(Math.random() * 50), // Random year in future
-    month: Math.floor(Math.random() * 12) + 1,
-    day: Math.floor(Math.random() * 28) + 1,
+    year: 2024 + Math.floor(rng() * 50), // Random year in future
+    month: Math.floor(rng() * 12) + 1,
+    day: Math.floor(rng() * 28) + 1,
     hour: 12,
     tick: 0,
     speed: 1,
     selectedTool: 'select',
-    taxRate: 7 + Math.floor(Math.random() * 4), // 7-10%
+    taxRate: 7 + Math.floor(rng() * 4), // 7-10%
     effectiveTaxRate: 8,
     stats: {
       population: totalPopulation,
       jobs: totalJobs,
-      money: 500000 + Math.floor(Math.random() * 1000000),
+      money: 500000 + Math.floor(rng() * 1000000),
       income: Math.floor(totalPopulation * 0.8 + totalJobs * 0.4),
       expenses: Math.floor((totalPopulation + totalJobs) * 0.3),
-      happiness: 65 + Math.floor(Math.random() * 20),
-      health: 60 + Math.floor(Math.random() * 25),
-      education: 55 + Math.floor(Math.random() * 30),
-      safety: 60 + Math.floor(Math.random() * 25),
+      happiness: 65 + Math.floor(rng() * 20),
+      health: 60 + Math.floor(rng() * 25),
+      education: 55 + Math.floor(rng() * 30),
+      safety: 60 + Math.floor(rng() * 25),
       environment: calculateEnvironmentScore(treeCount, parkCount, totalPollution, totalTiles),
       demand: {
-        residential: 20 + Math.floor(Math.random() * 40),
-        commercial: 15 + Math.floor(Math.random() * 35),
-        industrial: 10 + Math.floor(Math.random() * 30),
+        residential: 20 + Math.floor(rng() * 40),
+        commercial: 15 + Math.floor(rng() * 35),
+        industrial: 10 + Math.floor(rng() * 30),
       },
     },
     services,

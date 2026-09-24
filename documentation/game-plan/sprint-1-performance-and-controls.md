@@ -63,7 +63,7 @@ Read these once. The tasks refer to them by name.
 
 Do them **in this order**. Tick each box when it is done (see Definition of Done in README).
 
-- [ ] S1-T1: Unit test setup and seeded random numbers
+- [x] S1-T1: Unit test setup and seeded random numbers
 - [ ] S1-T2: Performance HUD and benchmark city
 - [ ] S1-T3: Record the baseline
 - [ ] S1-T4: A proper game loop (fixed timestep, pause when hidden)
