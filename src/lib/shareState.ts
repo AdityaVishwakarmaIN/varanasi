@@ -24,7 +24,7 @@ const BUILDING_TYPES: BuildingType[] = [
   'roller_coaster_small', 'community_garden', 'pond_park', 'park_gate',
   'mountain_lodge', 'mountain_trailhead',
   // Varanasi (append only: indices are part of the share format)
-  'ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works'
+  'ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'informal_housing'
 ];
 
 const BUILDING_MAP: Record<BuildingType, number> = BUILDING_TYPES.reduce((acc, type, idx) => {

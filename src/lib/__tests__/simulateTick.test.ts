@@ -18,6 +18,7 @@ import {
   bulldozeTile,
   generateRandomAdvancedCity,
   placeBuilding,
+  setInformalSettlementsEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -29,10 +30,10 @@ import type { GameState, Tile } from '@/types/game';
 /**
  * Fields added AFTER the goldens were recorded (new features, not behaviour changes). They are left out of the
  * fingerprint so the goldens keep proving that pre-existing behaviour is unchanged.
- * - `mapId` (S2-T2), `taxIncome` (S2-T9)
+ * - `mapId` (S2-T2), `taxIncome` (S2-T9), `informal` (S3-T9: bulldoze records)
  * - `stats.power` / `stats.water` (S3-T7/T8). Only under `stats`: `services.power` / `services.water` are old.
  */
-const FIELDS_ADDED_AFTER_GOLDENS = new Set(['mapId', 'taxIncome']);
+const FIELDS_ADDED_AFTER_GOLDENS = new Set(['mapId', 'taxIncome', 'informal']);
 const STATS_FIELDS_ADDED_AFTER_GOLDENS = new Set(['power', 'water']);
 
 /** Canonical JSON: sorted keys, `undefined` dropped, random ids removed. */
@@ -220,14 +221,17 @@ function runScenario(scenario: Scenario, seed: number): { final: GameState; perT
   }
 }
 
-// The goldens predate power/water capacity (S3-T7/T8); cuts are tested in utilityCuts.test.ts.
+// The goldens predate power/water capacity (S3-T7/T8) and informal settlements (S3-T9);
+// those are tested in utilityCuts.test.ts and informalSim.test.ts.
 beforeEach(() => {
   setUtilityCapacityEnabled(false);
+  setInformalSettlementsEnabled(false);
 });
 
 afterEach(() => {
   setServiceCoverageCacheEnabled(true);
   setUtilityCapacityEnabled(true);
+  setInformalSettlementsEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

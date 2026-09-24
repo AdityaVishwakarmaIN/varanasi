@@ -55,7 +55,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [ ] S3-T6: Mixed-use commercial
 - [x] S3-T7: Power capacity and rolling power cuts
 - [x] S3-T8: Water capacity, the Jal Sansthan water works and shortages
-- [ ] S3-T9: Informal settlements
+- [x] S3-T9: Informal settlements
 - [ ] S3-T10: Pilgrim crowds at the ghats
 - [ ] S3-T11: Balance pass and sign-off
 
@@ -310,6 +310,22 @@ If ratio < 1:
 
 **Acceptance criteria:** settlements appear when housing is short and near jobs. Zoning plus services formalises them. Tile info explains how to formalise.
 There are unit tests for the spawn conditions.
+
+**Done (notes):**
+- Pure rules stay in `src/lib/informal.ts`. `src/lib/informalSim.ts` applies them to the grid: candidate gathering with
+  prefix-sum box queries (jobs within 6, road within 2), daily formalisation, weekly spawns, bulldoze bookkeeping.
+  State lives in `GameState.informal` (bulldoze days for the 30-day cooldown, formalisation day counts, penalty/bonus end days).
+- Crime is not simulated per tile, so "+50% crime on the tile" is applied to city safety, weighted by the share of people
+  living in settlements. The health penalty is weighted the same way by the share with no water coverage.
+- Settlements pay no tax, can catch fire (×2 chance), do not evolve while zoned, and keep their building when dezoned.
+  Zoning over one is allowed only as residential (the formalise path).
+- Bulldozing one: −3 happiness for 60 days and a "Families displaced" notification. Formalising: +1 for 60 days and
+  "Families in <mohalla> now have proper homes." (mohalla name on Varanasi). Notifications are stored in
+  `state.notifications`; the S4 notifications task shows them.
+- Tile info shows "Informal Settlement", the formalise hint and the day count. Minimap colour is ochre.
+- Golden fingerprints run with settlements switched off (`setInformalSettlementsEnabled`). A 60-map probe city with full
+  demand gets 3 settlements per week, as specified.
+- Tests: `informal.test.ts` (rules), `informalSim.test.ts` (spawn conditions, cooldown, formalisation, bulldoze, no tax).
 
 ---
 

@@ -17,6 +17,7 @@ import {
 } from '@/lib/simulation';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
+import { INFORMAL_CONFIG } from '@/lib/informal';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -85,6 +86,10 @@ export function TileInfoPanel({
     return info ? describeGangaTileEffect(info, formatPopulation) : null;
   }, [state.grid, state.gridSize, state.mapId, x, y]);
   
+  // S3-T9: how to turn a settlement into proper homes, and how far along it is
+  const isInformal = tile.building.type === 'informal_housing';
+  const formaliseDays = isInformal ? state.informal?.formaliseDays[String(y * state.gridSize + x)] ?? 0 : 0;
+  
   const handleUpgrade = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -115,7 +120,9 @@ export function TileInfoPanel({
       <CardContent className="space-y-3 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">Building</span>
-          <span className="capitalize">{tile.building.type.replace(/_/g, ' ')}</span>
+          <span className="capitalize">
+            {isInformal ? 'Informal settlement' : tile.building.type.replace(/_/g, ' ')}
+          </span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Zone</span>
@@ -180,6 +187,17 @@ export function TileInfoPanel({
                   {line.text}
                 </span>
               ))}
+            </span>
+          </div>
+        )}
+        
+        {isInformal && (
+          <div className="flex flex-col gap-1 rounded-md bg-amber-500/10 p-2 text-xs">
+            <span className="text-amber-300">{INFORMAL_CONFIG.tileInfoHint}</span>
+            <span className="text-muted-foreground">
+              {formaliseDays > 0
+                ? `Proper homes in ${INFORMAL_CONFIG.formaliseDays - formaliseDays} days (${formaliseDays}/${INFORMAL_CONFIG.formaliseDays})`
+                : 'Pays no tax until it becomes proper homes.'}
             </span>
           </div>
         )}

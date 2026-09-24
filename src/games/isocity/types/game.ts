@@ -184,6 +184,20 @@ export interface GameState {
   cities: City[];
   /** Which map this city was started on. Missing (old saves) means 'random'. */
   mapId?: MapId;
+  /** Informal settlement bookkeeping (S3-T9). Missing means nothing has happened yet. */
+  informal?: InformalState;
+}
+
+/** Saved per city. Keys are tile indices (y * gridSize + x) as strings, so the object survives JSON. */
+export interface InformalState {
+  /** Absolute day each tile was last bulldozed (entries older than the spawn cooldown are dropped). */
+  bulldozedDay: Record<string, number>;
+  /** Days in a row each settlement has met the formalisation conditions. */
+  formaliseDays: Record<string, number>;
+  /** The displacement happiness penalty applies until this absolute day. */
+  displacedUntilDay?: number;
+  /** The formalisation happiness bonus applies until this absolute day. */
+  formalisedUntilDay?: number;
 }
 
 export interface SavedCityMeta {

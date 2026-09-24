@@ -30,7 +30,9 @@ export type BuildingType =
   // Varanasi: riverfront (Sprint 2). Always append new types at the END (see documentation/game-plan/README.md rule 5).
   | 'ghat' | 'sewage_treatment_plant'
   // Varanasi utilities (Sprint 3)
-  | 'jal_sansthan_water_works';
+  | 'jal_sansthan_water_works'
+  // Informal settlements (S3-T9): spawn by themselves, never placed by the player
+  | 'informal_housing';
 
 export type BridgeType = 'small' | 'medium' | 'large' | 'suspension';
 export type BridgeOrientation = 'ns' | 'ew';
@@ -134,4 +136,5 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   ghat: { maxPop: 0, maxJobs: 4, pollution: 0, landValue: 10 },
   sewage_treatment_plant: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: -5 },
   jal_sansthan_water_works: { maxPop: 0, maxJobs: 30, pollution: 0, landValue: -5 },
+  informal_housing: { maxPop: 14, maxJobs: 0, pollution: 0, landValue: -8 },
 };

@@ -108,6 +108,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
           else if (buildingType === 'road') color = '#6b7280';
           else if (buildingType === 'tree') color = '#166534';
           else if (tile.building.onFire) color = '#ef4444';
+          else if (buildingType === 'informal_housing') color = '#a16207';
           else if (tile.zone === 'residential' && buildingType !== 'grass') color = '#22c55e';
           else if (tile.zone === 'residential') color = '#14532d';
           else if (tile.zone === 'commercial' && buildingType !== 'grass') color = '#38bdf8';

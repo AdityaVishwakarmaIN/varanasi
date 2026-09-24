@@ -58,6 +58,8 @@ import {
 } from '@/lib/utilities';
 import { getFeederIndex } from '@/lib/feederZones';
 import { applyFeederCuts } from '@/lib/utilityCuts';
+import { INFORMAL_CONFIG } from '@/lib/informal';
+import { getAbsoluteDay, getInformalHappinessModifier, recordBulldoze, runInformalDay } from '@/lib/informalSim';
 import type { UtilitySupplyStats } from '@/games/isocity/types/economy';
 import type { CloudWeatherMode } from '@/components/game/types';
 
@@ -2104,6 +2106,10 @@ interface GridTotals {
   abandonedResidential: number;
   abandonedCommercial: number;
   abandonedIndustrial: number;
+  /** Informal settlements (S3-T9): origin indices (y * size + x), their residents, and residents without water. */
+  informalSettlements: number[];
+  informalPopulation: number;
+  informalDryPopulation: number;
   /** Origin tiles of ghats and Sewage Treatment Plants (Varanasi riverfront, S2). */
   ghats: { x: number; y: number }[];
   stps: { x: number; y: number }[];
@@ -2182,6 +2188,9 @@ function scanGridTotals(
   let abandonedResidential = 0;
   let abandonedCommercial = 0;
   let abandonedIndustrial = 0;
+  const informalSettlements: number[] = [];
+  let informalPopulation = 0;
+  let informalDryPopulation = 0;
   let lastCleanupType: BuildingType | null = null;
   let lastIsReducer = false;
   const ghats: { x: number; y: number }[] = [];
@@ -2288,6 +2297,11 @@ function scanGridTotals(
         if (!inPowerCoverage) unpoweredBuildings++;
         if (!inWaterCoverage) unwateredBuildings++;
       }
+      if (type === 'informal_housing') {
+        informalSettlements.push(y * size + x);
+        informalPopulation += building.population;
+        if (!inWaterCoverage) informalDryPopulation += building.population;
+      }
       if (building.abandoned) {
         abandonedBuildings++;
         if (zone === 'residential') abandonedResidential++;
@@ -2303,6 +2317,7 @@ function scanGridTotals(
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, waterWorksCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings,
     abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, utility,
+    informalSettlements, informalPopulation, informalDryPopulation,
   };
 }
 
@@ -2410,7 +2425,8 @@ function calculateStats(
   // Commercial tiles earn half while their power is cut (S3-T7)
   const utility = totals.utility;
   const cutJobLoss = utility ? utility.powerCutCommercialJobs * (1 - POWER_CONFIG.cutCommercialIncomeFactor) : 0;
-  const taxIncome = calculateTaxIncome(population, jobs - cutJobLoss, taxRate);
+  // Informal settlements pay no tax (S3-T9)
+  const taxIncome = calculateTaxIncome(population - totals.informalPopulation, jobs - cutJobLoss, taxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
   let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
@@ -2453,8 +2469,15 @@ function calculateStats(
     ganga: gangaRatingsInput,
   });
 
-  const { safety, education, environment } = ratings;
-  let { health, happiness } = ratings;
+  const { education, environment } = ratings;
+  let { safety, health, happiness } = ratings;
+
+  // Informal settlements (S3-T9): crime × 1.5 and, without water, health −10 for the people living there
+  if (population > 0 && totals.informalPopulation > 0) {
+    const share = totals.informalPopulation / population;
+    safety = Math.max(0, 100 - (100 - safety) * (1 + (INFORMAL_CONFIG.crimeMultiplier - 1) * share));
+    health = Math.max(0, health - INFORMAL_CONFIG.noWaterHealthPenalty * (totals.informalDryPopulation / population));
+  }
 
   // Power and water capacity (S3-T7/T8): supply, demand and the cost of rotating cuts
   let utilityStats: Pick<Stats, 'power' | 'water'> = {};
@@ -2851,6 +2874,13 @@ export function setUtilityCapacityEnabled(enabled: boolean): void {
   utilityCapacityEnabled = enabled;
 }
 
+let informalSettlementsEnabled = true;
+
+/** Turn informal settlements (S3-T9) on or off. Tests use this for the pre-S3 golden fingerprints. */
+export function setInformalSettlementsEnabled(enabled: boolean): void {
+  informalSettlementsEnabled = enabled;
+}
+
 /** Feeder blocks cut this hour for a utility, from the previous tick's supply stats. */
 function getUtilityCut(stats: UtilitySupplyStats | undefined, rotationHour: number): ReadonlySet<number> {
   if (!stats || !(stats.ratio < 1) || stats.feeders.length === 0) return NO_CUT;
@@ -2937,7 +2967,8 @@ export function simulateTick(
           !originalBuilding.onFire &&
           originalBuilding.type !== 'grass' && 
           originalBuilding.type !== 'tree' &&
-          originalBuilding.type !== 'empty';
+          originalBuilding.type !== 'empty' &&
+          originalBuilding.type !== 'informal_housing'; // settlements can catch fire (S3-T9)
       if (isCompletedServiceBuilding && !needsPowerWaterUpdate && originalTile.pollution < 0.01) {
         continue;
       }
@@ -3069,8 +3100,8 @@ export function simulateTick(
             applyBuildingFootprint(newGrid, x, y, candidate, tile.zone, 1, services, writableTile);
           }
         }
-      } else if (tile.zone !== 'none' && tile.building.type !== 'grass') {
-        // Evolve existing building - this may modify multiple tiles for multi-tile buildings
+      } else if (tile.zone !== 'none' && tile.building.type !== 'grass' && tile.building.type !== 'informal_housing') {
+        // Evolve existing building (a zoned informal settlement waits for formalisation instead, S3-T9) - this may modify multiple tiles for multi-tile buildings
         // The evolveBuilding function handles its own row modifications internally
         const beforeBuilding = tile.building;
         const beforeType = beforeBuilding.type;
@@ -3133,7 +3164,8 @@ export function simulateTick(
       if (
         state.disastersEnabled &&
         !tile.building.onFire &&
-        Math.random() < getRandomFireIgnitionChance(tile.building.type, cloudWeatherMode)
+        Math.random() < getRandomFireIgnitionChance(tile.building.type, cloudWeatherMode) *
+          (tile.building.type === 'informal_housing' ? INFORMAL_CONFIG.fireChanceMultiplier : 1)
       ) {
         didStructureChange = true;
         igniteBuilding(tile.building);
@@ -3259,6 +3291,8 @@ export function simulateTick(
   const cycleLength = 450; // ticks per visual day (15 game days)
   const newHour = Math.floor((totalTicks % cycleLength) / cycleLength * 24);
 
+  let newInformal = state.informal;
+  const informalNotifications: GameState['notifications'] = [];
   if (newTick >= 30) {
     newTick = 0;
     newDay++;
@@ -3271,6 +3305,33 @@ export function simulateTick(
     if (newDay % 7 === 0) {
       newStats.money += Math.floor((newStats.income - newStats.expenses) / 4);
     }
+    // Informal settlements (S3-T9): daily formalisation, weekly spawns when housing is short
+    if (informalSettlementsEnabled) {
+      const today = getAbsoluteDay({ year: state.year, month: state.month, day: newDay });
+      const result = runInformalDay({
+        grid: newGrid,
+        size,
+        mapId: state.mapId,
+        informal: state.informal,
+        today,
+        weekly: newDay % 7 === 0,
+        residentialDemand: newStats.demand.residential,
+        population: newStats.population,
+        settlements: gridTotals.informalSettlements,
+        hasRoadAccess: (tx, ty) => hasRoadAccess(newGrid, tx, ty, size),
+        writable: writableTile,
+      });
+      newInformal = result.informal;
+      if (result.changed > 0) didStructureChange = true;
+      for (const n of result.notifications) {
+        informalNotifications.push({ ...n, id: `informal-${today}-${informalNotifications.length}`, timestamp: Date.now() });
+      }
+    }
+  }
+  // Displacement penalty / formalisation bonus (S3-T9)
+  if (informalSettlementsEnabled && newInformal) {
+    const modifier = getInformalHappinessModifier(newInformal, getAbsoluteDay({ year: state.year, month: state.month, day: newDay }));
+    if (modifier !== 0) newStats.happiness = Math.max(0, Math.min(100, newStats.happiness + modifier));
   }
 
   if (newDay > 30) {
@@ -3286,8 +3347,8 @@ export function simulateTick(
   // Generate advisor messages
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
-  // Keep existing notifications
-  const newNotifications = [...state.notifications];
+  // Keep existing notifications (newest first)
+  const newNotifications = [...informalNotifications, ...state.notifications];
 
   // Keep only recent notifications
   while (newNotifications.length > 10) {
@@ -3332,6 +3393,7 @@ export function simulateTick(
     advisorMessages,
     notifications: newNotifications,
     history,
+    ...(newInformal ? { informal: newInformal } : {}),
   };
 }
 
@@ -3669,10 +3731,14 @@ export function placeBuilding(
         if (tile.zone === 'none') {
           return state;
         }
-        // De-zoning resets to grass
         newGrid[y][x].zone = 'none';
-        newGrid[y][x].building = createBuilding('grass');
+        // De-zoning resets to grass, except a settlement: its families stay (only the bulldozer removes them)
+        if (tile.building.type !== 'informal_housing') newGrid[y][x].building = createBuilding('grass');
       }
+    } else if (tile.building.type === 'informal_housing') {
+      // Zoning a settlement residential starts formalisation (S3-T9); other zones don't apply to it
+      if (zone !== 'residential' || tile.zone === 'residential') return state;
+      newGrid[y][x].zone = zone;
     } else {
       // Can't zone over existing buildings (only allow zoning on grass, tree, or road)
       // NOTE: 'empty' tiles are part of multi-tile buildings, so we can't zone them either
@@ -3917,6 +3983,15 @@ function findAdjacentBridgeTiles(
 
 // Bulldoze a tile (or entire multi-tile building if applicable)
 export function bulldozeTile(state: GameState, x: number, y: number): GameState {
+  const result = bulldozeTileStructure(state, x, y);
+  if (result === state) return state;
+  const type = state.grid[y][x].building.type;
+  if (type === 'grass' || type === 'tree') return result;
+  // Remember the bulldoze for the settlement spawn cooldown; bulldozing a settlement displaces families (S3-T9)
+  return { ...result, ...recordBulldoze(state, x, y, type === 'informal_housing') };
+}
+
+function bulldozeTileStructure(state: GameState, x: number, y: number): GameState {
   const tile = state.grid[y]?.[x];
   if (!tile) return state;
   if (tile.building.type === 'water') return state;
