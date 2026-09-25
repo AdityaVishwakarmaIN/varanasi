@@ -45,6 +45,7 @@ import { MiniMap } from '@/components/game/MiniMap';
 import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
+import { FailureOverlays } from '@/components/game/FailureOverlays';
 import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
@@ -366,6 +367,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onLocate={locateNotification}
               className="absolute top-[80px] left-3 right-3 z-30"
             />
+            <FailureOverlays bannerClassName="absolute bottom-[84px] left-3 right-3 z-30" />
             
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
@@ -468,6 +470,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onLocate={locateNotification}
               className="absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]"
             />
+            <FailureOverlays bannerClassName="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}

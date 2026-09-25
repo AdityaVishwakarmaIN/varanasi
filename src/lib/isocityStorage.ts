@@ -22,6 +22,8 @@ import {
 
 export const ISOCITY_STORAGE_KEY = 'isocity-game-state';
 export const ISOCITY_SAVED_CITY_STORAGE_KEY = 'isocity-saved-city';
+/** Extra autosave copy written once per in-game month, for "Load last autosave" after game over (S4-T11). */
+export const ISOCITY_LAST_MONTH_STORAGE_KEY = 'isocity-game-state-last-month';
 export const ISOCITY_SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index';
 export const ISOCITY_SAVED_CITY_PREFIX = 'isocity-city-';
 export const ISOCITY_SPRITE_PACK_STORAGE_KEY = 'isocity-sprite-pack';
@@ -212,6 +214,15 @@ export function readIsoCityAutosaveRaw(): Promise<string | null> {
 /** Write the compressed autosave (safe write: temp key, then atomic swap). Rejects on failure. */
 export function writeIsoCityAutosaveRaw(compressed: string): Promise<void> {
   return writeSaveKey(ISOCITY_STORAGE_KEY, compressed);
+}
+
+/** The compressed once-a-month autosave copy (S4-T11), or null. */
+export function readIsoCityLastMonthRaw(): Promise<string | null> {
+  return readSaveKey(ISOCITY_LAST_MONTH_STORAGE_KEY);
+}
+
+export function writeIsoCityLastMonthRaw(compressed: string): Promise<void> {
+  return writeSaveKey(ISOCITY_LAST_MONTH_STORAGE_KEY, compressed);
 }
 
 export function clearIsoCityAutosave(): Promise<void> {

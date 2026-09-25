@@ -6,6 +6,7 @@ import type { SimWeather } from '@/lib/seasons';
 import type { MonsoonStrength } from '@/lib/floods';
 import type { HeatwaveState } from '@/lib/heatwave';
 import type { OutbreakState } from '@/lib/disease';
+import type { FailingStat, FailureState, GameOverReason } from '@/lib/failure';
 import type { OverlayMode } from '@/components/game/types';
 
 import { msg } from 'gt-next';
@@ -180,6 +181,20 @@ export interface AdvisorMessage {
   priority: 'low' | 'medium' | 'high' | 'critical';
 }
 
+/** What the game-over screen shows (S4-T11). */
+export interface GameOverInfo {
+  reason: GameOverReason;
+  year: number;
+  month: number;
+  /** Whole in-game years since the city was founded. */
+  yearsSurvived: number;
+  /** All-time peak of the displayed population. */
+  peakPopulation: number;
+  peakGangaHealth?: number;
+  /** The stat most to blame; its line is FAILING_STAT_LINES[failingStat]. */
+  failingStat: FailingStat;
+}
+
 export interface GameState {
   id: string;
   grid: Tile[][];
@@ -212,6 +227,10 @@ export interface GameState {
   mapId?: MapId;
   /** Informal settlement bookkeeping (S3-T9). Missing means nothing has happened yet. */
   informal?: InformalState;
+  /** Debt, emergency loan, bankruptcy and exodus bookkeeping, incl. peak population / Ganga Health (S4-T11). Missing means a fresh state. */
+  failure?: FailureState;
+  /** Set when the city has failed (S4-T11); the simulation stops and the game-over screen shows. */
+  gameOver?: GameOverInfo;
   /** Pause the game when a crisis notification arrives (S4-T4). Missing means on. */
   pauseOnCrisis?: boolean;
   /** Upcoming events on the calendar strip (S4-T4). */

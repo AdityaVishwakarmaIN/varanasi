@@ -51,10 +51,12 @@ import {
   flushPendingSaves,
   loadIsoCitySavedCities,
   readIsoCityAutosaveRaw,
+  readIsoCityLastMonthRaw,
   readIsoCitySavedCityRaw,
   trackPendingSave,
   updateIsoCitySavedCities,
   writeIsoCityAutosaveRaw,
+  writeIsoCityLastMonthRaw,
   writeIsoCitySavedCityRaw,
 } from '@/lib/isocityStorage';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
@@ -67,6 +69,7 @@ import {
 } from '@/games/isocity/gridBuffer';
 import { isMobile } from 'react-device-detect';
 import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
+import { acceptEmergencyLoan as acceptLoan, declineEmergencyLoan as declineLoan } from '@/lib/failure';
 import {
   addForecast as addForecastToState,
   pushNotifications,
@@ -128,6 +131,11 @@ type GameContextValue = {
   /** Puts a forecast on the calendar strip and sends a warning notification (S4-T4). */
   addForecast: (title: string, description: string, daysAhead: number, icon?: string, extras?: Partial<Omit<ForecastInput, 'title' | 'description' | 'daysAhead' | 'icon'>>) => void;
   setPauseOnCrisis: (enabled: boolean) => void;
+  /** Emergency loan dialog buttons (S4-T11). */
+  acceptEmergencyLoan: () => void;
+  declineEmergencyLoan: () => void;
+  /** Loads the extra autosave copy from about a month before game over (S4-T11). Resolves false if there is none. */
+  loadLastAutosave: () => Promise<boolean>;
   // Sprite pack management
   currentSpritePack: SpritePack;
   availableSpritePacks: SpritePack[];
@@ -896,10 +904,17 @@ export function GameProvider({
 
       // PERF: Run simulation and update ref immediately (for canvas)
       const prevSpeed = latestStateRef.current.speed;
+      const prevMonth = latestStateRef.current.month;
       const newState = simulateTick(latestStateRef.current);
       recordTick(performance.now() - now);
       latestStateRef.current = newState;
       stateChangedRef.current = true;
+      // Extra autosave copy once per in-game month, never of a finished city (S4-T11)
+      if (newState.month !== prevMonth && !newState.gameOver && !isBenchmarkState(newState)) {
+        trackPendingSave(
+          serializeAndCompressInSlicesAsync(optimizeStateForSave(newState), { onSlice: recordSave }).then(writeIsoCityLastMonthRaw)
+        ).catch((e) => console.error('Failed to save the monthly autosave copy:', e));
+      }
 
       // PERF: Only sync to React every 500ms to avoid expensive reconciliation
       // Canvas reads from latestStateRef so it sees updates immediately
@@ -933,7 +948,7 @@ export function GameProvider({
   }, []);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
-    setState((prev) => ({ ...prev, speed }));
+    setState((prev) => (prev.gameOver ? prev : { ...prev, speed }));
   }, []);
 
   const setTaxRate = useCallback((rate: number) => {
@@ -1192,6 +1207,18 @@ export function GameProvider({
     setState((prev) => ({ ...prev, pauseOnCrisis: enabled }));
   }, []);
 
+  const acceptEmergencyLoan = useCallback(() => {
+    setState((prev) => {
+      if (prev.failure?.loanStatus !== 'offered') return prev;
+      const { next, amount } = acceptLoan(prev.failure);
+      return { ...prev, failure: next, stats: { ...prev.stats, money: prev.stats.money + amount } };
+    });
+  }, []);
+
+  const declineEmergencyLoan = useCallback(() => {
+    setState((prev) => (prev.failure?.loanStatus === 'offered' ? { ...prev, failure: declineLoan(prev.failure) } : prev));
+  }, []);
+
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
     placeCallbackRef.current = callback;
@@ -1242,6 +1269,20 @@ export function GameProvider({
   const newGame = useCallback((options?: NewGameOptions) => {
     clearGameState(); // Clear saved state when starting fresh
     replaceCity(createNewGameState(options, isMobile), latestStateRef.current);
+  }, [replaceCity]);
+
+  const loadLastAutosave = useCallback(async (): Promise<boolean> => {
+    try {
+      await flushPendingSaves();
+      const raw = await readIsoCityLastMonthRaw();
+      const parsed = raw ? await decompressAndParseAsync<GameState>(raw) : null;
+      if (!parsed?.grid || parsed.id !== latestStateRef.current.id || parsed.gameOver) return false;
+      replaceCity({ ...normalizeGameStateVersions(parsed), speed: 0 }, latestStateRef.current);
+      return true;
+    } catch (e) {
+      console.error('Failed to load the last autosave:', e);
+      return false;
+    }
   }, [replaceCity]);
 
   const loadState = useCallback((stateString: string): boolean => {
@@ -1783,6 +1824,9 @@ export function GameProvider({
     addNotification,
     addForecast,
     setPauseOnCrisis,
+    acceptEmergencyLoan,
+    declineEmergencyLoan,
+    loadLastAutosave,
     // Sprite pack management
     currentSpritePack,
     availableSpritePacks: SPRITE_PACKS,

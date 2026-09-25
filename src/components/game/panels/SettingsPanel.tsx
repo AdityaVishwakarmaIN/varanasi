@@ -25,7 +25,7 @@ import type { MapId } from '@/games/isocity/maps/varanasi';
 const UI_LABELS = {
   settings: msg('Settings'),
   gameSettings: msg('Game Settings'),
-  disasters: msg('Disasters'),
+  disasters: msg('Crises'),
   disastersDesc: msg('Enable random fires and disasters'),
   pauseOnCrisis: msg('Pause when a crisis starts'),
   pauseOnCrisisDesc: msg('Stop the clock on floods, outbreaks and collapses so you can respond'),
