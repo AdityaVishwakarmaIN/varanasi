@@ -37,7 +37,7 @@ import type { Rng } from '@/lib/rng';
 // Palette
 // ============================================================================
 
-const C = {
+export const C = {
   sand: '#d9b582',
   sandLight: '#e8cc9a',
   sandDeep: '#b98d5a',
@@ -83,7 +83,7 @@ const C = {
   black: '#2a2a2e',
 } as const;
 
-const OUTLINE = 'rgba(52,34,20,0.55)';
+export const OUTLINE = 'rgba(52,34,20,0.55)';
 
 // ============================================================================
 // Layout constants
@@ -96,18 +96,18 @@ export const BOTTOM_PAD_TILES = 0.04;
 /** Tile height / tile width, same as the game's HEIGHT_RATIO. */
 export const PROCEDURAL_ISO_RATIO = 0.6;
 /** Tiny overlap (tile units) so neighbouring tileable sprites never show an anti-aliasing seam. */
-const BLEED = 0.006;
+export const BLEED = 0.006;
 
 // ============================================================================
 // Shared helpers
 // ============================================================================
 
-function makeIso(ctx: Ctx2D, w: number, h: number, n: number): Iso {
+export function makeIso(ctx: Ctx2D, w: number, h: number, n: number): Iso {
   return new Iso(ctx, w, h, n, BOTTOM_PAD_TILES);
 }
 
 /** A ground slab (like the painted sprites' base): top + visible edges, inset from the footprint. */
-function slab(iso: Iso, rng: Rng, inset: number, h: number, top: string, side: string, grain: readonly string[] = []): void {
+export function slab(iso: Iso, rng: Rng, inset: number, h: number, top: string, side: string, grain: readonly string[] = []): void {
   const n = iso.n;
   const m = mat(side, { right: -0.28 });
   iso.box(inset, inset, n - inset, n - inset, 0, h, { ...m, top }, { edges: false });
@@ -121,7 +121,7 @@ function slab(iso: Iso, rng: Rng, inset: number, h: number, top: string, side: s
 }
 
 /** Lawn with mowing stripes and grain. */
-function lawn(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, base: string = C.lawn): void {
+export function lawn(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, base: string = C.lawn): void {
   const pts = iso.topQuad(u0, v0, u1, v1, z);
   iso.poly(pts, base);
   iso.clipped(pts, () => {
@@ -132,7 +132,7 @@ function lawn(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number
 }
 
 /** Paving joints on a horizontal rectangle. */
-function paving(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, du: number, dv: number, color: string): void {
+export function paving(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, du: number, dv: number, color: string): void {
   iso.clipped(iso.topQuad(u0, v0, u1, v1, z), () => {
     for (let u = u0 + du; u < u1 - 1e-6; u += du) iso.line([u, v0, z], [u, v1, z], color, 0.9);
     let row = 0;
@@ -144,7 +144,7 @@ function paving(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: numb
 }
 
 /** Horizontal stone/brick courses with staggered joints on a +u face. */
-function coursesU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: number, z1: number, dz: number, dv: number, color: string, lw = 0.8): void {
+export function coursesU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: number, z1: number, dz: number, dv: number, color: string, lw = 0.8): void {
   iso.clipped(iso.faceUQuad(u, v0, v1, z0, z1), () => {
     let row = 0;
     for (let z = z0 + dz; z < z1 + 1e-6; z += dz, row++) {
@@ -156,7 +156,7 @@ function coursesU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: num
 }
 
 /** Horizontal stone/brick courses with staggered joints on a +v face. */
-function coursesV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: number, z1: number, dz: number, du: number, color: string, lw = 0.8): void {
+export function coursesV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: number, z1: number, dz: number, du: number, color: string, lw = 0.8): void {
   iso.clipped(iso.faceVQuad(v, u0, u1, z0, z1), () => {
     let row = 0;
     for (let z = z0 + dz; z < z1 + 1e-6; z += dz, row++) {
@@ -168,20 +168,20 @@ function coursesV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: num
 }
 
 /** Rectangular window (dark glass/shutter) on a +u face, with a light sill. */
-function windowU(iso: Iso, u: number, v0: number, v1: number, z0: number, z1: number, glass = '#3b3a44', frame?: string): void {
+export function windowU(iso: Iso, u: number, v0: number, v1: number, z0: number, z1: number, glass = '#3b3a44', frame?: string): void {
   if (frame) iso.poly(iso.faceUQuad(u, v0 - 0.008, v1 + 0.008, z0 - 0.008, z1 + 0.01), frame);
   iso.poly(iso.faceUQuad(u, v0, v1, z0, z1), glass);
   iso.line([u, v0, z0], [u, v1, z0], alpha('#fff4dc', 0.35), 1);
 }
 
-function windowV(iso: Iso, v: number, u0: number, u1: number, z0: number, z1: number, glass = '#3b3a44', frame?: string): void {
+export function windowV(iso: Iso, v: number, u0: number, u1: number, z0: number, z1: number, glass = '#3b3a44', frame?: string): void {
   if (frame) iso.poly(iso.faceVQuad(v, u0 - 0.008, u1 + 0.008, z0 - 0.008, z1 + 0.01), frame);
   iso.poly(iso.faceVQuad(v, u0, u1, z0, z1), glass);
   iso.line([u0, v, z0], [u1, v, z0], alpha('#fff4dc', 0.45), 1);
 }
 
 /** Vertical rain/monsoon streaks darkening a +u face from the top. */
-function weatherU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: number, z1: number, count: number, strength = 0.18): void {
+export function weatherU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: number, z1: number, count: number, strength = 0.18): void {
   iso.clipped(iso.faceUQuad(u, v0, v1, z0, z1), () => {
     for (let i = 0; i < count; i++) {
       const v = v0 + rng() * (v1 - v0);
@@ -192,7 +192,7 @@ function weatherU(iso: Iso, rng: Rng, u: number, v0: number, v1: number, z0: num
   });
 }
 
-function weatherV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: number, z1: number, count: number, strength = 0.14): void {
+export function weatherV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: number, z1: number, count: number, strength = 0.14): void {
   iso.clipped(iso.faceVQuad(v, u0, u1, z0, z1), () => {
     for (let i = 0; i < count; i++) {
       const u = u0 + rng() * (u1 - u0);
@@ -204,7 +204,7 @@ function weatherV(iso: Iso, rng: Rng, v: number, u0: number, u1: number, z0: num
 }
 
 /** Rising-damp / ground grime band at the foot of both visible faces of a box. */
-function grime(iso: Iso, u0: number, v0: number, u1: number, v1: number, z0: number, h: number, strength = 0.22): void {
+export function grime(iso: Iso, u0: number, v0: number, u1: number, v1: number, z0: number, h: number, strength = 0.22): void {
   const { ctx } = iso;
   const [x0, yTop] = iso.pt(u1, v1, z0 + h);
   const [, yBot] = iso.pt(u1, v1, z0);
@@ -216,7 +216,7 @@ function grime(iso: Iso, u0: number, v0: number, u1: number, v1: number, z0: num
 }
 
 /** A small dome (lathe) with finial. r = radius at base. */
-function dome(iso: Iso, u: number, v: number, z: number, r: number, color: string, kind: 'onion' | 'round' | 'flat' = 'round', finial: string = C.brass): void {
+export function dome(iso: Iso, u: number, v: number, z: number, r: number, color: string, kind: 'onion' | 'round' | 'flat' = 'round', finial: string = C.brass): void {
   const prof: [number, number][] =
     kind === 'onion'
       ? [
@@ -256,7 +256,7 @@ function dome(iso: Iso, u: number, v: number, z: number, r: number, color: strin
  * Stone chhatri (domed pavilion on four pillars). (u, v) is the back corner of its square base,
  * `s` its side length (tile units), standing on height z.
  */
-function chhatri(iso: Iso, rng: Rng, u: number, v: number, z: number, s: number, stone: string, domeColor = stone, pillarH = s * 1.15): void {
+export function chhatri(iso: Iso, rng: Rng, u: number, v: number, z: number, s: number, stone: string, domeColor = stone, pillarH = s * 1.15): void {
   const m = mat(stone);
   const p = s * 0.14;
   // plinth
@@ -283,7 +283,7 @@ function chhatri(iso: Iso, rng: Rng, u: number, v: number, z: number, s: number,
 }
 
 /** Bamboo cane umbrella (the Dashashwamedh kind) over a wooden takht. */
-function caneUmbrella(iso: Iso, u: number, v: number, z: number, r: number, withTakht = true): void {
+export function caneUmbrella(iso: Iso, u: number, v: number, z: number, r: number, withTakht = true): void {
   if (withTakht) {
     iso.aoRect(u - r * 0.45, v - r * 0.35, u + r * 0.45, v + r * 0.35, z, 0.03, 0.4);
     iso.box(u - r * 0.45, v - r * 0.35, u + r * 0.45, v + r * 0.35, z, z + r * 0.22, mat(C.wood, { top: 0.1 }));
@@ -313,7 +313,7 @@ function caneUmbrella(iso: Iso, u: number, v: number, z: number, r: number, with
 }
 
 /** Bamboo pole with a triangular pennant flying to the screen-right. */
-function flag(iso: Iso, u: number, v: number, z: number, h: number, color: string): void {
+export function flag(iso: Iso, u: number, v: number, z: number, h: number, color: string): void {
   iso.line([u, v, z], [u, v, z + h], '#6b4a2a', 1.8);
   const zt = z + h;
   const L = h * 0.32;
@@ -337,7 +337,7 @@ function flag(iso: Iso, u: number, v: number, z: number, h: number, color: strin
 }
 
 /** Thick pipe along a world-space polyline (drawn as layered strokes). */
-function pipe(iso: Iso, pts: readonly P3[], color: string, width = 4): void {
+export function pipe(iso: Iso, pts: readonly P3[], color: string, width = 4): void {
   iso.polyline(pts, alpha(shade(color, -0.55), 0.8), width + 1.6);
   iso.polyline(pts, color, width);
   iso.polyline(
@@ -348,7 +348,7 @@ function pipe(iso: Iso, pts: readonly P3[], color: string, width = 4): void {
 }
 
 /** Water surface with gradient, ripples and sky glints, clipped to a polygon. */
-function waterSurface(iso: Iso, rng: Rng, pts: readonly P3[], base: string, deep: string): void {
+export function waterSurface(iso: Iso, rng: Rng, pts: readonly P3[], base: string, deep: string): void {
   const { ctx } = iso;
   const xs = pts.map((p) => iso.sx(p[0], p[1]));
   const ys = pts.map((p) => iso.sy(p[0], p[1], p[2]));
@@ -377,7 +377,7 @@ function waterSurface(iso: Iso, rng: Rng, pts: readonly P3[], base: string, deep
 // ============================================================================
 
 /** One stepped strip: horizontal tread from u0 to u1 at height z. */
-interface Tread {
+export interface Tread {
   u0: number;
   u1: number;
   z: number;
@@ -400,7 +400,7 @@ export const GHAT_PROFILE: readonly Tread[] = (() => {
  * Paint a run of ghat steps spanning v ∈ [v0, v1], with the profile shifted by `du` along u.
  * Treads run the full width (plus a hairline bleed), so neighbours join into one continuous bank.
  */
-function ghatSteps(iso: Iso, rng: Rng, v0: number, v1: number, du = 0, profile: readonly Tread[] = GHAT_PROFILE, endCap = true): void {
+export function ghatSteps(iso: Iso, rng: Rng, v0: number, v1: number, du = 0, profile: readonly Tread[] = GHAT_PROFILE, endCap = true): void {
   const vb0 = v0 - BLEED;
   const vb1 = v1 + BLEED;
   const riserMat = mat(C.riser);
@@ -481,7 +481,7 @@ function ghatSteps(iso: Iso, rng: Rng, v0: number, v1: number, du = 0, profile: 
 }
 
 /** The side wall of the steps (plane v = v1). Covered by the next ghat when tiles are in a row. */
-function ghatEndCap(iso: Iso, rng: Rng, v: number, du: number, profile: readonly Tread[]): void {
+export function ghatEndCap(iso: Iso, rng: Rng, v: number, du: number, profile: readonly Tread[]): void {
   const pts: P3[] = [];
   const vv = v + BLEED;
   const uEnd = profile[profile.length - 1].u1 + du;
@@ -515,7 +515,7 @@ function ghatEndCap(iso: Iso, rng: Rng, v: number, du: number, profile: readonly
 }
 
 /** Small clay/brass offerings scattered on a tread. */
-function offerings(iso: Iso, rng: Rng, u0: number, u1: number, v0: number, v1: number, z: number, count: number): void {
+export function offerings(iso: Iso, rng: Rng, u0: number, u1: number, v0: number, v1: number, z: number, count: number): void {
   for (let i = 0; i < count; i++) {
     const u = u0 + rng() * (u1 - u0);
     const v = v0 + rng() * (v1 - v0);
@@ -548,7 +548,7 @@ function offerings(iso: Iso, rng: Rng, u0: number, u1: number, v0: number, v1: n
   }
 }
 
-function drawGhat(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawGhat(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 1);
   const rng = seededRng('ghat', variant);
   ghatSteps(iso, rng, 0, 1);
@@ -595,7 +595,7 @@ function drawGhat(ctx: Ctx2D, w: number, h: number, variant: number): void {
 
 const EMBANK_H = 0.2;
 
-function drawEmbankment(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawEmbankment(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 1);
   const rng = seededRng('embankment', variant);
   const b = BLEED;
@@ -676,7 +676,7 @@ function drawEmbankment(ctx: Ctx2D, w: number, h: number, variant: number): void
 // ============================================================================
 
 /** Lean-to hut: walls up to a roof sloping down towards +u (the shaded side). */
-function hut(
+export function hut(
   iso: Iso,
   rng: Rng,
   u0: number,
@@ -768,7 +768,7 @@ function hut(
 }
 
 /** Blue/black plastic water drum. */
-function drum(iso: Iso, u: number, v: number, z: number, r: number, h: number, color: string): void {
+export function drum(iso: Iso, u: number, v: number, z: number, r: number, h: number, color: string): void {
   iso.aoEllipse(u, v, r, z, 0.02, 0.35);
   iso.lathe(u, v, z, [
     [0, r * 0.95],
@@ -780,7 +780,7 @@ function drum(iso: Iso, u: number, v: number, z: number, r: number, h: number, c
 }
 
 /** Clothes line between two poles with drying clothes. */
-function clothesLine(iso: Iso, rng: Rng, a: P3, b: P3, colors: readonly string[], baseZ = 0): void {
+export function clothesLine(iso: Iso, rng: Rng, a: P3, b: P3, colors: readonly string[], baseZ = 0): void {
   iso.line([a[0], a[1], baseZ], a, '#6b4a2a', 1.4);
   iso.line([b[0], b[1], baseZ], b, '#6b4a2a', 1.4);
   const sag = 0.015;
@@ -810,7 +810,7 @@ function clothesLine(iso: Iso, rng: Rng, a: P3, b: P3, colors: readonly string[]
   }
 }
 
-function charpai(iso: Iso, u: number, v: number, z: number): void {
+export function charpai(iso: Iso, u: number, v: number, z: number): void {
   const L = 0.16;
   const W = 0.08;
   const H = 0.035;
@@ -829,7 +829,7 @@ function charpai(iso: Iso, u: number, v: number, z: number): void {
   });
 }
 
-function drawInformalHousing(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawInformalHousing(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 1);
   const rng = seededRng('informal_housing', variant);
   const z0 = 0.02;
@@ -919,7 +919,7 @@ function drawInformalHousing(ctx: Ctx2D, w: number, h: number, variant: number):
 // SEWAGE TREATMENT PLANT (2×2)
 // ============================================================================
 
-function compoundWall(iso: Iso, rng: Rng, lo: number, hi: number, z: number, h: number, t: number, wall: Mat, cap: Mat | null, part: 'back' | 'front', gate?: { v0: number; v1: number }): void {
+export function compoundWall(iso: Iso, rng: Rng, lo: number, hi: number, z: number, h: number, t: number, wall: Mat, cap: Mat | null, part: 'back' | 'front', gate?: { v0: number; v1: number }): void {
   if (part === 'back') {
     iso.box(lo, lo, hi, lo + t, z, z + h, wall); // along u at the back-right
     iso.box(lo, lo, lo + t, hi, z, z + h, wall); // along v at the back-left
@@ -944,7 +944,7 @@ function compoundWall(iso: Iso, rng: Rng, lo: number, hi: number, z: number, h: 
   weatherV(iso, rng, hi, lo, hi, z, z + h, 18, 0.12);
 }
 
-function clarifier(iso: Iso, rng: Rng, u: number, v: number, r: number, z: number, water: string, deep: string): void {
+export function clarifier(iso: Iso, rng: Rng, u: number, v: number, r: number, z: number, water: string, deep: string): void {
   iso.aoEllipse(u, v, r, z, 0.06, 0.4);
   iso.cylinder(u, v, r, z, z + 0.08, C.concrete, shade(C.concrete, 0.15));
   // water surface inside the rim
@@ -990,7 +990,7 @@ function clarifier(iso: Iso, rng: Rng, u: number, v: number, r: number, z: numbe
   );
 }
 
-function drawSTP(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawSTP(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 2);
   const rng = seededRng('stp', variant);
   const z0 = 0.03;
@@ -1084,7 +1084,7 @@ function drawSTP(ctx: Ctx2D, w: number, h: number, variant: number): void {
 // ============================================================================
 
 /** The classic Indian Intze overhead tank: a ring of columns, bracing, conical bottom + drum. */
-function overheadTank(iso: Iso, u: number, v: number, z: number, H: number, R: number): void {
+export function overheadTank(iso: Iso, u: number, v: number, z: number, H: number, R: number): void {
   const cols = 8;
   const rc = R * 0.72;
   iso.aoEllipse(u, v, rc + 0.05, z, 0.1, 0.4);
@@ -1169,7 +1169,7 @@ function overheadTank(iso: Iso, u: number, v: number, z: number, H: number, R: n
   weatherTankStreaks(iso, u, v, zt + 0.09, R);
 }
 
-function weatherTankStreaks(iso: Iso, u: number, v: number, z: number, R: number): void {
+export function weatherTankStreaks(iso: Iso, u: number, v: number, z: number, R: number): void {
   const { ctx } = iso;
   for (let i = 0; i < 10; i++) {
     const a = Math.PI * (0.05 + i * 0.1);
@@ -1183,7 +1183,7 @@ function weatherTankStreaks(iso: Iso, u: number, v: number, z: number, R: number
 }
 
 /** Government building block: cream walls, maroon plinth band and cornice. */
-function govBlock(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, H: number, opts: { arches?: boolean; door?: 'v' | 'u' } = {}): void {
+export function govBlock(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, H: number, opts: { arches?: boolean; door?: 'v' | 'u' } = {}): void {
   iso.aoRect(u0, v0, u1, v1, z, 0.08, 0.45);
   iso.castShadow([
     [u0, v0],
@@ -1224,7 +1224,7 @@ function govBlock(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: nu
   grime(iso, u0, v0, u1, v1, z, 0.05, 0.2);
 }
 
-function filterBeds(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, n: number): void {
+export function filterBeds(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, n: number): void {
   const H = 0.08;
   iso.aoRect(u0, v0, u1, v1, z, 0.05, 0.4);
   iso.box(u0, v0, u1, v1, z, z + H, mat(C.concrete), { noTop: true });
@@ -1245,7 +1245,7 @@ function filterBeds(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: 
   for (let u = u0; u <= u1 + 1e-6; u += 0.08) iso.line([u, v1, z + H], [u, v1, z + H + 0.03], '#8a7a4a', 0.8);
 }
 
-function drawJalSansthan(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawJalSansthan(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 3);
   const rng = seededRng('jal_sansthan', variant);
   const z0 = 0.03;
@@ -1315,7 +1315,7 @@ function drawJalSansthan(ctx: Ctx2D, w: number, h: number, variant: number): voi
 // LANDMARK: DASHASHWAMEDH GHAT (2×2)
 // ============================================================================
 
-function drawDashashwamedh(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawDashashwamedh(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 2);
   const rng = seededRng('landmark_dashashwamedh', variant);
   // Back half (u ∈ [0, 1]): high terrace + a grand flight down to the standard ghat platform height.
@@ -1388,7 +1388,7 @@ function drawDashashwamedh(ctx: Ctx2D, w: number, h: number, variant: number): v
 // ============================================================================
 
 /** A curvilinear gilded shikhara with amalaka and kalasha. (u, v) centre, s half-width at base. */
-function shikhara(iso: Iso, u: number, v: number, z: number, s: number, H: number, base: string, banded = true, finialFlag = false): void {
+export function shikhara(iso: Iso, u: number, v: number, z: number, s: number, H: number, base: string, banded = true, finialFlag = false): void {
   const prof: [number, number][] = [
     [0, s],
     [H * 0.25, s * 0.97],
@@ -1436,7 +1436,7 @@ function shikhara(iso: Iso, u: number, v: number, z: number, s: number, H: numbe
   if (finialFlag) flag(iso, u, v, za + s * 0.5, H * 0.35, C.saffron);
 }
 
-function drawKashiVishwanath(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawKashiVishwanath(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 2);
   const rng = seededRng('landmark_kashi_vishwanath', variant);
   const pz = 0.06;
@@ -1521,7 +1521,7 @@ function drawKashiVishwanath(ctx: Ctx2D, w: number, h: number, variant: number):
 // ============================================================================
 
 /** An arcaded Indo-Saracenic wing: two storeys of pointed arches, cream bands, parapet + chhatris. */
-function saracenicWing(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, H: number, showV: boolean, showU: boolean): void {
+export function saracenicWing(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v1: number, z: number, H: number, showV: boolean, showU: boolean): void {
   const body = C.pinkSand;
   const trim = '#efdcb8';
   iso.aoRect(u0, v0, u1, v1, z, 0.12, 0.45);
@@ -1571,7 +1571,7 @@ function saracenicWing(iso: Iso, rng: Rng, u0: number, v0: number, u1: number, v
   if (showU) for (let v = v0; v < v1 - 0.02; v += 0.05) iso.box(u1 - 0.02, v, u1, v + 0.025, zt + 0.022, zt + 0.045, merlon, { edges: false });
 }
 
-function drawBHU(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawBHU(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 4);
   const rng = seededRng('landmark_bhu', variant);
   const z0 = 0.03;
@@ -1665,7 +1665,7 @@ function drawBHU(ctx: Ctx2D, w: number, h: number, variant: number): void {
 // LANDMARK: SARNATH, DHAMEK STUPA (3×3)
 // ============================================================================
 
-function brickRuin(iso: Iso, rng: Rng, u0: number, v0: number, cols: number, rows: number, cell: number, z: number): void {
+export function brickRuin(iso: Iso, rng: Rng, u0: number, v0: number, cols: number, rows: number, cell: number, z: number): void {
   const t = 0.028;
   const bm = mat('#a0624a', { top: 0.1 });
   const hgt = () => 0.02 + rng() * 0.05;
@@ -1690,7 +1690,7 @@ function brickRuin(iso: Iso, rng: Rng, u0: number, v0: number, cols: number, row
   }
 }
 
-function votiveStupa(iso: Iso, u: number, v: number, z: number, r: number): void {
+export function votiveStupa(iso: Iso, u: number, v: number, z: number, r: number): void {
   iso.aoEllipse(u, v, r * 1.2, z, 0.03, 0.3);
   iso.box(u - r * 1.1, v - r * 1.1, u + r * 1.1, v + r * 1.1, z, z + r * 0.5, mat('#a0624a'));
   iso.lathe(u, v, z + r * 0.5, [
@@ -1701,7 +1701,7 @@ function votiveStupa(iso: Iso, u: number, v: number, z: number, r: number): void
   ], () => '#b07a5a', { outline: true });
 }
 
-function drawSarnath(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawSarnath(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 3);
   const rng = seededRng('landmark_sarnath', variant);
   const z0 = 0.03;
@@ -1824,13 +1824,13 @@ function drawSarnath(ctx: Ctx2D, w: number, h: number, variant: number): void {
 // LANDMARK: RAMNAGAR FORT (3×3)
 // ============================================================================
 
-function merlons(iso: Iso, u0: number, v0: number, u1: number, v1: number, z: number, along: 'u' | 'v', m: Mat): void {
+export function merlons(iso: Iso, u0: number, v0: number, u1: number, v1: number, z: number, along: 'u' | 'v', m: Mat): void {
   const step = 0.055;
   if (along === 'u') for (let u = u0; u < u1 - 0.02; u += step) iso.box(u, v0, u + 0.03, v1, z, z + 0.035, m, { edges: false });
   else for (let v = v0; v < v1 - 0.02; v += step) iso.box(u0, v, u1, v + 0.03, z, z + 0.035, m, { edges: false });
 }
 
-function bastion(iso: Iso, u: number, v: number, r: number, z: number, H: number, stone: string): void {
+export function bastion(iso: Iso, u: number, v: number, r: number, z: number, H: number, stone: string): void {
   iso.aoEllipse(u, v, r, z, 0.08, 0.4);
   iso.lathe(u, v, z, [
     [0, r * 1.12],
@@ -1858,7 +1858,7 @@ function bastion(iso: Iso, u: number, v: number, r: number, z: number, H: number
   dome(iso, u, v, z + H + 0.03, r * 0.35, shade(stone, 0.05), 'round');
 }
 
-function jharokha(iso: Iso, face: 'u' | 'v', plane: number, a: number, z: number, stone: string): void {
+export function jharokha(iso: Iso, face: 'u' | 'v', plane: number, a: number, z: number, stone: string): void {
   const wdt = 0.07;
   const dep = 0.035;
   const m = mat(shade(stone, 0.04));
@@ -1877,7 +1877,7 @@ function jharokha(iso: Iso, face: 'u' | 'v', plane: number, a: number, z: number
   }
 }
 
-function drawRamnagarFort(ctx: Ctx2D, w: number, h: number, variant: number): void {
+export function drawRamnagarFort(ctx: Ctx2D, w: number, h: number, variant: number): void {
   const iso = makeIso(ctx, w, h, 3);
   const rng = seededRng('landmark_ramnagar_fort', variant);
   const z0 = 0.02;
@@ -2034,13 +2034,38 @@ export const VARANASI_PROCEDURAL_SPRITES: Record<VaranasiProceduralSpriteType, P
   landmark_ramnagar_fort: { footprint: 3, variants: 1, heightTiles: 0.36, draw: drawRamnagarFort },
 };
 
-export function isVaranasiProceduralSprite(type: string): type is VaranasiProceduralSpriteType {
-  return Object.prototype.hasOwnProperty.call(VARANASI_PROCEDURAL_SPRITES, type);
+/**
+ * Every procedural sprite the renderer knows, keyed by building type. Starts with the Varanasi set;
+ * `registerProceduralSprites` adds more (the Indian building art in `./indian`, via `./buildingArt`).
+ */
+const REGISTRY: Record<string, ProceduralSpriteDef> = { ...VARANASI_PROCEDURAL_SPRITES };
+
+/** Add procedural art for more building types. Varanasi-specific art always wins on a clash. */
+export function registerProceduralSprites(defs: Readonly<Record<string, ProceduralSpriteDef>>): void {
+  for (const [type, def] of Object.entries(defs)) {
+    if (Object.prototype.hasOwnProperty.call(VARANASI_PROCEDURAL_SPRITES, type)) continue;
+    REGISTRY[type] = def;
+  }
+  clearProceduralSpriteCache();
+}
+
+/** The definition for a type, or undefined when it has no procedural art. */
+export function getProceduralSpriteDef(type: string): ProceduralSpriteDef | undefined {
+  return Object.prototype.hasOwnProperty.call(REGISTRY, type) ? REGISTRY[type] : undefined;
+}
+
+/** Every type that currently has procedural art. */
+export function getProceduralSpriteTypes(): string[] {
+  return Object.keys(REGISTRY);
+}
+
+export function isVaranasiProceduralSprite(type: string): boolean {
+  return Object.prototype.hasOwnProperty.call(REGISTRY, type);
 }
 
 /** Wrap any integer into [0, variants). */
-export function normalizeVariant(type: VaranasiProceduralSpriteType, variant: number): number {
-  const n = VARANASI_PROCEDURAL_SPRITES[type].variants;
+export function normalizeVariant(type: string, variant: number): number {
+  const n = REGISTRY[type].variants;
   const v = Math.floor(Number.isFinite(variant) ? variant : 0);
   return ((v % n) + n) % n;
 }
@@ -2049,8 +2074,8 @@ export function normalizeVariant(type: VaranasiProceduralSpriteType, variant: nu
  * Deterministic variant for a tile, so rows of ghats do not repeat. Weighted for ghats:
  * ~60% plain steps, ~25% chhatri/umbrella, ~15% shrine and flag.
  */
-export function pickProceduralVariant(type: VaranasiProceduralSpriteType, tileX: number, tileY: number): number {
-  const def = VARANASI_PROCEDURAL_SPRITES[type];
+export function pickProceduralVariant(type: string, tileX: number, tileY: number): number {
+  const def = REGISTRY[type];
   if (def.variants <= 1) return 0;
   let hsh = (Math.imul(tileX | 0, 374761393) + Math.imul(tileY | 0, 668265263)) | 0;
   hsh = Math.imul(hsh ^ (hsh >>> 13), 1274126177);
@@ -2073,8 +2098,8 @@ export interface ProceduralSpriteSize {
   baseHeight: number;
 }
 
-export function getProceduralSpriteSize(type: VaranasiProceduralSpriteType, tilePx: number = PROCEDURAL_TILE_PX): ProceduralSpriteSize {
-  const def = VARANASI_PROCEDURAL_SPRITES[type];
+export function getProceduralSpriteSize(type: string, tilePx: number = PROCEDURAL_TILE_PX): ProceduralSpriteSize {
+  const def = REGISTRY[type];
   const width = Math.round(def.footprint * tilePx);
   const baseTopY = Math.round(def.heightTiles * tilePx);
   const baseHeight = def.footprint * tilePx * PROCEDURAL_ISO_RATIO;
@@ -2085,9 +2110,11 @@ export function getProceduralSpriteSize(type: VaranasiProceduralSpriteType, tile
 export type SpriteCanvas = HTMLCanvasElement | OffscreenCanvas;
 
 export interface ProceduralSprite extends ProceduralSpriteSize {
-  type: VaranasiProceduralSpriteType;
+  type: string;
   variant: number;
   flipped: boolean;
+  /** True for the abandoned (greyed) copy. */
+  abandoned?: boolean;
   footprint: number;
   tilePx: number;
   canvas: SpriteCanvas;
@@ -2109,8 +2136,8 @@ export function createSpriteCanvas(width: number, height: number): SpriteCanvas 
  * Paint a sprite into an existing context (for custom atlases). The context's current transform
  * is respected; the sprite occupies (0, 0) … (size.width, size.height).
  */
-export function paintProceduralSprite(ctx: Ctx2D, type: VaranasiProceduralSpriteType, variant = 0, flipped = false, tilePx: number = PROCEDURAL_TILE_PX): ProceduralSpriteSize {
-  const def = VARANASI_PROCEDURAL_SPRITES[type];
+export function paintProceduralSprite(ctx: Ctx2D, type: string, variant = 0, flipped = false, tilePx: number = PROCEDURAL_TILE_PX): ProceduralSpriteSize {
+  const def = REGISTRY[type];
   const size = getProceduralSpriteSize(type, tilePx);
   ctx.save();
   if (flipped) {
@@ -2123,30 +2150,116 @@ export function paintProceduralSprite(ctx: Ctx2D, type: VaranasiProceduralSprite
 }
 
 const spriteCache = new Map<string, ProceduralSprite>();
+/** Cap on cached sprite canvas memory (RGBA bytes); least-recently-used sprites are evicted. */
+export const PROCEDURAL_CACHE_MAX_BYTES = 160 * 1024 * 1024;
+let cacheBytes = 0;
+
+/** Options for `getProceduralSprite`. */
+export interface ProceduralSpriteOptions {
+  /** Desaturated, darkened copy for abandoned buildings. */
+  abandoned?: boolean;
+  /**
+   * Respect the per-frame paint budget: when painting this (uncached) sprite would exceed it,
+   * return null so the caller draws a stand-in this frame and retries next frame. Keeps the
+   * first frames of a big city from stalling while dozens of sprites are painted.
+   */
+  budgeted?: boolean;
+}
+
+/** Milliseconds of sprite painting allowed per ~frame (16 ms window) when `budgeted`. */
+export const PROCEDURAL_PAINT_BUDGET_MS = 8;
+let budgetWindowStart = 0;
+let budgetSpent = 0;
+
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** Darken + desaturate a painted sprite in place (abandoned look). */
+function applyAbandonedLook(ctx: Ctx2D, width: number, height: number): void {
+  const img = ctx.getImageData(0, 0, width, height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const l = 0.3 * r + 0.59 * g + 0.11 * b;
+    // 75% towards grey, slight brown-dust tint, 30% darker
+    d[i] = (l * 0.75 + r * 0.25) * 0.72 + 8;
+    d[i + 1] = (l * 0.75 + g * 0.25) * 0.68 + 4;
+    d[i + 2] = (l * 0.75 + b * 0.25) * 0.62;
+  }
+  ctx.putImageData(img, 0, 0);
+}
 
 /**
  * Get (rendering on first use) the cached canvas for a sprite. Returns null when no canvas
- * implementation exists (e.g. plain node) or the type is unknown.
+ * implementation exists (e.g. plain node), the type is unknown, or (with `budgeted`) this
+ * frame's paint budget is spent.
  */
-export function getProceduralSprite(type: string, variant = 0, flipped = false, tilePx: number = PROCEDURAL_TILE_PX): ProceduralSprite | null {
+export function getProceduralSprite(
+  type: string,
+  variant = 0,
+  flipped = false,
+  tilePx: number = PROCEDURAL_TILE_PX,
+  opts: ProceduralSpriteOptions = {},
+): ProceduralSprite | null {
   if (!isVaranasiProceduralSprite(type)) return null;
   const v = normalizeVariant(type, variant);
-  const key = `${type}|${v}|${flipped ? 1 : 0}|${tilePx}`;
+  const key = `${type}|${v}|${flipped ? 1 : 0}|${tilePx}${opts.abandoned ? '|a' : ''}`;
   const hit = spriteCache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    // bump to most-recently-used (Map keeps insertion order)
+    spriteCache.delete(key);
+    spriteCache.set(key, hit);
+    return hit;
+  }
+  const t0 = now();
+  if (opts.budgeted) {
+    if (t0 - budgetWindowStart > 16) {
+      budgetWindowStart = t0;
+      budgetSpent = 0;
+    }
+    if (budgetSpent >= PROCEDURAL_PAINT_BUDGET_MS) {
+      // Over budget: reuse the same art at another resolution if one is cached (e.g. mid-zoom)
+      for (const s of spriteCache.values()) {
+        if (s.type === type && s.variant === v && s.flipped === flipped && !!s.abandoned === !!opts.abandoned) return s;
+      }
+      return null;
+    }
+  }
   const size = getProceduralSpriteSize(type, tilePx);
   const canvas = createSpriteCanvas(size.width, size.height);
   if (!canvas) return null;
   const ctx = canvas.getContext('2d') as Ctx2D | null;
   if (!ctx) return null;
-  paintProceduralSprite(ctx, type, v, flipped, tilePx);
-  const sprite: ProceduralSprite = { ...size, type, variant: v, flipped, footprint: VARANASI_PROCEDURAL_SPRITES[type].footprint, tilePx, canvas };
+  if (opts.abandoned) {
+    const base = getProceduralSprite(type, v, flipped, tilePx);
+    if (base) ctx.drawImage(base.canvas, 0, 0);
+    else paintProceduralSprite(ctx, type, v, flipped, tilePx);
+    try {
+      applyAbandonedLook(ctx, size.width, size.height);
+    } catch {
+      // getImageData can be unavailable (tainted/limited contexts): keep the normal look
+    }
+  } else {
+    paintProceduralSprite(ctx, type, v, flipped, tilePx);
+  }
+  const sprite: ProceduralSprite = { ...size, type, variant: v, flipped, abandoned: !!opts.abandoned, footprint: REGISTRY[type].footprint, tilePx, canvas };
   spriteCache.set(key, sprite);
+  cacheBytes += size.width * size.height * 4;
+  // Evict least-recently-used sprites past the memory cap (never the one just made)
+  for (const [k, old] of spriteCache) {
+    if (cacheBytes <= PROCEDURAL_CACHE_MAX_BYTES || k === key) break;
+    spriteCache.delete(k);
+    cacheBytes -= old.width * old.height * 4;
+  }
+  if (opts.budgeted) budgetSpent += now() - t0;
   return sprite;
 }
 
 export function clearProceduralSpriteCache(): void {
   spriteCache.clear();
+  cacheBytes = 0;
 }
 
 export interface SpriteDrawRect {
@@ -2176,7 +2289,7 @@ export function getProceduralSpriteDrawRect(
 
 export interface ProceduralSheetFrame extends ProceduralSpriteSize {
   key: string;
-  type: VaranasiProceduralSpriteType;
+  type: string;
   variant: number;
   flipped: boolean;
   x: number;
@@ -2190,7 +2303,7 @@ export interface ProceduralSheet {
 }
 
 /** Frame key used by `renderProceduralSpriteSheet`. */
-export function proceduralFrameKey(type: VaranasiProceduralSpriteType, variant: number, flipped: boolean): string {
+export function proceduralFrameKey(type: string, variant: number, flipped: boolean): string {
   return `${type}:${variant}${flipped ? ':flipped' : ''}`;
 }
 
@@ -2199,15 +2312,16 @@ export function proceduralFrameKey(type: VaranasiProceduralSpriteType, variant: 
  * e.g. to upload as a single GPU texture. Returns null when no canvas implementation exists.
  */
 export function renderProceduralSpriteSheet(
-  opts: { tilePx?: number; includeFlipped?: boolean; maxWidth?: number; padding?: number; types?: readonly VaranasiProceduralSpriteType[] } = {},
+  opts: { tilePx?: number; includeFlipped?: boolean; maxWidth?: number; padding?: number; types?: readonly string[] } = {},
 ): ProceduralSheet | null {
   const tilePx = opts.tilePx ?? 128;
   const pad = opts.padding ?? 2;
   const maxWidth = opts.maxWidth ?? 4096;
   const types = opts.types ?? VARANASI_PROCEDURAL_SPRITE_TYPES;
+  // (pass `types: getProceduralSpriteTypes()` to include every registered type)
   const items: Omit<ProceduralSheetFrame, 'x' | 'y'>[] = [];
   for (const type of types) {
-    const def = VARANASI_PROCEDURAL_SPRITES[type];
+    const def = REGISTRY[type];
     for (let v = 0; v < def.variants; v++) {
       for (const flipped of opts.includeFlipped ? [false, true] : [false]) {
         items.push({ key: proceduralFrameKey(type, v, flipped), type, variant: v, flipped, ...getProceduralSpriteSize(type, tilePx) });

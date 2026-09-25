@@ -72,10 +72,12 @@ import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulati
 import { drawPlaceholderBuilding } from '@/components/game/placeholders';
 import {
   getProceduralSprite,
+  getProceduralSpriteDef,
   getProceduralSpriteDrawRect,
   isVaranasiProceduralSprite,
+  pickArtTilePx,
   pickProceduralVariant,
-} from '@/components/game/procedural/varanasiSprites';
+} from '@/components/game/procedural/buildingArt';
 import { loadImage, loadSpriteImage, onImageLoaded, getCachedImage } from '@/components/game/imageLoader';
 import { TileInfoPanel } from '@/components/game/panels';
 import {
@@ -1764,7 +1766,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
       
-      // Varanasi buildings drawn in code (ghats, STP, landmarks…) until painted sheets exist (S3-T3)
+      // Buildings drawn in code: the Indian building art + Varanasi ghats/landmarks (procedural/buildingArt)
       if (isVaranasiProceduralSprite(buildingType)) {
         const progress = tile.building.constructionProgress ?? 100;
         const footprint = getBuildingSize(buildingType);
@@ -1775,20 +1777,44 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             }
           }
         } else {
+          const def = getProceduralSpriteDef(buildingType);
+          // Mirror like the sprite sheets: face the road (or a stable random side); waterfront art
+          // keeps its river side and only follows building.flipped.
+          let mirror = tile.building.flipped === true;
+          if (def && !def.waterfront && !def.tileable) {
+            const meta = getTileMetadata(tile.x, tile.y);
+            const roadMirror = meta?.hasAdjacentRoad ? !!meta.shouldFlipForRoad : (tile.x * 47 + tile.y * 83) % 100 < 50;
+            mirror = mirror !== roadMirror;
+          }
           const sprite = getProceduralSprite(
             buildingType,
             pickProceduralVariant(buildingType, tile.x, tile.y),
-            !!tile.building.flipped
+            false,
+            pickArtTilePx(w * zoom * getRenderDpr()),
+            { abandoned: !!tile.building.abandoned, budgeted: true }
           );
           if (sprite) {
             const rect = getProceduralSpriteDrawRect(sprite, x, y, w);
             const savedAlpha = ctx.globalAlpha;
             // Under construction: fade in as it nears completion
             if (progress < 100) ctx.globalAlpha = savedAlpha * (0.45 + 0.55 * (progress / 100));
+            if (mirror) {
+              const cx = Math.round(rect.dx + rect.dw / 2);
+              ctx.save();
+              ctx.translate(cx, 0);
+              ctx.scale(-1, 1);
+              ctx.translate(-cx, 0);
+            }
             ctx.drawImage(sprite.canvas, Math.round(rect.dx), Math.round(rect.dy), Math.round(rect.dw), Math.round(rect.dh));
+            if (mirror) ctx.restore();
             ctx.globalAlpha = savedAlpha;
           } else {
-            drawPlaceholderBuilding(ctx, x, y, buildingType, w, h);
+            // Paint budget spent this frame: a foundation stands in until the art is ready
+            for (let dy = 0; dy < footprint.height; dy++) {
+              for (let dx = 0; dx < footprint.width; dx++) {
+                drawFoundationPlot(ctx, x + (dx - dy) * (w / 2), y + (dx + dy) * (h / 2), w, h, zoom);
+              }
+            }
           }
         }
         if (tile.building.onFire) drawTileFireEffect(ctx, x, y);
