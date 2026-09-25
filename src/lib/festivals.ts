@@ -88,6 +88,12 @@ export const EVENT_CONFIG = {
   areaTilesPerRoad: 6,
   /** EVENT_TRAFFIC_LIMIT: average traffic on the area's roads must be below this (0–100 scale, starting value). */
   EVENT_TRAFFIC_LIMIT: 60,
+  /**
+   * Road traffic estimate (tiles carry no live traffic value): residents + jobs in the area per road tile, where this
+   * many people per road tile means traffic 100. A rail station in the area counts as `railStationRoadTiles` road tiles.
+   */
+  trafficPeoplePerRoad: 60,
+  railStationRoadTiles: 6,
   /** Sanitation: water coverage (%) and Ganga Health. */
   minWaterCoverage: 80,
   minGangaHealth: 50,
@@ -228,4 +234,70 @@ export function resolveEvent(festivalId: FestivalId, inputs: ReadinessInputs): {
   const checklist = evaluateReadiness(inputs);
   const failed = checklist.filter((r) => !r.passed).map((r) => r.requirement);
   return { checklist, outcome: getEventOutcome(checklist.length - failed.length, { festivalId, failed }) };
+}
+
+/** Estimated average traffic (0–100) on an area's roads: people in the area per road-tile equivalent. */
+export function estimateAreaTraffic(people: number, roadEquivalents: number): number {
+  if (!(roadEquivalents > 0)) return 100;
+  return Math.min(100, (100 * Math.max(0, people)) / (roadEquivalents * EVENT_CONFIG.trafficPeoplePerRoad));
+}
+
+// ---------------------------------------------------------------------------
+// Saved state and per-tick effects (S5-T4)
+// ---------------------------------------------------------------------------
+
+/** Saved on GameState as `festival`. All fields optional so old saves load. */
+export interface FestivalState {
+  /** Festival id → absolute day of the occurrence already put on the calendar strip. */
+  announced?: Partial<Record<FestivalId, number>>;
+  /** The management event running now (absolute days, inclusive). */
+  event?: { id: FestivalId; startDay: number; endDay: number; outcome: EventOutcomeKind; tourismMultiplier: number };
+  /** City-wide happiness change left by the last management event, until this absolute day (inclusive). */
+  mood?: { delta: number; untilDay: number };
+}
+
+/** Tourism × this today (1 when no management event is running). */
+export function getFestivalTourismMultiplier(festival: FestivalState | undefined, today: number): number {
+  const e = festival?.event;
+  return e && today >= e.startDay && today <= e.endDay ? e.tourismMultiplier : 1;
+}
+
+/** Happiness points added today by the last management event's outcome (0 when none). */
+export function getFestivalHappinessModifier(festival: FestivalState | undefined, today: number): number {
+  const mood = festival?.mood;
+  return mood && today <= mood.untilDay ? mood.delta : 0;
+}
+
+/** Scales an effect above ×1 for a reduced-scale event, e.g. Maha Shivratri without the temple (scale 0.5). */
+export function scaleEventMultiplier(multiplier: number, scale: number): number {
+  return 1 + (multiplier - 1) * scale;
+}
+
+export const FESTIVAL_CROWD_CONFIG = {
+  /** Pilgrim crowd × this while each festival runs; the largest applies. Always within the quality preset's cap. */
+  pedestrians: {
+    maha_shivratri: EVENT_CONFIG.pedestrianMultiplier,
+    dev_deepawali: EVENT_CONFIG.pedestrianMultiplier,
+    chhath: 2,
+    ganga_aarti: 1.5,
+    holi: 1.5,
+    diwali: 1.5,
+  } as Readonly<Record<FestivalId, number>>,
+  /** Share of the pedestrian cap pilgrims may take during a festival (normally PILGRIM_CONFIG.maxShareOfPedestrians). */
+  maxPilgrimShare: 0.9,
+} as const;
+
+/**
+ * Crowd multipliers for the renderer: pedestrians (pilgrims at the ghats) and car spawns (roads leading in).
+ * `eventScale` scales a reduced management event (Maha Shivratri without Kashi Vishwanath: 0.5).
+ */
+export function getFestivalCrowdMultipliers(active: readonly FestivalDef[], eventScale = 1): { pedestrians: number; cars: number } {
+  let pedestrians = 1;
+  let cars = 1;
+  for (const f of active) {
+    const scale = f.type === 'management' ? eventScale : 1;
+    pedestrians = Math.max(pedestrians, scaleEventMultiplier(FESTIVAL_CROWD_CONFIG.pedestrians[f.id], scale));
+    if (f.type === 'management') cars = Math.max(cars, scaleEventMultiplier(EVENT_CONFIG.trafficSpawnMultiplier, scale));
+  }
+  return { pedestrians, cars };
 }

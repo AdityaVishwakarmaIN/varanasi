@@ -142,6 +142,8 @@ import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/c
 import type { Application } from 'pixi.js';
 import { getCityFloodMask, getCityFloodRisk, getCitySiltMask } from '@/lib/floodSim';
 import { drawFloodMask } from '@/components/game/floodDraw';
+import { createFestivalVisuals, type FestivalDrawInput } from '@/components/game/festivalDraw';
+import { getLiveFestivals } from '@/lib/festivalSim';
 import { absoluteDay } from '@/lib/seasons';
 import { FLOOD_CONFIG } from '@/lib/floods';
 import { CAMERA_CONFIG, SharedControlsState, setCameraControls, TOUCH_CONFIG } from '@/lib/controlsConfig';
@@ -413,6 +415,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const fireworkShowActiveRef = useRef(false);
   const fireworkShowStartTimeRef = useRef(0);
   const fireworkLastHourRef = useRef(-1); // Track hour changes to detect night transitions
+  // S5-T3: festival visuals (lamps, diyas, Holi puffs) and crowd multipliers
+  const [festivalVisuals] = useState(createFestivalVisuals);
+  const festivalLive = getLiveFestivals(state, visualHour);
+  const festivalRef = useRef({ live: festivalLive, mapId: state.mapId, structureVersion });
+  useEffect(() => {
+    festivalRef.current = { live: festivalLive, mapId: state.mapId, structureVersion };
+  });
 
   // Factory smog system refs
   const factorySmogRef = useRef<FactorySmog[]>([]);
@@ -542,6 +551,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       month: state.month,
       weather: state.weather,
       floodMask,
+      festivalCrowd: festivalLive.crowd,
     },
     visualHour,
     isMobile,
@@ -3179,6 +3189,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       airHighCtx.clearRect(0, 0, airHighCanvas.width, airHighCanvas.height);
     };
     
+    const festivalInput = (): FestivalDrawInput => {
+      const world = worldStateRef.current;
+      const fest = festivalRef.current;
+      return {
+        grid: world.grid, gridSize: world.gridSize, mapId: fest.mapId, structureVersion: fest.structureVersion,
+        offset: world.offset, zoom: world.zoom, hour: visualHour, active: fest.live.active,
+      };
+    };
+
     let animationFrameId: number;
     let lastTime = performance.now();
     let lastRenderTime = 0;
@@ -3231,7 +3250,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         updateBoats(delta); // Update boats (marina/pier required)
         updateBarges(delta); // Update ocean barges (ocean marinas required)
         updateTrains(delta); // Update trains on rail network
-        updateFireworks(delta, visualHour); // Update fireworks (nighttime only)
+        updateFireworks(delta, visualHour, festivalRef.current.live.active.some((f) => f.id === 'diwali')); // Nighttime only (all Diwali long)
+        festivalVisuals.update(delta, festivalInput());
         updateSmog(delta); // Update factory smog particles
         updateClouds(delta, visualHour); // Update atmospheric clouds
         updateWind(delta); // Update weather-dependent wind visuals
@@ -3309,6 +3329,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         
         // Draw recreation pedestrians on air canvas (above parks, not other buildings)
         drawRecreationPedestrians(airCtx); // Draw recreation pedestrians (at parks, benches, etc.)
+        festivalVisuals.draw(airCtx, festivalInput()); // S5-T3 festival lights and Holi colours
         
         if (!skipSmallElements) {
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
@@ -3346,6 +3367,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         pixi.setLayer('air');
         drawIncidentIndicators(pixi, delta);
         drawRecreationPedestrians(pixi);
+        festivalVisuals.draw(pixi, festivalInput());
         if (!skipSmallElements) {
           drawHelicopters(pixi);
           drawSeaplanes(pixi);
@@ -3397,7 +3419,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile]);
+  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile, festivalVisuals]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({

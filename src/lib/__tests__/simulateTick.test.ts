@@ -23,6 +23,7 @@ import {
   setFloodsEnabled,
   setCrisesEnabled,
   setFailureStatesEnabled,
+  setFestivalsEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -234,6 +235,7 @@ beforeEach(() => {
   setFloodsEnabled(false);
   setCrisesEnabled(false);
   setFailureStatesEnabled(false);
+  setFestivalsEnabled(false);
 });
 
 afterEach(() => {
@@ -244,6 +246,7 @@ afterEach(() => {
   setFloodsEnabled(true);
   setCrisesEnabled(true);
   setFailureStatesEnabled(true);
+  setFestivalsEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

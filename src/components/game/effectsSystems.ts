@@ -65,6 +65,9 @@ import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 
 const CLOUD_SPRITE_BLUR_PX = 2.5;
 
+/** Diwali (S5-T3): ghats launch fireworks too, so a Varanasi city without stadiums still gets a show. */
+const FESTIVAL_FIREWORK_BUILDINGS: BuildingType[] = [...FIREWORK_BUILDINGS, 'ghat'];
+
 export interface EffectsSystemRefs {
   fireworksRef: React.MutableRefObject<Firework[]>;
   fireworkIdRef: React.MutableRefObject<number>;
@@ -124,7 +127,8 @@ export function createEffectsSystems(
   };
 
   // Update fireworks - spawn, animate, and manage lifecycle
-  const updateFireworks = (delta: number, currentHour: number) => {
+  /** `festivalShow` (Diwali, S5-T3): a show runs all festival long, launched from ghats as well. */
+  const updateFireworks = (delta: number, currentHour: number, festivalShow = false) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
 
     if (!currentGrid || currentGridSize <= 0 || currentSpeed === 0) {
@@ -144,7 +148,11 @@ export function createEffectsSystems(
     }
 
     // Check if it's night time (hour >= 20 or hour < 5)
-    const isNight = currentHour >= 20 || currentHour < 5;
+    const isNight = festivalShow || currentHour >= 20 || currentHour < 5;
+    if (festivalShow && !fireworkShowActiveRef.current) {
+      fireworkShowActiveRef.current = true;
+      fireworkShowStartTimeRef.current = 0;
+    }
     
     // Detect transition to night - decide if this will be a firework night
     if (currentHour !== fireworkLastHourRef.current) {
@@ -189,7 +197,9 @@ export function createEffectsSystems(
     }
 
     // Find buildings that can launch fireworks
-    const fireworkBuildings = findFireworkBuildingsCallback();
+    const fireworkBuildings = festivalShow
+      ? findFireworkBuildings(worldStateRef.current.grid, worldStateRef.current.gridSize, FESTIVAL_FIREWORK_BUILDINGS)
+      : findFireworkBuildingsCallback();
     if (fireworkBuildings.length === 0) {
       fireworkShowActiveRef.current = false;
       return;

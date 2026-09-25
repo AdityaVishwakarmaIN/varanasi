@@ -31,6 +31,7 @@ import {
   spawnPilgrimWalking,
 } from './pedestrianSystem';
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
+import { FESTIVAL_CROWD_CONFIG } from '@/lib/festivals';
 import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
 import { getSeason, getVehicleSpeedMultiplier as getSeasonVehicleSpeed, type SimWeather } from '@/lib/seasons';
 import { drawVehicleBody } from './drawVehicleKinds';
@@ -97,6 +98,8 @@ export interface VehicleSystemState {
     weather?: SimWeather;
     /** Flooded tiles (S4-T5): cars don't spawn on or drive through flooded roads. */
     floodMask?: Uint8Array | null;
+    /** Festivals (S5-T3/T4): pilgrim crowd and car spawn multipliers, always within the quality caps. */
+    festivalCrowd?: { pedestrians: number; cars: number };
   };
   /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
   visualHour: number;
@@ -1156,7 +1159,8 @@ export function createVehicleSystems(
     const carDensity = isMobile ? 0.15 : 0.5;
     const baseCars = roadTileCount > 0 ? Math.max(isMobile ? 10 : 15, Math.floor(roadTileCount * carDensity)) : 0;
     const preset = getActivePreset();
-    const maxCars = scaledEntityLimit(baseCars, preset.vehicleFraction, deviceValue(preset.maxCars, isMobile));
+    const carBoost = state.festivalCrowd?.cars ?? 1;
+    const maxCars = scaledEntityLimit(baseCars * carBoost, preset.vehicleFraction, deviceValue(preset.maxCars, isMobile));
     updateCows(delta * speedMultiplier, despawnBounds, roadTileCount, preset.vehicleFraction);
     const standingCowTiles = getStandingCowTiles(cowsRef.current, currentGridSize);
     if (carsRef.current.length > 0) {
@@ -1580,7 +1584,8 @@ export function createVehicleSystems(
     const pedMinCount = isMobile ? 20 : 150;
     const basePedestrians = roadTileCount > 0 ? Math.min(pedMaxCount, Math.max(pedMinCount, roadTileCount * pedDensity)) : 0;
     const preset = getActivePreset();
-    const maxPedestrians = scaledEntityLimit(basePedestrians, preset.pedestrianDensity, deviceValue(preset.maxPedestrians, isMobile));
+    const crowdBoost = state.festivalCrowd?.pedestrians ?? 1;
+    const maxPedestrians = scaledEntityLimit(basePedestrians * crowdBoost, preset.pedestrianDensity, deviceValue(preset.maxPedestrians, isMobile));
     if (pedestriansRef.current.length > 0) {
       pedestriansRef.current = pedestriansRef.current.filter((p) => isInBounds(p.tileX, p.tileY, despawnBounds));
       if (pedestriansRef.current.length > maxPedestrians) pedestriansRef.current.length = maxPedestrians;
@@ -1589,7 +1594,11 @@ export function createVehicleSystems(
     
     // S3-T10: pilgrim crowd at the ghats follows tourism and the time of day; past a peak the extra pilgrims leave
     pilgrimTarget = state.mapId === 'varanasi'
-      ? getGhatCrowdTarget(state.stats.tourismIncome ?? 0, maxPedestrians * PILGRIM_CONFIG.maxShareOfPedestrians, visualHour)
+      ? getGhatCrowdTarget(
+          (state.stats.tourismIncome ?? 0) * crowdBoost,
+          maxPedestrians * (crowdBoost > 1 ? FESTIVAL_CROWD_CONFIG.maxPilgrimShare : PILGRIM_CONFIG.maxShareOfPedestrians),
+          visualHour
+        )
       : 0;
     pilgrimCount = 0;
     for (const p of pedestriansRef.current) if (isActivePilgrim(p)) pilgrimCount++;

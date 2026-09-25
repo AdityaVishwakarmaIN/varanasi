@@ -36,6 +36,7 @@ import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
 import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FestivalChip } from '@/components/game/FestivalPanel';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
@@ -124,6 +125,7 @@ export function MobileTopBar({
   overlayMode = 'none',
   onTogglePowerOverlay,
   onToggleWaterOverlay,
+  onCalendarEventClick,
   onShare,
   onExit,
 }: { 
@@ -137,6 +139,8 @@ export function MobileTopBar({
   overlayMode?: OverlayMode;
   onTogglePowerOverlay?: () => void;
   onToggleWaterOverlay?: () => void;
+  /** Calendar-strip event clicked (festivals open the Event panel, S5-T4). */
+  onCalendarEventClick?: (id: string) => void;
   onShare?: () => void;
   onExit?: () => void;
 }) {
@@ -191,6 +195,7 @@ export function MobileTopBar({
               <span className="text-muted-foreground text-[10px] font-mono">
                 <SeasonDateLabel month={month} year={year} />
                 <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
+                <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="ml-1" />
               </span>
             </div>
             <div className="flex flex-col items-start">
@@ -445,7 +450,7 @@ export function MobileTopBar({
           >
             {/* Season calendar (S4-T1) */}
             <div className="px-4 pt-4">
-              <SeasonStrip month={month} year={year} day={day} events={state.forecasts} variant="full" />
+              <SeasonStrip month={month} year={year} day={day} events={state.forecasts} variant="full" onEventClick={onCalendarEventClick} />
             </div>
 
             {/* Stats grid */}

@@ -46,6 +46,8 @@ import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
+import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
+import type { FestivalId } from '@/lib/festivals';
 import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
@@ -89,9 +91,22 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number } | null>(null);
   const clearNavigationTarget = useCallback(() => setNavigationTarget(null), []);
   // Crisis notifications (S4-T4): jump to the problem and show the overlay that explains it
+  // S5-T4: the Event panel opens from a festival forecast notification, the calendar strip or the banner
+  const [eventPanel, setEventPanel] = useState<FestivalId | null>(null);
+  const closeEventPanel = useCallback(() => setEventPanel(null), []);
+  const openCalendarEvent = useCallback((id: string) => {
+    const festival = festivalFromEventId(id);
+    if (festival) setEventPanel(festival);
+  }, []);
+  const locateEventArea = useCallback((x: number, y: number, overlay: OverlayMode | undefined) => {
+    setNavigationTarget({ x, y });
+    if (overlay) setOverlayMode(overlay);
+  }, []);
   const locateNotification = useCallback((n: Notification) => {
     if (n.x !== undefined && n.y !== undefined) setNavigationTarget({ x: n.x, y: n.y });
     if (n.overlay) setOverlayMode(n.overlay);
+    const festival = festivalFromEventId(n.id);
+    if (festival) setEventPanel(festival);
   }, []);
   const minimapViewportRef = useRef<ViewportState | null>(null);
   const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
@@ -337,6 +352,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             overlayMode={overlayMode}
             onTogglePowerOverlay={togglePowerOverlay}
             onToggleWaterOverlay={toggleWaterOverlay}
+            onCalendarEventClick={openCalendarEvent}
             onShare={FEATURES.coop ? () => setShowShareModal(true) : undefined}
             onExit={onExit}
           />
@@ -368,6 +384,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               className="absolute top-[80px] left-3 right-3 z-30"
             />
             <FailureOverlays bannerClassName="absolute bottom-[84px] left-3 right-3 z-30" />
+            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[140px] left-3 z-20" />
+            <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
@@ -452,6 +470,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             overlayMode={overlayMode}
             onTogglePowerOverlay={togglePowerOverlay}
             onToggleWaterOverlay={toggleWaterOverlay}
+            onCalendarEventClick={openCalendarEvent}
           />
           <StatsPanel />
           <div className="flex-1 relative overflow-visible">
@@ -471,6 +490,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               className="absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]"
             />
             <FailureOverlays bannerClassName="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
+            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20" />
+            <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}

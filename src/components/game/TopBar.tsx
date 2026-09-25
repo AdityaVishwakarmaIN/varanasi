@@ -36,6 +36,7 @@ import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
 import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FestivalChip } from '@/components/game/FestivalPanel';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -202,6 +203,8 @@ interface TopBarProps {
   overlayMode?: OverlayMode;
   onTogglePowerOverlay?: () => void;
   onToggleWaterOverlay?: () => void;
+  /** Calendar-strip event clicked (festivals open the Event panel, S5-T4). */
+  onCalendarEventClick?: (id: string) => void;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -214,6 +217,7 @@ export const TopBar = React.memo(function TopBar({
   overlayMode = 'none',
   onTogglePowerOverlay,
   onToggleWaterOverlay,
+  onCalendarEventClick,
 }: TopBarProps) {
   const { state, setSpeed, setTaxRate, visualHour } = useGame();
   const { stats, year, month, day, speed, taxRate, cityName } = state;
@@ -242,8 +246,9 @@ export const TopBar = React.memo(function TopBar({
             </Tooltip>
             <TimeOfDayIcon hour={visualHour} />
             <FogChip weather={state.weather} hour={visualHour} />
+            <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
           </div>
-          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} className="mt-0.5 max-w-[150px]" />
+          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-0.5 max-w-[150px]" />
         </div>
         
         <div className="flex items-center gap-0 bg-secondary rounded-md p-0">
