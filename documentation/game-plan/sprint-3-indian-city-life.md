@@ -47,7 +47,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 
 ## 4. Tasks
 
-- [ ] S3-T1: Build-menu curation and Indian names
+- [x] S3-T1: Build-menu curation and Indian names
 - [ ] S3-T2: Varanasi sprite pack
 - [ ] S3-T3: Ghat, STP and new-building art
 - [x] S3-T4: Mixed traffic (vehicle kinds)
@@ -100,6 +100,13 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
    `bleachers_field`. **Existing buildings of these types in a save still work and draw.** Only the menu hides them.
 
 **Acceptance criteria:** on a Varanasi map, the menu shows the Indian names and none of the hidden tools. On a random map, nothing changed.
+
+**Done (notes):**
+- `varanasiCatalog.ts` (started in S2-T5) holds `VARANASI_DISPLAY`, `VARANASI_HIDDEN_TOOLS` (the plan's list, plus expand/shrink city) and the helpers. The desktop sidebar, mobile toolbar and command menu already used them.
+- Also added:
+  - The tile-info panel shows the Varanasi name of a placed building (`getBuildingDisplayName`), e.g. "Gaushala".
+  - The placement label and the mobile ✓/✗ confirm pill on the map use `getToolDisplay`.
+- Tests cover the full hidden list on both maps and the building names.
 
 ---
 

@@ -133,6 +133,7 @@ import {
 } from '@/components/game/trainSystem';
 import { Train } from '@/components/game/types';
 import type { Cow } from '@/components/game/cowSystem';
+import { getToolDisplay } from '@/games/isocity/maps/varanasiCatalog';
 import { useLightingSystem } from '@/components/game/lightingSystem';
 import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
@@ -4196,7 +4197,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           >
             <div className="flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 pl-3 shadow-lg backdrop-blur-sm">
               <span className="text-xs font-medium text-foreground whitespace-nowrap">
-                {m(TOOL_INFO[tool].name)}{' '}
+                {m(getToolDisplay(tool, TOOL_INFO[tool], state.mapId).name)}{' '}
                 <span className="font-mono text-amber-500">{formatINR(cost)}</span>
               </span>
               <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
@@ -4286,7 +4287,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // S1-T10: placement preview label (cost, and the reason when the tile is red)
         const isPlacementInvalid = !!placementPreview && !placementPreview.ok;
 
-        const toolName = m(TOOL_INFO[selectedTool].name);
+        const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
         return (
           <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${

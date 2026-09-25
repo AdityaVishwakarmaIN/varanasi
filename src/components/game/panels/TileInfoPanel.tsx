@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useMessages } from 'gt-next';
 import { Tile, BuildingType, TOOL_INFO, Tool } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,7 @@ import {
 import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 import { INFORMAL_CONFIG } from '@/lib/informal';
+import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -41,6 +43,8 @@ export function TileInfoPanel({
 }: TileInfoPanelProps) {
   const { x, y } = tile;
   const { state, upgradeServiceBuilding } = useGame();
+  const m = useMessages();
+  const displayName = getBuildingDisplayName(tile.building.type, state.mapId);
   
   // Check if this is a service building
   const isServiceBuilding = SERVICE_BUILDING_TYPES.has(tile.building.type);
@@ -121,7 +125,7 @@ export function TileInfoPanel({
         <div className="flex justify-between">
           <span className="text-muted-foreground">Building</span>
           <span className="capitalize">
-            {isInformal ? 'Informal settlement' : tile.building.type.replace(/_/g, ' ')}
+            {isInformal ? 'Informal settlement' : displayName ? m(displayName) : tile.building.type.replace(/_/g, ' ')}
           </span>
         </div>
         <div className="flex justify-between">

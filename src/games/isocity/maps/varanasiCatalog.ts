@@ -78,3 +78,12 @@ export function getToolDisplay(tool: Tool, info: ToolInfo, mapId: MapId | undefi
   const override = mapId === 'varanasi' ? VARANASI_DISPLAY[tool] : undefined;
   return override ? { ...info, ...override } : info;
 }
+
+/**
+ * Display name (msg-encoded, for m()) for a placed building on this map, when the map renames it;
+ * undefined means "use the default label". Building IDs match tool IDs for every renamed building.
+ */
+export function getBuildingDisplayName(buildingType: string, mapId: MapId | undefined): string | undefined {
+  if (mapId !== 'varanasi') return undefined;
+  return VARANASI_DISPLAY[buildingType as Tool]?.name;
+}
