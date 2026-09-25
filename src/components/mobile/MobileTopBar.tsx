@@ -35,6 +35,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
+import { SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
@@ -140,7 +141,7 @@ export function MobileTopBar({
   onExit?: () => void;
 }) {
   const { state, setSpeed, setTaxRate, visualHour, saveCity } = useGame();
-  const { stats, year, month, speed, taxRate, cityName } = state;
+  const { stats, year, month, day, speed, taxRate, cityName } = state;
   const [showDetails, setShowDetails] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showTaxSlider, setShowTaxSlider] = useState(false);
@@ -171,8 +172,6 @@ export function MobileTopBar({
     : null;
   const gangaEffectLines = gangaEffectInfo ? describeGangaTileEffect(gangaEffectInfo, formatPopulation) : null;
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
   return (
     <>
       {/* Main Top Bar */}
@@ -190,7 +189,7 @@ export function MobileTopBar({
                 </span>
               </div>
               <span className="text-muted-foreground text-[10px] font-mono">
-                {monthNames[month - 1]} {year}
+                <SeasonDateLabel month={month} year={year} />
               </span>
             </div>
             <div className="flex flex-col items-start">
@@ -443,6 +442,11 @@ export function MobileTopBar({
             className="mx-2 mt-2 rounded-xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Season calendar (S4-T1) */}
+            <div className="px-4 pt-4">
+              <SeasonStrip month={month} year={year} day={day} variant="full" />
+            </div>
+
             {/* Stats grid */}
             <div className="p-4 grid grid-cols-5 gap-3">
               <StatItem

@@ -45,7 +45,7 @@ By the end of this sprint:
 
 ## 4. Tasks
 
-- [ ] S4-T1: Seasons model and the calendar strip
+- [x] S4-T1: Seasons model and the calendar strip
 - [ ] S4-T2: Weather owned by the simulation, following the season
 - [ ] S4-T3: Seasonal effects
 - [ ] S4-T4: Crisis notifications (locate, jump, auto-pause)
@@ -76,6 +76,11 @@ By the end of this sprint:
 4. Unit tests for `getSeason` for all 12 months.
 
 **Acceptance criteria:** the season shows in the UI and changes on the right months.
+
+**Done (notes):** `seasons.ts` already held the model and all-12-month tests. New `SeasonCalendar.tsx`: `SeasonDateLabel` ("Jul 2026 · Monsoon",
+season name in its colour, used in both top bars) and `SeasonStrip` (this month + next 2 in season colours, a today marker, and an optional
+`events` prop for S4-T4 forecasts and Sprint 5 festivals). Desktop: thin strip under the date. Mobile: labelled strip at the top of the details
+panel (tap the city name). Season names use `msg()`.
 
 ---
 

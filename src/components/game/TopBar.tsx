@@ -35,6 +35,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
+import { SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -221,7 +222,6 @@ export const TopBar = React.memo(function TopBar({
   const locale = useLocale();
   const setLocale = useSetLocale();
   
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
   
   return (
@@ -234,7 +234,7 @@ export const TopBar = React.memo(function TopBar({
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-mono tabular-nums">
             <Tooltip>
               <TooltipTrigger asChild>
-                <span>{monthNames[month - 1]} {year}</span>
+                <span><SeasonDateLabel month={month} year={year} /></span>
               </TooltipTrigger>
               <TooltipContent>
                 <p>{formattedDate}</p>
@@ -242,6 +242,7 @@ export const TopBar = React.memo(function TopBar({
             </Tooltip>
             <TimeOfDayIcon hour={visualHour} />
           </div>
+          <SeasonStrip month={month} year={year} day={day} className="mt-0.5 max-w-[150px]" />
         </div>
         
         <div className="flex items-center gap-0 bg-secondary rounded-md p-0">
