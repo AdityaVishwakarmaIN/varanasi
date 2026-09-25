@@ -132,6 +132,7 @@ import {
   TRAINS_PER_RAIL_TILES_MOBILE,
 } from '@/components/game/trainSystem';
 import { Train } from '@/components/game/types';
+import type { Cow } from '@/components/game/cowSystem';
 import { useLightingSystem } from '@/components/game/lightingSystem';
 import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
@@ -316,6 +317,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const pedestriansRef = useRef<Pedestrian[]>([]);
   const pedestrianIdRef = useRef(0);
   const pedestrianSpawnTimerRef = useRef(0);
+  const cowsRef = useRef<Cow[]>([]);
+  const cowIdRef = useRef(0);
   
   // Touch gesture state for mobile (S1-T11)
   const touchGestureRef = useRef<TouchGesture | null>(null);
@@ -479,6 +482,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     pedestriansRef,
     pedestrianIdRef,
     pedestrianSpawnTimerRef,
+    cowsRef,
+    cowIdRef,
     trafficLightTimerRef,
     trainsRef,
   };
@@ -729,6 +734,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     pedestriansRef.current = [];
     pedestrianIdRef.current = 0;
     pedestrianSpawnTimerRef.current = 0;
+    cowsRef.current = [];
+    cowIdRef.current = 0;
     
     // Clear aircraft
     airplanesRef.current = [];
@@ -3057,6 +3064,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setEntityCount('buses', busesRef.current.length);
       setEntityCount('emergency', emergencyVehiclesRef.current.length);
       setEntityCount('pedestrians', pedestriansRef.current.length);
+      setEntityCount('cows', cowsRef.current.length);
       setEntityCount('trains', trainsRef.current.length);
       setEntityCount('boats', boatsRef.current.length);
       setEntityCount('barges', bargesRef.current.length);

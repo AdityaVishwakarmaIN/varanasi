@@ -51,7 +51,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [ ] S3-T2: Varanasi sprite pack
 - [ ] S3-T3: Ghat, STP and new-building art
 - [x] S3-T4: Mixed traffic (vehicle kinds)
-- [ ] S3-T5: Cows
+- [x] S3-T5: Cows
 - [ ] S3-T6: Mixed-use commercial
 - [x] S3-T7: Power capacity and rolling power cuts
 - [x] S3-T8: Water capacity, the Jal Sansthan water works and shortages
@@ -203,6 +203,15 @@ Adjacent ghats must join visually into one continuous stepped bank.
 - Cows **never** affect pathfinding or block building placement.
 
 **Acceptance criteria:** cows appear, pause on roads, cause gentle slowdowns and never cause a permanent jam. Building Gaushalas visibly reduces them.
+
+**Done (notes):**
+- `cowSystem.ts`: spawn, walk, pause and draw, all pure and tested (`cows.test.ts`). Cows live in `cowsRef` next to the cars and are cleared with them on load or far zoom.
+- Varanasi map only, like the traffic mix, so the random map is unchanged.
+- The cap follows S1-T8 culling: `getMaxCows(road tiles near the view, Gaushalas on the map, quality vehicleFraction)`. Low quality therefore gets fewer.
+- A walking cow may stop once per tile, at its centre (`pauseChancePerTile` 0.15), for 5–20 s.
+- Cars on that tile move at 30% speed and never stop, so there is no deadlock. Buses and emergency vehicles ignore cows.
+- The perf HUD shows `cows`. Cows are not drawn below zoom 0.8.
+- Not yet done: the in-browser look check (fold into S3-T11 sign-off).
 
 ---
 

@@ -33,6 +33,8 @@ import {
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
 import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
 import { drawVehicleBody } from './drawVehicleKinds';
+import { COW_CONFIG, getMaxCows } from '@/lib/trafficConfig';
+import { drawCow, getCowSlowdown, getStandingCowTiles, spawnCow, stepCow, type Cow } from './cowSystem';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 import { ENTITY_CULL_CONFIG, deviceValue, scaledEntityLimit } from '@/lib/qualityConfig';
@@ -67,6 +69,9 @@ export interface VehicleSystemRefs {
   pedestrianSpawnTimerRef: React.MutableRefObject<number>;
   trafficLightTimerRef: React.MutableRefObject<number>;
   trainsRef: React.MutableRefObject<TrainForCrossing[]>;
+  /** S3-T5: cows wandering on the roads. */
+  cowsRef: React.MutableRefObject<Cow[]>;
+  cowIdRef: React.MutableRefObject<number>;
 }
 
 export interface VehicleSystemState {
@@ -103,6 +108,8 @@ type FinderCache = {
   enterable?: ReturnType<typeof findEnterableBuildings>;
   beach?: ReturnType<typeof findBeachTiles>;
   ghats?: { x: number; y: number }[];
+  /** Number of Gaushalas (`animal_pens_farm`) on the map: each lowers the cow cap. */
+  gaushalas?: number;
   busStops?: { x: number; y: number }[];
 };
 let finderCache: FinderCache = { key: '' };
@@ -142,6 +149,8 @@ export function createVehicleSystems(
     pedestrianSpawnTimerRef,
     trafficLightTimerRef,
     trainsRef,
+    cowsRef,
+    cowIdRef,
   } = refs;
 
   const {
@@ -1078,6 +1087,38 @@ export function createVehicleSystems(
     return cachedIntersectionMapRef.current.map.get(key) ?? false;
   };
 
+  const countGaushalas = (): number => {
+    const cache = finders();
+    if (cache.gaushalas === undefined) {
+      const { grid: g, gridSize: n } = worldStateRef.current;
+      let count = 0;
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (g[y][x].building.type === 'animal_pens_farm') count++;
+      cache.gaushalas = count;
+    }
+    return cache.gaushalas;
+  };
+
+  /** S3-T5: cows near the view on the Varanasi map, capped by road tiles and Gaushalas. */
+  const updateCows = (seconds: number, despawnBounds: TileBounds, roadTileCount: number, qualityScale: number) => {
+    const { grid: g, gridSize: n } = worldStateRef.current;
+    const maxCows = state.mapId === 'varanasi' ? getMaxCows(roadTileCount, countGaushalas(), qualityScale) : 0;
+    let cows = cowsRef.current.filter((c) => isInBounds(c.tileX, c.tileY, despawnBounds));
+    if (cows.length > maxCows) cows = cows.slice(0, maxCows);
+    if (cows.length < maxCows && spawnBounds) {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { x, y } = randomTileInBounds(spawnBounds);
+        const cow = spawnCow(cowIdRef.current, x, y, g, n, Math.random);
+        if (cow) {
+          cowIdRef.current++;
+          cows.push(cow);
+          break;
+        }
+      }
+    }
+    for (const cow of cows) stepCow(cow, seconds, g, n, Math.random);
+    cowsRef.current = cows;
+  };
+
   const updateCars = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
@@ -1087,6 +1128,7 @@ export function createVehicleSystems(
     const effectiveMinZoom = Math.max(carMinZoom, VEHICLE_FAR_ZOOM_THRESHOLD);
     if (currentZoom < effectiveMinZoom) {
       carsRef.current = [];
+      cowsRef.current = [];
       return;
     }
     
@@ -1106,6 +1148,8 @@ export function createVehicleSystems(
     const baseCars = roadTileCount > 0 ? Math.max(isMobile ? 10 : 15, Math.floor(roadTileCount * carDensity)) : 0;
     const preset = getActivePreset();
     const maxCars = scaledEntityLimit(baseCars, preset.vehicleFraction, deviceValue(preset.maxCars, isMobile));
+    updateCows(delta * speedMultiplier, despawnBounds, roadTileCount, preset.vehicleFraction);
+    const standingCowTiles = getStandingCowTiles(cowsRef.current, currentGridSize);
     if (carsRef.current.length > 0) {
       carsRef.current = carsRef.current.filter((car) => isInBounds(car.tileX, car.tileY, despawnBounds));
       if (carsRef.current.length > maxCars) carsRef.current.length = maxCars;
@@ -1268,7 +1312,9 @@ export function createVehicleSystems(
       }
       
       if (!shouldStop) {
-        car.progress += car.speed * delta * speedMultiplier;
+        // S3-T5: drive around a standing cow at reduced speed (never a full stop, so no deadlock)
+        const cowSlowdown = standingCowTiles.size > 0 ? getCowSlowdown(standingCowTiles, car.tileY * currentGridSize + car.tileX) : 1;
+        car.progress += car.speed * delta * speedMultiplier * cowSlowdown;
       }
       // When stopped, just don't move - no position changes
       
@@ -1619,7 +1665,7 @@ export function createVehicleSystems(
       return;
     }
     
-    if (!currentGrid || currentGridSize <= 0 || carsRef.current.length === 0) {
+    if (!currentGrid || currentGridSize <= 0 || (carsRef.current.length === 0 && cowsRef.current.length === 0)) {
       return;
     }
     
@@ -1636,6 +1682,22 @@ export function createVehicleSystems(
     
     // S3-T4: below this zoom every kind is the same plain shape
     const detailed = currentZoom >= TRAFFIC_CONFIG.detailMinZoom;
+    
+    // S3-T5: cows under the traffic, only when zoomed in enough to see them
+    if (currentZoom >= COW_CONFIG.minZoomToDraw) {
+      for (const cow of cowsRef.current) {
+        const { screenX, screenY } = gridToScreen(cow.tileX, cow.tileY, 0, 0);
+        const meta = DIRECTION_META[cow.direction];
+        const cx = screenX + TILE_WIDTH / 2 + meta.vec.dx * cow.progress + meta.normal.nx * cow.laneOffset;
+        const cy = screenY + TILE_HEIGHT / 2 + meta.vec.dy * cow.progress + meta.normal.ny * cow.laneOffset;
+        if (cx < viewLeft - 60 || cx > viewRight + 60 || cy < viewTop - 80 || cy > viewBottom + 80) continue;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(meta.angle);
+        drawCow(ctx, cow);
+        ctx.restore();
+      }
+    }
     carsRef.current.forEach(car => {
       const { screenX, screenY } = gridToScreen(car.tileX, car.tileY, 0, 0);
       const centerX = screenX + TILE_WIDTH / 2;
