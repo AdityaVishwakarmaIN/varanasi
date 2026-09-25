@@ -3050,6 +3050,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       if (time - lastEntitySample < 250) return;
       lastEntitySample = time;
       setEntityCount('cars', carsRef.current.length);
+      // S3-T4: per-kind counts for the mixed traffic (only non-car kinds; cars are the rest)
+      const kindCounts: Record<string, number> = { auto: 0, erickshaw: 0, motorbike: 0, cycle_rickshaw: 0 };
+      for (const car of carsRef.current) if (car.kind in kindCounts) kindCounts[car.kind]++;
+      for (const [kind, n] of Object.entries(kindCounts)) setEntityCount(kind, n);
       setEntityCount('buses', busesRef.current.length);
       setEntityCount('emergency', emergencyVehiclesRef.current.length);
       setEntityCount('pedestrians', pedestriansRef.current.length);

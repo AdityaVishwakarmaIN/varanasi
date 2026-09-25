@@ -94,7 +94,35 @@ export const TRAFFIC_CONFIG = {
   detailMinZoom: 0.8,
   /** A motorbike blocked for longer than this may overtake (shift lane offset). */
   motorbikeOvertakeAfterSeconds: 1,
+  /** Lane offset (pixels from the road centre line) a motorbike rides at while overtaking. */
+  overtakeLaneOffset: 1.5,
 } as const;
+
+/** The per-vehicle fields the overtaking rule reads and writes. */
+export interface OvertakeState {
+  kind: VehicleKind;
+  blockedSeconds?: number;
+  overtaking?: boolean;
+}
+
+/**
+ * One frame of the motorbike overtaking rule. `blocked` is true when a slower vehicle directly
+ * ahead in the same lane is holding this one back (not a red light or a train).
+ * Returns true when the vehicle should start overtaking this frame.
+ * Other kinds only queue: they never overtake.
+ */
+export function stepOvertake(v: OvertakeState, blocked: boolean, seconds: number): boolean {
+  if (v.kind !== 'motorbike' || v.overtaking) return false;
+  if (!blocked) {
+    v.blockedSeconds = 0;
+    return false;
+  }
+  v.blockedSeconds = (v.blockedSeconds ?? 0) + seconds;
+  if (v.blockedSeconds <= TRAFFIC_CONFIG.motorbikeOvertakeAfterSeconds) return false;
+  v.overtaking = true;
+  v.blockedSeconds = 0;
+  return true;
+}
 
 /** Picks a vehicle kind by the map's shares. Maps with no shares (or all zero) always get 'car'. */
 export function pickVehicleKind(mapId: MapId | undefined, rng: Rng): VehicleKind {

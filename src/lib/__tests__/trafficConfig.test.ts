@@ -8,6 +8,8 @@ import {
   getVehicleSpeedMultiplier,
   pickCowPauseSeconds,
   pickVehicleKind,
+  stepOvertake,
+  TRAFFIC_CONFIG,
   type VehicleKind,
 } from '@/lib/trafficConfig';
 
@@ -68,5 +70,32 @@ describe('cows', () => {
     }
     expect(COW_CONFIG.vehicleSlowdown).toBe(0.3);
     expect(COW_CONFIG.vehicleSlowdown).toBeGreaterThan(0);
+  });
+});
+
+describe('motorbike overtaking (S3-T4)', () => {
+  it('a blocked motorbike overtakes only after waiting longer than the threshold', () => {
+    const bike = { kind: 'motorbike' as VehicleKind };
+    const wait = TRAFFIC_CONFIG.motorbikeOvertakeAfterSeconds;
+    expect(stepOvertake(bike, true, wait * 0.6)).toBe(false);
+    expect(stepOvertake(bike, true, wait * 0.6)).toBe(true);
+    expect(bike).toMatchObject({ overtaking: true, blockedSeconds: 0 });
+    // Already overtaking: nothing more to do
+    expect(stepOvertake(bike, true, 10)).toBe(false);
+  });
+
+  it('the wait resets when the road clears', () => {
+    const bike = { kind: 'motorbike' as VehicleKind };
+    stepOvertake(bike, true, 0.9);
+    stepOvertake(bike, false, 0.1);
+    expect(stepOvertake(bike, true, 0.9)).toBe(false);
+  });
+
+  it('other kinds queue and never overtake', () => {
+    for (const kind of VEHICLE_KINDS.filter((k) => k !== 'motorbike')) {
+      const v = { kind };
+      expect(stepOvertake(v, true, 100)).toBe(false);
+      expect(v).toEqual({ kind });
+    }
   });
 });

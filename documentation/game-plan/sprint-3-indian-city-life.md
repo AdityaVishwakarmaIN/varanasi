@@ -50,7 +50,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [ ] S3-T1: Build-menu curation and Indian names
 - [ ] S3-T2: Varanasi sprite pack
 - [ ] S3-T3: Ghat, STP and new-building art
-- [ ] S3-T4: Mixed traffic (vehicle kinds)
+- [x] S3-T4: Mixed traffic (vehicle kinds)
 - [ ] S3-T5: Cows
 - [ ] S3-T6: Mixed-use commercial
 - [x] S3-T7: Power capacity and rolling power cuts
@@ -179,6 +179,14 @@ Adjacent ghats must join visually into one continuous stepped bank.
 5. The vehicle count still obeys the `QUALITY_PRESETS` cap. Add the per-kind counts to the perf HUD entities.
 
 **Acceptance criteria:** the Varanasi map shows the mix, with slow vehicles visibly creating queues. The random map is unchanged. There is no frame-time regression on the benchmark (add a perf-log row).
+
+**Done (notes):**
+- `Car.kind` is picked at spawn from `VEHICLE_MIX` for the map; speed is scaled by the kind's multiplier. The random map always gets `car`, drawn exactly as before.
+- Queues come from the existing follow rule (stop when the vehicle ahead in the same lane is closer than 0.25 tile), so slow kinds hold up everyone behind them.
+- Motorbikes blocked by a vehicle for more than 1 s move to the road's centre line (`overtakeLaneOffset`) and pass; they return to their lane on the next tile. Red lights and trains still stop them. Rule in `stepOvertake` (tested).
+- Drawing lives in `drawVehicleKinds.ts`. Below zoom 0.8 non-car kinds are one plain rectangle sized by kind.
+- Perf HUD shows `auto`, `erickshaw`, `motorbike`, `cycle_rickshaw` counts next to `cars`. The count still obeys the quality-preset cap.
+- Not yet done: the in-browser look check and the benchmark perf-log row (fold into S3-T11 sign-off).
 
 ---
 

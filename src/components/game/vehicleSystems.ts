@@ -31,6 +31,8 @@ import {
   spawnPilgrimWalking,
 } from './pedestrianSystem';
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
+import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
+import { drawVehicleBody } from './drawVehicleKinds';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 import { ENTITY_CULL_CONFIG, deviceValue, scaledEntityLimit } from '@/lib/qualityConfig';
@@ -176,6 +178,9 @@ export function createVehicleSystems(
       const carMaxAge = isMobile 
         ? 25 + Math.random() * 15   // 25-40 seconds on mobile
         : 45 + Math.random() * 30; // 45-75 seconds on desktop
+      // S3-T4: Varanasi traffic is a mix of cars, autos, e-rickshaws, motorbikes and cycle rickshaws
+      const kind = pickVehicleKind(state.mapId, Math.random);
+      const look = VEHICLE_MIX[kind].look;
       
       carsRef.current.push({
         id: carIdRef.current++,
@@ -183,11 +188,17 @@ export function createVehicleSystems(
         tileY,
         direction,
         progress: Math.random() * 0.8,
-        speed: (0.35 + Math.random() * 0.35) * 0.7,
+        speed: (0.35 + Math.random() * 0.35) * 0.7 * getVehicleSpeedMultiplier(kind),
         age: 0,
         maxAge: carMaxAge,
-        color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
+        color: look.bodyColors.length > 0
+          ? look.bodyColors[Math.floor(Math.random() * look.bodyColors.length)]
+          : CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
         laneOffset: laneSign * baseLaneOffset,
+        kind,
+        canopyColor: look.canopyColors.length > 0
+          ? look.canopyColors[Math.floor(Math.random() * look.canopyColors.length)]
+          : undefined,
       });
       return true;
     }
@@ -1215,8 +1226,10 @@ export function createVehicleSystems(
       }
       
       // Check for car ahead - efficient spatial lookup
-      // Only check cars going the SAME direction (same lane)
-      if (!shouldStop) {
+      // Only check cars going the SAME direction (same lane).
+      // S3-T4: an overtaking motorbike rides the middle of the road, so it is not held up by its lane.
+      let blockedByVehicle = false;
+      if (!shouldStop && !car.overtaking) {
         // Check same tile for car ahead in same lane
         // PERF: Use numeric key lookup
         const sameTileCars = carsByTile.get(car.tileY * currentGridSize + car.tileX) || [];
@@ -1225,8 +1238,9 @@ export function createVehicleSystems(
           // Same direction (same lane) and ahead of us
           if (other.direction === car.direction && other.progress > car.progress) {
             const gap = other.progress - car.progress;
-            if (gap < 0.25) {
+            if (gap < 0.25 && !other.overtaking) {
               shouldStop = true;
+              blockedByVehicle = true;
               break;
             }
           }
@@ -1238,12 +1252,19 @@ export function createVehicleSystems(
           const nextTileCars = carsByTile.get(nextY * currentGridSize + nextX) || [];
           for (const other of nextTileCars) {
             // Only stop for cars going same direction (same lane)
-            if (other.direction === car.direction && other.progress < 0.3) {
+            if (other.direction === car.direction && other.progress < 0.3 && !other.overtaking) {
               shouldStop = true;
+              blockedByVehicle = true;
               break;
             }
           }
         }
+      }
+      
+      // S3-T4: slow kinds hold up whoever is behind them; motorbikes squeeze past after a short wait
+      if (stepOvertake(car, blockedByVehicle, delta * speedMultiplier)) {
+        car.laneOffset = Math.sign(car.laneOffset || 1) * TRAFFIC_CONFIG.overtakeLaneOffset;
+        shouldStop = false;
       }
       
       if (!shouldStop) {
@@ -1284,6 +1305,11 @@ export function createVehicleSystems(
         car.tileX = newTileX;
         car.tileY = newTileY;
         car.progress -= 1;
+        if (car.overtaking) {
+          // Passed: back into the normal lane
+          car.overtaking = false;
+          car.laneOffset = Math.sign(car.laneOffset || 1) * (4 + Math.random() * 2);
+        }
         
         // Pick next direction
         const nextDirection = pickNextDirection(car.direction, currentGrid, currentGridSize, car.tileX, car.tileY);
@@ -1608,6 +1634,8 @@ export function createVehicleSystems(
     const viewRight = viewWidth - currentOffset.x / currentZoom + TILE_WIDTH;
     const viewBottom = viewHeight - currentOffset.y / currentZoom + TILE_HEIGHT * 2;
     
+    // S3-T4: below this zoom every kind is the same plain shape
+    const detailed = currentZoom >= TRAFFIC_CONFIG.detailMinZoom;
     carsRef.current.forEach(car => {
       const { screenX, screenY } = gridToScreen(car.tileX, car.tileY, 0, 0);
       const centerX = screenX + TILE_WIDTH / 2;
@@ -1624,23 +1652,7 @@ export function createVehicleSystems(
       ctx.translate(carX, carY);
       ctx.rotate(meta.angle);
 
-      const scale = 0.5; // 30% smaller than original
-      
-      ctx.fillStyle = car.color;
-      ctx.beginPath();
-      ctx.moveTo(-10 * scale, -5 * scale);
-      ctx.lineTo(10 * scale, -5 * scale);
-      ctx.lineTo(12 * scale, 0);
-      ctx.lineTo(10 * scale, 5 * scale);
-      ctx.lineTo(-10 * scale, 5 * scale);
-      ctx.closePath();
-      ctx.fill();
-      
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.fillRect(-4 * scale, -2.8 * scale, 7 * scale, 5.6 * scale);
-      
-      ctx.fillStyle = '#111827';
-      ctx.fillRect(-10 * scale, -4 * scale, 2.4 * scale, 8 * scale);
+      drawVehicleBody(ctx, car, detailed);
       
       ctx.restore();
     });

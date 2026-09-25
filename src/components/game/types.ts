@@ -1,6 +1,7 @@
 // Game-specific types for rendering and animation
 
 import { CardinalDirection } from '@/core/types';
+import type { VehicleKind } from '@/lib/trafficConfig';
 
 // Isometric tile dimensions
 export const TILE_WIDTH = 64;
@@ -22,6 +23,14 @@ export type Car = {
   maxAge: number;
   color: string;
   laneOffset: number;
+  /** S3-T4: what the vehicle is (car, auto, e-rickshaw, motorbike, cycle rickshaw). */
+  kind: VehicleKind;
+  /** Canopy colour for 3-wheelers and rickshaws. */
+  canopyColor?: string;
+  /** Seconds stuck behind another vehicle (motorbikes overtake after a short wait). */
+  blockedSeconds?: number;
+  /** True while a motorbike rides in the middle of the road to pass slower traffic. */
+  overtaking?: boolean;
 };
 
 export type Bus = {
