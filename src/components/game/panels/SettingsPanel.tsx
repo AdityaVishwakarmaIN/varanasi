@@ -13,6 +13,9 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { SpriteTestPanel } from './SpriteTestPanel';
 import { GraphicsSettings } from './GraphicsSettings';
+import { AudioSettings } from './AudioSettings';
+import { CreditsButton } from '@/components/CreditsDialog';
+import { isDevModeSearch } from '@/lib/devMode';
 import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
@@ -149,21 +152,23 @@ export function SettingsPanel() {
     setSavedCityInfo(getSavedCityInfo());
   }, [getSavedCityInfo]);
   
+  // S5-T12: developer tools (sprite test, benchmarks, example states) only with ?dev=1
+  const devMode = isDevModeSearch(searchParams?.toString());
   // Initialize showSpriteTest from query parameter
-  const spriteTestFromUrl = searchParams?.get('spriteTest') === 'true';
+  const spriteTestFromUrl = devMode && searchParams?.get('spriteTest') === 'true';
   const [showSpriteTest, setShowSpriteTest] = useState(spriteTestFromUrl);
   const lastUrlValueRef = useRef(spriteTestFromUrl);
   const isUpdatingFromStateRef = useRef(false);
   
   // Sync state with query parameter when URL changes externally
   useEffect(() => {
-    const spriteTestParam = searchParams?.get('spriteTest') === 'true';
+    const spriteTestParam = devMode && searchParams?.get('spriteTest') === 'true';
     // Only update if URL value actually changed and we're not updating from state
     if (spriteTestParam !== lastUrlValueRef.current && !isUpdatingFromStateRef.current) {
       lastUrlValueRef.current = spriteTestParam;
       setTimeout(() => setShowSpriteTest(spriteTestParam), 0);
     }
-  }, [searchParams]);
+  }, [searchParams, devMode]);
   
   // Sync query parameter when showSpriteTest changes (but avoid loops)
   useEffect(() => {
@@ -287,7 +292,10 @@ export function SettingsPanel() {
 
             <GraphicsSettings />
 
+            <AudioSettings />
+
             <ControlsHelpButton />
+            <CreditsButton className="w-full mt-2" />
           </div>
 
           <div>
@@ -608,6 +616,8 @@ export function SettingsPanel() {
           </div>
           
           <div>
+            {/* S5-T12: developer tools only with ?dev=1 */}
+            {devMode && (<>
             <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
             <Button
               variant="outline"
@@ -656,7 +666,8 @@ export function SettingsPanel() {
             <Button variant="outline" className="w-full mt-2" onClick={() => loadExampleState('example_state_11.json', loadState, setActivePanel)}>
               Load Example State 11
             </Button>
-            <div className="mt-4 pt-4 border-t border-border">
+            </>)}
+            <div className={devMode ? 'mt-4 pt-4 border-t border-border' : ''}>
               <Label>{m(UI_LABELS.dayNightMode)}</Label>
               <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
               <div className="flex rounded-md border border-border overflow-hidden">
@@ -681,7 +692,7 @@ export function SettingsPanel() {
         </div>
       </DialogContent>
       
-      {showSpriteTest && (
+      {devMode && showSpriteTest && (
         <SpriteTestPanel onClose={() => {
           setShowSpriteTest(false);
           // Query param will be cleared by useEffect above

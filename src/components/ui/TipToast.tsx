@@ -48,7 +48,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
         'fixed z-[9999] pointer-events-auto',
         'transition-all duration-300 ease-out',
         // Mobile: top position below toolbar, full width with margins
-        'top-20 left-3 right-3',
+        'top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3',
         // Desktop: bottom center position
         'md:top-auto md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2',
         isAnimating 
@@ -78,7 +78,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
           {/* Close button */}
           <button
             onClick={onContinue}
-            className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 -m-2.5 p-2.5 max-md:p-3.5 max-md:-m-3.5 text-muted-foreground hover:text-foreground transition-colors"
             aria-label={gt('Dismiss tip')}
           >
             <X className="w-4 h-4" />
@@ -91,7 +91,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
             variant="ghost"
             size="sm"
             onClick={onSkipAll}
-            className="text-xs text-muted-foreground hover:text-foreground gap-1"
+            className="text-xs text-muted-foreground hover:text-foreground gap-1 max-md:h-11"
           >
             <T>
               <SkipForward className="w-3.5 h-3.5" />
@@ -102,7 +102,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
             variant="default"
             size="sm"
             onClick={onContinue}
-            className="text-xs gap-1"
+            className="text-xs gap-1 max-md:h-11"
           >
             <T>
               Continue

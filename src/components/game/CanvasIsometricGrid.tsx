@@ -3,6 +3,7 @@
 
 'use client';
 
+import { currentBatterySaverFrameMs, installBatterySaverInputTracking } from '@/lib/batterySaver';
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useMessages, T, Var, useGT } from 'gt-next';
 import { useGame } from '@/context/GameContext';
@@ -3205,13 +3206,20 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // Target 30fps on mobile (33ms per frame), 60fps on desktop (16ms per frame)
     const targetFrameTime = isMobile ? 33 : 16;
     
+    installBatterySaverInputTracking();
+
     const render = (time: number) => {
       animationFrameId = requestAnimationFrame(render);
       
-      // Frame rate limiting for mobile - skip frames to maintain target FPS
+      // Frame rate limiting for mobile - skip frames to maintain target FPS.
+      // S5-T10 battery saver: paused + 5 s without input → 10 fps (full rate again on input).
       const timeSinceLastRender = time - lastRenderTime;
-      if (isMobile && timeSinceLastRender < targetFrameTime) {
-        return; // Skip this frame on mobile to reduce CPU load
+      const minFrameTime = Math.max(
+        isMobile ? targetFrameTime : 0,
+        currentBatterySaverFrameMs(worldStateRef.current.speed === 0, time),
+      );
+      if (timeSinceLastRender < minFrameTime) {
+        return; // Skip this frame to reduce CPU/battery load
       }
       
       const delta = Math.min((time - lastTime) / 1000, 0.3);

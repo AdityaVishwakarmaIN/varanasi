@@ -70,6 +70,8 @@ import {
 import { isMobile } from 'react-device-detect';
 import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
 import { acceptEmergencyLoan as acceptLoan, declineEmergencyLoan as declineLoan } from '@/lib/failure';
+import { playSfx } from '@/lib/audio';
+import { sfxForTool } from '@/lib/audio/audioConfig';
 import {
   addForecast as addForecastToState,
   pushNotifications,
@@ -1073,6 +1075,15 @@ export function GameProvider({
       return recalculateDerivedState(nextState);
     });
     
+    // S5-T9: sound for a local build/road/bulldoze that actually changed the tile.
+    const sfx = isRemote ? null : sfxForTool(currentTool);
+    if (sfx) {
+      const before = latestStateRef.current.grid[y]?.[x];
+      setTimeout(() => {
+        if (latestStateRef.current.grid[y]?.[x] !== before) playSfx(sfx);
+      }, 50); // after React commits the placement (latestStateRef is synced in an effect)
+    }
+
     // Broadcast to multiplayer if this is a local action (not remote)
     // We use the tool captured before setState since React 18 batches async
     if (!isRemote && currentTool !== 'select' && placeCallbackRef.current) {

@@ -301,7 +301,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
   return (
     <>
       {/* Bottom Toolbar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom">
+      <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom safe-area-left safe-area-right">
         {/* S1-T11: Draw mode toggle, only for tools that are drawn by dragging (road, rail, zones) */}
         {onDrawModeChange && isDrawModeTool(selectedTool) && (
           <Button
@@ -330,7 +330,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             </div>
           )}
 
-          <div className="flex items-center justify-around px-2 py-2 gap-1">
+          <div className="flex items-center justify-around px-1 py-2 gap-0 min-[400px]:px-2 min-[400px]:gap-1">
             {/* Quick access tools */}
             <Button
               variant={selectedTool === 'select' ? 'default' : 'ghost'}
@@ -421,7 +421,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       {showMenu && (
         <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setShowMenu(false)}>
           <Card
-            className="absolute bottom-20 left-2 right-2 max-h-[70vh] overflow-hidden rounded-xl flex flex-col"
+            className="absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[70dvh] overflow-hidden rounded-xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* City Management section at top */}

@@ -55,8 +55,8 @@ By the end of this sprint the game is **ready for real players**:
 - [ ] S5-T6: Named advisors (feedback layer 2)
 - [ ] S5-T7: Citizen feed (feedback layer 3)
 - [ ] S5-T8: Contextual tips for every system
-- [ ] S5-T9: Music and sound
-- [ ] S5-T10: Mobile polish
+- [x] S5-T9: Music and sound
+- [x] S5-T10: Mobile polish
 - [ ] S5-T11: Undo last action (stretch)
 - [ ] S5-T12: Launch checklist
 
@@ -239,6 +239,13 @@ A **"Reset tips"** button in Settings.
 
 **Acceptance criteria:** there is sound for every listed action, and loading is still within the 00-game-design §7 targets. It is muted when the tab is hidden, and licences are recorded.
 
+**Done:** `src/lib/audio/` (config + pure helpers in `audioConfig.ts`, Web Audio `audioManager.ts` loaded by dynamic import on the first
+pointer/key input, facade `playSfx(id)` in `index.ts`). All nine SFX are synthesized in code (no files, no licence needed); ambient river +
+bells plays on Medium/High only, scaled by zoom and nearby ghat/water tiles. Music is optional: tracks listed in `public/audio/music/playlist.json`
+are shuffled and streamed (.ogg, .m4a fallback); none are shipped yet, so music is silent until licensed tracks are added and recorded in
+`public/audio/LICENSES.md`. Everything is silenced when the tab is hidden. Volume sliders + mute in Settings → Sound (localStorage).
+Hooks: placement/road/bulldoze sounds in GameContext, click/notification/alert/weekly money in `useGameAudio`; landmark/festival features call `playSfx('unlock' | 'festival')`.
+
 ---
 
 ### S5-T10: Mobile polish
@@ -251,6 +258,12 @@ A **"Reset tips"** button in Settings.
 5. Landscape and portrait both work, or portrait-only is enforced with a friendly rotate message (the owner decides; ask).
 
 **Acceptance criteria:** a checklist of every screen × both sizes, all passing, is added to "Notes for later" as a record.
+
+**Done:** Radix dialogs (all panels) become bottom sheets under 640 px (`ui/dialog.tsx`); safe-area insets on the top bar, toolbar, canvas
+padding, notifications and toasts; 44 px touch targets (toolbar fits 8 buttons at 360 px, slider thumbs, toast buttons); battery saver
+(`src/lib/batterySaver.ts`, 10 fps after 5 s idle while paused, full rate on the next input). Checked by code review only: the on-device pass
+at 390×844 / 360×740 / real Android still needs a human. Orientation: both work, nothing enforced; **owner decision pending**. There is no
+game-over screen yet.
 
 ---
 
@@ -269,12 +282,18 @@ A **"Reset tips"** button in Settings.
 - [ ] **Performance:** rerun every S1-T13 measurement on a full, late-game Varanasi 160 map (with landmarks and festivals). All targets pass. Record in perf-log.md.
 - [ ] **Load time:** the start screen is usable in ≤ 3 s on desktop broadband and ≤ 6 s on throttled "Fast 4G" (DevTools). Audio and big sprite sheets load lazily.
 - [ ] **Saves:** saves from **every** earlier sprint's build load correctly (keep one save file per sprint in `public/example-states/` for this test).
-- [ ] **Crash safety:** a React error boundary around the game. On a crash it autosaves (if possible) and shows "Something went wrong. Your city was saved." with a reload button.
-- [ ] **Dev tools hidden:** the benchmark buttons, sprite test view and perf HUD are available only with `?dev=1`.
-- [ ] **Credits screen:** IsoCity (MIT licence), art sources, audio licences.
-- [ ] **Metadata:** title, description and Open Graph image showing the Varanasi riverfront.
+- [x] **Crash safety:** a React error boundary around the game. On a crash it autosaves (if possible) and shows "Something went wrong. Your city was saved." with a reload button.
+- [x] **Dev tools hidden:** the benchmark buttons, sprite test view and perf HUD are available only with `?dev=1`.
+- [x] **Credits screen:** IsoCity (MIT licence), art sources, audio licences.
+- [x] **Metadata:** title, description and Open Graph image showing the Varanasi riverfront.
 - [ ] **Playtest:** 3 people who have never seen the game each play for 30 minutes. Check the success criteria in 00-game-design §10. Write down what confused them.
-- [ ] **README:** the repo root `README.md` describes Varanasi (keeping the IsoCity credit).
+- [x] **README:** the repo root `README.md` describes Varanasi (keeping the IsoCity credit).
+
+**Done (code items):** `GameErrorBoundary` + `CrashSaveRegistrar` around the game (home and co-op), writing the autosave before showing
+the message; dev tools, sprite test and perf HUD only with `?dev=1` (`src/lib/devMode.ts`; `?bench=` runs still work); Credits dialog on the
+start screen and in Settings; metadata + a generated riverfront Open Graph image (`src/app/opengraph-image.tsx`, an illustration; swap for a
+real screenshot later); README rewritten. **Still open (need a human/browser):** Performance and Load time measurements, the per-sprint
+example saves in `public/example-states/`, and the Playtest. So S5-T12 stays unticked.
 
 ## 5. Sprint exit criteria (= v1.0 release criteria)
 
@@ -298,3 +317,7 @@ A **"Reset tips"** button in Settings.
 - **Advisor message type** is `AdvisorNote` in `advisors.ts` (the old `AdvisorMessage` in `types/game.ts` has a different shape and
   should be migrated when the panel is reworked).
 - **Owner review needed:** the citizen-voice templates and first-name list in `citizenVoices.ts`.
+- **S5-T10 mobile checklist (code-reviewed, not device-tested; orientation pending owner decision).** Sizes 390×844 and 360×740:
+  start screen ✓/✓ (credits button added); new-game map choice ✓/✓; build menu (toolbar + expanded menu, 70dvh scroll) ✓/✓; budget, stats,
+  advisors, settings, event panels (bottom sheets, 85dvh scroll) ✓/✓; tile info ✓/✓; notifications (below safe area) ✓/✓; citizen feed and
+  calendar strip: re-check after S5-T3/T7 land; game-over screen: none exists. Recheck all of these on a real Android phone.
