@@ -1,75 +1,52 @@
-# IsoCity & IsoCoaster
+# Varanasi
 
-Open-source isometric simulation games built with Next.js, TypeScript, and HTML5 Canvas.
+An isometric city builder set in Varanasi, the city on the Ganga. You plan a living city along the river: ghats, bazaars, mohallas, monsoon floods, festivals and landmarks. The river's health depends on the choices you make.
 
-<table>
-<tr>
-<td width="50%" align="center"><strong>IsoCity</strong></td>
-<td width="50%" align="center"><strong>IsoCoaster</strong></td>
-</tr>
-<tr>
-<td><img src="public/readme-image.png" width="100%"></td>
-<td><img src="public/readme-coaster.png" width="100%"></td>
-</tr>
-<tr>
-<td align="center">City builder with trains, planes, cars, and pedestrians<br><a href="https://iso-city.com">iso-city.com</a></td>
-<td align="center">Build theme parks with roller coasters, rides, and guests<br><a href="https://iso-coaster.com">iso-coaster.com</a></td>
-</tr>
-</table>
-
-Made with [Cursor](https://cursor.com).
+It runs in the browser on desktop and mobile. It is built with Next.js, TypeScript and HTML5 Canvas.
 
 ## Features
 
--   **Isometric Rendering Engine**: Rendering with HTML5 Canvas (`CanvasIsometricGrid`) capable of handling complex depth sorting, layer management, and both image and drawn sprites.
--   **Dynamic Simulation**:
-    -   **Traffic System**: Autonomous vehicles including cars, trains, planes, and seaplanes.
-    -   **Trains, bridges, buses, barges, and more**: Vehicles will navigate throughout your city.
-    -   **Pedestrian System**: Pathfinding and crowd simulation for city inhabitants.
-    -   **Economy & Resources**: Resource management, zoning (Residential, Commercial, Industrial), and city growth logic.
--   **Interactive Grid**: Tile-based placement system for buildings, roads, rail, parks, utilities, and more.
--   **State Management**: Save/Load functionality for multiple cities.
--   **Responsive Design**: Mobile-friendly interface with touch controls and toolbars.
+-   **Varanasi map**: the river bend, the ghats and the neighbourhoods of the old city, drawn on an isometric grid.
+-   **Living city**: zoning, roads, services, traffic, pedestrians, boats, and an economy with a budget.
+-   **The Ganga**: river health, pollution and monsoon floods that reshape the riverfront every year.
+-   **Festivals and landmarks**: a festival calendar (Dev Deepawali, Maha Shivratri and others) and landmarks that unlock as the city grows.
+-   **Feedback**: problem icons, named advisors, a citizen feed and contextual tips.
+-   **Sound**: synthesized sound effects, river and temple-bell ambience, and an optional music playlist (see `public/audio/LICENSES.md`).
+-   **Mobile**: touch controls, bottom-sheet panels, safe-area support and a battery saver when paused.
+-   **Saves**: autosave plus several saved cities in local storage.
 
-## Tech Stack
+## Getting started
 
--   **Framework**: [Next.js 16](https://nextjs.org/)
--   **Language**: [TypeScript](https://www.typescriptlang.org/)
--   **Graphics**: HTML5 Canvas (No external game engine libraries; pure native implementation).
--   **Icons**: Lucide React.
+Prerequisites: Node.js 18 or higher, and npm.
 
-## Getting Started
+```bash
+npm install
+npm run dev      # http://localhost:3000
+```
 
-### Prerequisites
+Other commands:
 
--   Node.js (v18 or higher)
--   npm
+```bash
+npm run build    # production build (also type-checks)
+npm run lint     # ESLint
+npm test         # unit tests (Vitest)
+```
 
-### Installation
+Developer tools (sprite test view, benchmarks, perf HUD) are hidden. Add `?dev=1` to the URL to show them.
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/amilich/isometric-city.git
-    cd isometric-city
-    ```
+Set `NEXT_PUBLIC_SITE_URL` in production so Open Graph links are absolute.
 
-2.  **Install dependencies**
-    ```bash
-    npm install
-    ```
+## Project layout
 
-3.  **Run the development server**
-    ```bash
-    npm run dev
-    ```
+-   `src/app/`: Next.js App Router pages
+-   `src/components/`: React components (`Game.tsx` is the main entry)
+-   `src/context/`: global game state
+-   `src/lib/`: simulation, rendering and game rules, with tests in `src/lib/__tests__/`
+-   `documentation/`: game design and sprint plans
 
-4.  **Open the game**
-    Visit [http://localhost:3000](http://localhost:3000) in your browser. 
-    Visit [http://localhost:3000/coaster](http://localhost:3000/coaster) for IsoCoaster.
+## Credits
 
-## Contributing
-
-Contributions, bug reports, feature requests, and pull requests are welcome.
+Varanasi is built on [IsoCity](https://github.com/amilich/isometric-city) by Andrew Milich (MIT licence). The rendering engine, simulation base and sprite sheets come from IsoCity. The in-game Credits screen lists all art, font and audio sources.
 
 ## License
 

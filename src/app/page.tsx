@@ -16,6 +16,9 @@ import Game from '@/components/Game';
 import { PerfHud } from '@/components/game/PerfHud';
 import { BenchmarkRunner } from '@/components/game/BenchmarkRunner';
 import { parseBenchmarkParams } from '@/lib/benchmark';
+import { isDevMode } from '@/lib/devMode';
+import { CreditsButton } from '@/components/CreditsDialog';
+import { CrashSaveRegistrar, GameErrorBoundary } from '@/components/GameErrorBoundary';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { FEATURES } from '@/lib/features';
@@ -546,19 +549,23 @@ export default function HomePage() {
   if (showGame) {
     const gameContent = (
       <main className="h-screen w-screen overflow-hidden">
+        <CrashSaveRegistrar />
         <Game onExit={handleExitGame} />
-        <PerfHud />
+        {/* S5-T12: the perf HUD is a developer tool (?dev=1). ?bench= URLs are automated runs. */}
+        {isDevMode() && <PerfHud />}
         <BenchmarkRunner />
       </main>
     );
 
     // Always wrap in MultiplayerContextProvider so players can invite others from within the game
     return (
-      <MultiplayerContextProvider>
-        <GameProvider startFresh={startFreshGame} newGameOptions={newGameOptions}>
-          {gameContent}
-        </GameProvider>
-      </MultiplayerContextProvider>
+      <GameErrorBoundary>
+        <MultiplayerContextProvider>
+          <GameProvider startFresh={startFreshGame} newGameOptions={newGameOptions}>
+            {gameContent}
+          </GameProvider>
+        </MultiplayerContextProvider>
+      </GameErrorBoundary>
     );
   }
 
@@ -640,6 +647,7 @@ export default function HomePage() {
                 >
                   <T>Built on IsoCity (MIT licence)</T>
                 </a>
+                <CreditsButton variant="ghost" className="justify-start h-auto min-h-[44px] px-0 text-sm font-light tracking-wide text-white/40 hover:text-white/70 hover:bg-transparent" />
               </div>
               <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
                 <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
@@ -765,6 +773,7 @@ export default function HomePage() {
                   >
                     <T>Built on IsoCity (MIT licence)</T>
                   </a>
+                  <CreditsButton variant="ghost" className="justify-start h-auto py-2 px-0 text-sm font-light tracking-wide text-white/40 hover:text-white/70 hover:bg-transparent" />
                 </div>
                 <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
                   <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />

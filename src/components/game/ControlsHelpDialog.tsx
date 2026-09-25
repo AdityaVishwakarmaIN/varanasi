@@ -5,6 +5,7 @@ import { msg, useMessages } from 'gt-next';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { KEY_BINDINGS, MOUSE_BINDINGS } from '@/lib/controlsConfig';
+import { isDevMode } from '@/lib/devMode';
 
 const LABELS = {
   title: msg('Controls'),
@@ -56,7 +57,7 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
             <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">{m(LABELS.keyboard)}</div>
             <table className="w-full">
               <tbody>
-                {KEY_BINDINGS.map((binding) => (
+                {KEY_BINDINGS.filter((b) => b.action !== 'perfHud' || isDevMode()).map((binding) => (
                   <tr key={binding.action} className="border-b border-border/40 last:border-0">
                     <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{binding.keyLabel}</KeyCap></td>
                     <td className="py-1 text-muted-foreground">{m(binding.label)}</td>

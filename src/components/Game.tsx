@@ -20,6 +20,7 @@ import { VinnieDialog } from '@/components/VinnieDialog';
 import { CommandMenu } from '@/components/ui/CommandMenu';
 import { TipToast } from '@/components/ui/TipToast';
 import { useTipSystem } from '@/hooks/useTipSystem';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import { useMultiplayerSync } from '@/hooks/useMultiplayerSync';
 import { useCopyRoomLink } from '@/hooks/useCopyRoomLink';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
@@ -64,7 +65,9 @@ type MiniMapViewportListener = (viewport: ViewportState | null) => void;
 export default function Game({ onExit }: { onExit?: () => void }) {
   const gt = useGT();
   const m = useMessages();
-  const { state, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
+  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
+  // S5-T9: music, sound effects and ambient
+  useGameAudio(state, latestStateRef);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
   // S2-T8: the top-bar Ganga Health chip toggles the Ganga overlay.
   const toggleGangaOverlay = useCallback(() => {
@@ -349,7 +352,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           )}
           
           {/* Main canvas area - fills remaining space, with padding for top/bottom bars */}
-          <div className="flex-1 relative overflow-hidden" style={{ paddingTop: '72px', paddingBottom: '76px' }}>
+          <div className="flex-1 relative overflow-hidden" style={{ paddingTop: 'calc(72px + env(safe-area-inset-top))', paddingBottom: 'calc(76px + env(safe-area-inset-bottom))' }}>
             <CanvasIsometricGrid 
               overlayMode={overlayMode} 
               selectedTile={selectedTile} 
@@ -364,7 +367,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <NotificationToasts
               notifications={state.notifications}
               onLocate={locateNotification}
-              className="absolute top-[80px] left-3 right-3 z-30"
+              className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30"
             />
             
             {/* Multiplayer Players Indicator - Mobile */}

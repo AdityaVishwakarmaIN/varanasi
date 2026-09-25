@@ -25,7 +25,7 @@ export function SaveErrorToast({
   return (
     <div
       role="alert"
-      className="fixed z-[9999] top-20 left-3 right-3 md:top-auto md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2"
+      className="fixed z-[9999] top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3 md:top-auto md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2"
     >
       <div className="flex items-start gap-3 bg-card border border-destructive/60 rounded-sm shadow-lg p-3 md:max-w-md">
         <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />

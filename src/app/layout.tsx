@@ -19,31 +19,35 @@ const dmSans = DM_Sans({
   weight: ['400', '500', '600', '700']
 });
 
+const SITE_DESCRIPTION = 'A city builder set in Varanasi. Plan a living city on the Ganga: ghats, bazaars, monsoon floods, festivals and a river that depends on you.';
+
+/** Public URL for absolute Open Graph links: NEXT_PUBLIC_SITE_URL, else the Vercel URL, else localhost. */
+function siteUrl(): URL {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return new URL(explicit ?? (vercel ? `https://${vercel}` : 'http://localhost:3000'));
+}
+
+// S5-T12: the Open Graph / Twitter image comes from src/app/opengraph-image.tsx (Varanasi riverfront).
 export const metadata: Metadata = {
-  metadataBase: new URL('https://iso-city.com'),
+  metadataBase: siteUrl(),
   title: {
     default: 'Varanasi — City on the Ganga',
     template: 'Varanasi — %s',
   },
-  description: 'A city builder set in Varanasi. Plan a living city on the Ganga: ghats, bazaars, monsoon floods, festivals and a river that depends on you.',
+  description: SITE_DESCRIPTION,
+  applicationName: 'Varanasi',
+  keywords: ['Varanasi', 'Ganga', 'city builder', 'isometric', 'ghats', 'browser game'],
   openGraph: {
-    title: 'ISOCITY — Metropolis Builder',
-    description: 'A city builder set in Varanasi. Plan a living city on the Ganga: ghats, bazaars, monsoon floods, festivals and a river that depends on you.',
+    title: 'Varanasi — City on the Ganga',
+    description: SITE_DESCRIPTION,
     type: 'website',
     siteName: 'Varanasi',
-    images: [
-      {
-        url: '/opengraph-image.png',
-        width: 1179,
-        height: 1406,
-        type: 'image/png',
-        alt: 'Varanasi - isometric city builder on the Ganga'
-      }
-    ],
   },
   twitter: {
     card: 'summary_large_image',
-    images: ['/opengraph-image.png'],
+    title: 'Varanasi — City on the Ganga',
+    description: SITE_DESCRIPTION,
   },
   appleWebApp: {
     capable: true,

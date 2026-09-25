@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { GameProvider } from '@/context/GameContext';
 import { MultiplayerContextProvider } from '@/context/MultiplayerContext';
+import { CrashSaveRegistrar, GameErrorBoundary } from '@/components/GameErrorBoundary';
 import Game from '@/components/Game';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { GameState, SavedCityMeta } from '@/types/game';
@@ -110,13 +111,16 @@ export default function CoopPage() {
 
   if (showGame) {
     return (
-      <MultiplayerContextProvider>
-        <GameProvider startFresh={startFreshGame}>
-          <main className="h-screen w-screen overflow-hidden">
-            <Game onExit={handleExitGame} />
-          </main>
-        </GameProvider>
-      </MultiplayerContextProvider>
+      <GameErrorBoundary>
+        <MultiplayerContextProvider>
+          <GameProvider startFresh={startFreshGame}>
+            <main className="h-screen w-screen overflow-hidden">
+              <CrashSaveRegistrar />
+              <Game onExit={handleExitGame} />
+            </main>
+          </GameProvider>
+        </MultiplayerContextProvider>
+      </GameErrorBoundary>
     );
   }
 
