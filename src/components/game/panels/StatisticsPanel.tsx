@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatINR, formatIndianNumber, formatPopulation } from '@/lib/format';
+import { formatINR, formatIndianNumber, formatPopulation, POPULATION_DISPLAY_SCALE } from '@/lib/format';
+import { getNextLandmark, getPeakDisplayedPopulation } from '@/lib/landmarks';
+import { TOOL_INFO } from '@/types/game';
 import { RiverIcon } from '@/components/ui/Icons';
 import { getGangaTrend } from '@/lib/scoring';
 import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
@@ -34,6 +36,9 @@ export function StatisticsPanel() {
   const { state, setActivePanel } = useGame();
   const { history, stats } = state;
   const isVaranasi = state.mapId === 'varanasi' && stats.gangaHealth !== undefined;
+  const gt = useGT();
+  // S5-T1: "Next landmark: X at N (you: M)". Unlocks go by peak population, so a dip never re-locks.
+  const nextLandmark = isVaranasi ? getNextLandmark(getPeakDisplayedPopulation(state)) : null;
   const [selectedTab, setActiveTab] = useState<StatsTab>('population');
   const activeTab: StatsTab = selectedTab === 'ganga' && !isVaranasi ? 'population' : selectedTab;
   const m = useMessages();
@@ -156,6 +161,16 @@ export function StatisticsPanel() {
               gangaHealth={stats.gangaHealth ?? 0}
               gangaHealthTarget={stats.gangaHealthTarget}
             />
+          )}
+
+          {nextLandmark && (
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              {gt('Next landmark: {name} at {target} (you: {current})', {
+                name: String(m(TOOL_INFO[nextLandmark.id].name)),
+                target: formatIndianNumber(nextLandmark.unlockPopulation),
+                current: formatIndianNumber(Math.round(stats.population * POPULATION_DISPLAY_SCALE)),
+              })}
+            </p>
           )}
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>

@@ -1,5 +1,6 @@
 import type { CloudWeatherMode } from '@/components/game/types';
 import type { Building, BuildingType, Tile } from '@/games/isocity/types';
+import { isLandmarkType } from '@/lib/landmarks';
 
 export type FirePosition = {
   x: number;
@@ -68,7 +69,8 @@ export function igniteBuilding(building: Pick<Building, 'onFire' | 'fireProgress
 }
 
 export function isBuildingFireEligible(type: BuildingType): boolean {
-  return !FIRE_IMMUNE_BUILDING_TYPES.has(type);
+  // Landmarks never catch fire (S5-T1)
+  return !FIRE_IMMUNE_BUILDING_TYPES.has(type) && !isLandmarkType(type);
 }
 
 

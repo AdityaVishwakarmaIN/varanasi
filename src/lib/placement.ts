@@ -15,6 +15,7 @@ import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
 import { getGhatPlacement, isWaterWorksPlacementValid } from '@/lib/ganga';
 import { isEmbankmentSiteInRange } from '@/lib/floods';
+import { canPlaceLandmark, getLandmarkPlacementContext, isLandmarkType } from '@/lib/landmarks';
 import {
   bulldozeTile,
   getBuildingSize,
@@ -148,6 +149,9 @@ function explainRefusal(state: GameState, tool: Tool, building: BuildingType | n
   }
   if (building) {
     const size = getBuildingSize(building);
+    if (isLandmarkType(building)) {
+      return canPlaceLandmark(building, x, y, getLandmarkPlacementContext(state)).reason ?? PLACEMENT_REASONS.blocked;
+    }
     if (x + size.width > state.gridSize || y + size.height > state.gridSize) return PLACEMENT_REASONS.outOfBounds;
     if (building === 'ghat' && !getGhatPlacement(state.grid, x, y, state.gridSize, state.mapId)) {
       return PLACEMENT_REASONS.ghatWestBank;

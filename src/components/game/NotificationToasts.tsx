@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { msg, useMessages } from 'gt-next';
-import { AlertTriangle, Flame, Home, Info, MapPin, Route, Thermometer, Trophy, Waves, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Flame, Home, Info, Landmark, MapPin, Route, Thermometer, Trophy, Waves, X, type LucideIcon } from 'lucide-react';
 import type { Notification } from '@/types/game';
 import { NOTIFICATION_CONFIG } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ const ICONS: Record<string, LucideIcon> = {
   flood: Waves,
   heat: Thermometer,
   info: Info,
+  landmark: Landmark,
 };
 
 /** Save failures have their own toast (SaveErrorToast). */
@@ -107,6 +108,8 @@ function NotificationToast({
   dismissLabel: string;
 }) {
   const isCrisis = n.severity === 'crisis';
+  /** S5-T1: landmark unlocks are a celebration, shown in gold. */
+  const isCelebration = n.icon === 'landmark';
   const canLocate = n.x !== undefined && n.y !== undefined;
 
   useEffect(() => {
@@ -128,11 +131,12 @@ function NotificationToast({
       className={cn(
         'pointer-events-auto flex items-start gap-2 bg-card/95 backdrop-blur border rounded-sm shadow-lg p-2.5 text-sm',
         'animate-in fade-in slide-in-from-top-2 duration-200',
-        SEVERITY_STYLES[n.severity ?? 'info']
+        SEVERITY_STYLES[n.severity ?? 'info'],
+        isCelebration && 'border-amber-400 ring-1 ring-amber-400/40 bg-amber-50/95 dark:bg-amber-950/80'
       )}
     >
       <span className="shrink-0 mt-0.5 w-5 flex justify-center">
-        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-destructive' : 'text-muted-foreground'} />
+        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-destructive' : isCelebration ? 'text-amber-500' : 'text-muted-foreground'} />
       </span>
       <button
         type="button"

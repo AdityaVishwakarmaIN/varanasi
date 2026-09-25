@@ -7,6 +7,7 @@
 import { msg } from 'gt-next';
 import type { Tool, ToolInfo } from '@/games/isocity/types/game';
 import type { MapId } from './varanasi';
+import type { LandmarkId } from '@/lib/landmarks';
 
 type Display = { name: string; description: string };
 
@@ -58,10 +59,18 @@ export const VARANASI_HIDDEN_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
 ]);
 
 /** Tools that exist only on the Varanasi map. */
-export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment']);
+export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
+  'ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment',
+  'landmark_dashashwamedh', 'landmark_kashi_vishwanath', 'landmark_bhu', 'landmark_sarnath', 'landmark_ramnagar_fort',
+]);
 
 /** The "Riverfront" build-menu group, listed first on the Varanasi map. */
 export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment'];
+
+/** The "Landmarks" build-menu group (S5-T1), Varanasi only, in unlock order (same order as LANDMARK_IDS). */
+export const LANDMARK_TOOLS: readonly (Tool & LandmarkId)[] = [
+  'landmark_dashashwamedh', 'landmark_kashi_vishwanath', 'landmark_bhu', 'landmark_sarnath', 'landmark_ramnagar_fort',
+];
 
 /** Should this tool appear in the build menu on this map? */
 export function isToolVisible(tool: Tool, mapId: MapId | undefined): boolean {

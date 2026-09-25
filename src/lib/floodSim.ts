@@ -8,6 +8,7 @@ import type { GameState, Notification, Tile } from '@/types/game';
 import type { ServiceCoverage } from '@/games/isocity/types/services';
 import type { Rng } from '@/lib/rng';
 import type { ForecastInput } from '@/lib/notifications';
+import { getLandmarkLandValueBonus } from '@/lib/landmarks';
 import {
   computeFloodMask,
   FLOOD_CONFIG,
@@ -53,7 +54,8 @@ export function collectEmbankments(grid: Tile[][], size: number): TilePos[] {
  * Returns the stored value unchanged when no embankment is near (so cities without embankments are unaffected).
  */
 export function getEffectiveLandValue(grid: Tile[][], size: number, x: number, y: number): number {
-  const base = grid[y][x].landValue;
+  // S5-T2: Ramnagar Fort raises land value nearby (0 when there is none)
+  const base = grid[y][x].landValue + getLandmarkLandValueBonus(grid, size, x, y);
   const r = FLOOD_CONFIG.embankmentLandValueRadius;
   for (let ty = Math.max(0, y - r); ty <= Math.min(size - 1, y + r); ty++) {
     const row = grid[ty];

@@ -66,7 +66,9 @@ export function useGameAudio(
     const fresh = state.notifications.filter((n) => !seen.has(n.id));
     seenRef.current = new Set(ids);
     if (!fresh.length) return;
-    playSfx(fresh.some((n) => sfxForNotification(n) === 'alert') ? 'alert' : 'notification');
+    // Loudest cue wins: crisis alert, then landmark unlock, then festival, then the plain chime
+    const cues = fresh.map(sfxForNotification);
+    playSfx((['alert', 'unlock', 'festival'] as const).find((id) => cues.includes(id)) ?? 'notification');
   }, [state.notifications]);
 
   // Weekly income (the simulation deposits it when the day becomes a multiple of 7).

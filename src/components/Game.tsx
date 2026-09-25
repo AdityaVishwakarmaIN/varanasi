@@ -51,6 +51,7 @@ import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/
 import type { FestivalId } from '@/lib/festivals';
 import { CitizenFeed } from '@/components/game/CitizenFeed';
 import type { AdvisorNote } from '@/lib/advisors';
+import { LandmarkBulldozeDialog } from '@/components/game/LandmarkBulldozeDialog';
 import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
@@ -452,6 +453,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           {/* Panels - render as fullscreen modals on mobile */}
           {state.activePanel === 'budget' && <BudgetPanel />}
           {state.activePanel === 'statistics' && <StatisticsPanel />}
+          <LandmarkBulldozeDialog />
           {state.activePanel === 'advisors' && <AdvisorsPanel onShowMe={showAdvisorNote} />}
           {state.activePanel === 'settings' && <SettingsPanel />}
           
@@ -559,6 +561,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         
         {state.activePanel === 'budget' && <BudgetPanel />}
         {state.activePanel === 'statistics' && <StatisticsPanel />}
+        <LandmarkBulldozeDialog />
         {state.activePanel === 'advisors' && <AdvisorsPanel onShowMe={showAdvisorNote} />}
         {state.activePanel === 'settings' && <SettingsPanel />}
         <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />

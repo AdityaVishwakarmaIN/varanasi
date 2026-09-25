@@ -47,8 +47,8 @@ By the end of this sprint the game is **ready for real players**:
 
 ## 4. Tasks
 
-- [ ] S5-T1: Landmark framework and unlocks
-- [ ] S5-T2: The five landmarks
+- [x] S5-T1: Landmark framework and unlocks
+- [x] S5-T2: The five landmarks
 - [x] S5-T3: Festival calendar and visual festivals
 - [x] S5-T4: Management events: Dev Deepawali and Maha Shivratri
 - [x] S5-T5: Problem icons (feedback layer 1)
@@ -77,6 +77,8 @@ By the end of this sprint the game is **ready for real players**:
 
 **Acceptance criteria:** unlock thresholds work from the peak population, each landmark can be built only once, and protection works (unit tests for the unlock and placement functions).
 
+**Done:** `src/lib/landmarks.ts` (config + pure functions, tests in `landmarks.test.ts`). `GameState.peakPopulation` (simulation units) / `landmarksBuilt` / `landmarksSeen` (all optional). `simulateTick` tracks the peak and posts a gold "Landmark unlocked" notification (icon `landmark`, severity `info`); old saves start tracking silently; toggle `setLandmarkUnlocksEnabled` (off in the golden tests). Landmarks group (Varanasi only) in the sidebar, mobile toolbar and command menu: locked = greyed + lock + "Unlocks at N people", built = "Built"; the group (and the mobile "more" button) pulses until opened. `placeBuilding` refuses locked/duplicate/badly placed landmarks (red reasons via `placement.ts`). Protection: no fire (`isBuildingFireEligible`), no flood damage (`getFloodDamageChance`), no collapse (`runCollapseDay`); abandonment never applied (not zoned). Bulldozing asks first (`LandmarkBulldozeDialog`) and refunds nothing; it removes the id from `landmarksBuilt`, so the landmark can be rebuilt at full price. Statistics panel shows "Next landmark: X at N (you: M)". **Deferred:** the unlock sound (S5-T9, no audio module yet).
+
 ---
 
 ### S5-T2: The five landmarks
@@ -93,6 +95,8 @@ religious imagery, no text.
 | `landmark_ramnagar_fort` | Ramnagar Fort | 5,00,000 | 3×3 | ₹80,000 | East bank (`eastBank` zone, **not** floodplain) | Tourism +₹250/tick. Boat routes (S2-T10) also run to the fort. Land value +20 within 6 tiles |
 
 **Acceptance criteria:** all five can be unlocked, placed (with clear red reasons when a spot is not allowed) and give their effects. The owner signs off on the art.
+
+**Done:** ids appended at the end of `BuildingType`/`BUILDING_STATS`/`Tool`/share-format lists; `TOOL_INFO` costs and sizes as in the table; procedural placeholder sprites in `varanasiSprites.ts`. Effects through existing systems in `calculateStats`: happiness and R/C demand bonuses, Dashashwamedh as 4 extra ghats in `calculateTourismIncome`, flat tourism (Kashi and Ramnagar × Ganga factor, Sarnath not), BHU as an education service building with 2× university range, Ramnagar land value +20 within 6 tiles (`getEffectiveLandValue`). **Deferred:** Kashi's local pilgrim-crowd ×2 within 10 tiles (only the city-wide tourism effect applies), boat routes to Ramnagar Fort, the Ganga Aarti / full-scale Shivratri hooks (left to S5-T3/T4; `landmarksBuilt` holds the standing landmarks), and the owner's art sign-off. Side effect: BHU can be upgraded like other service buildings.
 
 ---
 

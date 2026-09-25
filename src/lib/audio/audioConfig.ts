@@ -107,6 +107,8 @@ export function sfxForTool(tool: Tool): SfxId | null {
 /** Louder cues that replace the generic notification chime. */
 export function sfxForNotification(n: { severity?: string; icon?: string }): SfxId {
   if (n.severity === 'crisis') return 'alert';
+  if (n.icon === 'landmark') return 'unlock';
+  if (n.icon === 'trophy') return 'festival';
   return 'notification';
 }
 

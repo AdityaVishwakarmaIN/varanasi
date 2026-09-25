@@ -136,7 +136,8 @@ export function getMonsoonForecastText(strength: MonsoonStrength): { title: stri
 
 /** Chance per in-game day that a flooded building of this type becomes abandoned. */
 export function getFloodDamageChance(buildingType: string): number {
-  if (FLOOD_CONFIG.damageImmuneTypes.includes(buildingType)) return 0;
+  // Landmarks (landmark_*) never take flood damage (S5-T1)
+  if (FLOOD_CONFIG.damageImmuneTypes.includes(buildingType) || buildingType.startsWith('landmark_')) return 0;
   if (buildingType === 'informal_housing') return FLOOD_CONFIG.informalDamageChance;
   return FLOOD_CONFIG.damageChance;
 }

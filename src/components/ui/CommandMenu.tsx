@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tool, TOOL_INFO } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
-import { formatINR } from '@/lib/format';
-import { getToolDisplay, isToolVisible, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import { formatIndianNumber, formatINR } from '@/lib/format';
+import { getToolDisplay, isToolVisible, LANDMARK_TOOLS, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import { getLandmarkMenuStatus, isLandmarkType, LANDMARKS } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Global callback to open the command menu
@@ -40,6 +41,7 @@ const MENU_CATEGORIES = [
   { key: 'zones', label: msg('Zones') },
   { key: 'zoning', label: msg('Zoning') },
   { key: 'riverfront', label: msg('Riverfront') },
+  { key: 'landmarks', label: msg('Landmarks') },
   { key: 'services', label: msg('Services') },
   { key: 'parks', label: msg('Parks') },
   { key: 'sports', label: msg('Sports') },
@@ -259,9 +261,21 @@ const RIVERFRONT_ITEMS: MenuItem[] = RIVERFRONT_TOOLS.map((tool) => ({
   keywords: [tool.replace(/_/g, ' '), 'ganga', 'river', 'riverfront', 'ghat', 'sewage', 'water'],
 }));
 
+/** Landmarks (S5-T1): Varanasi only, one of each, unlocked by peak population. */
+const LANDMARK_ITEMS: MenuItem[] = LANDMARK_TOOLS.map((tool) => ({
+  id: tool,
+  type: 'tool' as const,
+  tool,
+  name: TOOL_INFO[tool].name,
+  description: TOOL_INFO[tool].description,
+  cost: TOOL_INFO[tool].cost,
+  category: 'landmarks',
+  keywords: [tool.replace(/^landmark_/, '').replace(/_/g, ' '), 'landmark', 'monument'],
+}));
+
 /** Menu items for a map: hidden tools removed, Varanasi names applied, Riverfront added (S3-T1). */
 function getMenuItemsForMap(mapId: MapId | undefined): MenuItem[] {
-  const items = mapId === 'varanasi' ? [...RIVERFRONT_ITEMS, ...ALL_MENU_ITEMS] : ALL_MENU_ITEMS;
+  const items = mapId === 'varanasi' ? [...RIVERFRONT_ITEMS, ...LANDMARK_ITEMS, ...ALL_MENU_ITEMS] : ALL_MENU_ITEMS;
   return items
     .filter((item) => !item.tool || isToolVisible(item.tool, mapId))
     .map((item) => {
@@ -277,6 +291,7 @@ export function CommandMenu() {
   const { state, setTool, setActivePanel } = useGame();
   const { stats } = state;
   const m = useMessages();
+  const gt = useGT();
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -371,13 +386,17 @@ export function CommandMenu() {
 
   // Handle item selection
   const handleSelect = useCallback((item: MenuItem) => {
+    if (item.tool && isLandmarkType(item.tool)) {
+      const status = getLandmarkMenuStatus(item.tool, state);
+      if (status.locked || status.built) return;
+    }
     if (item.type === 'tool' && item.tool) {
       setTool(item.tool);
     } else if (item.type === 'panel' && item.panel) {
       setActivePanel(state.activePanel === item.panel ? 'none' : item.panel);
     }
     setOpen(false);
-  }, [setTool, setActivePanel, state.activePanel]);
+  }, [setTool, setActivePanel, state]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -469,7 +488,11 @@ export function CommandMenu() {
                       {items.map((item) => {
                         const globalIndex = flatItems.indexOf(item);
                         const isSelected = globalIndex === selectedIndex;
-                        const canAfford = item.cost === undefined || item.cost === 0 || stats.money >= item.cost;
+                        const landmarkStatus = item.tool && isLandmarkType(item.tool) ? getLandmarkMenuStatus(item.tool, state) : null;
+                        const statusNote = landmarkStatus?.locked && item.tool && isLandmarkType(item.tool)
+                          ? gt('Unlocks at {count} people', { count: formatIndianNumber(LANDMARKS[item.tool].unlockPopulation) })
+                          : landmarkStatus?.built ? gt('Built') : null;
+                        const canAfford = (item.cost === undefined || item.cost === 0 || stats.money >= item.cost) && !statusNote;
 
                         return (
                           <button
@@ -494,7 +517,9 @@ export function CommandMenu() {
                                 {m(item.description as Parameters<typeof m>[0])}
                               </span>
                             </div>
-                            {item.cost !== undefined && item.cost > 0 && (
+                            {statusNote ? (
+                              <span className="text-xs shrink-0 text-muted-foreground">{statusNote}</span>
+                            ) : item.cost !== undefined && item.cost > 0 && (
                               <span className={cn(
                                 'text-xs shrink-0',
                                 isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'

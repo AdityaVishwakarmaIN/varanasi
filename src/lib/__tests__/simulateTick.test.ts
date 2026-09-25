@@ -24,6 +24,7 @@ import {
   setCrisesEnabled,
   setFailureStatesEnabled,
   setFestivalsEnabled,
+  setLandmarkUnlocksEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -236,6 +237,7 @@ beforeEach(() => {
   setCrisesEnabled(false);
   setFailureStatesEnabled(false);
   setFestivalsEnabled(false);
+  setLandmarkUnlocksEnabled(false);
 });
 
 afterEach(() => {
@@ -247,6 +249,7 @@ afterEach(() => {
   setCrisesEnabled(true);
   setFailureStatesEnabled(true);
   setFestivalsEnabled(true);
+  setLandmarkUnlocksEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {
