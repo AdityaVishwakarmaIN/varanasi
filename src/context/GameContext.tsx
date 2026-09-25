@@ -214,6 +214,7 @@ const toolBuildingMap: Partial<Record<Tool, BuildingType>> = {
   ghat: 'ghat',
   sewage_treatment_plant: 'sewage_treatment_plant',
   jal_sansthan_water_works: 'jal_sansthan_water_works',
+  embankment: 'embankment',
 };
 
 const toolZoneMap: Partial<Record<Tool, ZoneType>> = {

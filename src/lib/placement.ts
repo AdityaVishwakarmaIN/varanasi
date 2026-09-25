@@ -14,6 +14,7 @@
 import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
 import { getGhatPlacement, isWaterWorksPlacementValid } from '@/lib/ganga';
+import { isEmbankmentSiteInRange } from '@/lib/floods';
 import {
   bulldozeTile,
   getBuildingSize,
@@ -52,6 +53,8 @@ export const PLACEMENT_REASONS = {
   needsRoad: msg('Needs road access to grow'),
   ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
   waterWorksNearGanga: msg('Jal Sansthan Water Works must be within 3 tiles of the Ganga'),
+  embankmentNearGanga: msg('Embankments must be on land within 4 tiles of the Ganga'),
+  embankmentOnGhat: msg("Embankments can't be built on ghats"),
 } as const;
 
 /** Tools that are not a building of the same name (mirrors `toolBuildingMap` in GameContext). */
@@ -152,6 +155,10 @@ function explainRefusal(state: GameState, tool: Tool, building: BuildingType | n
     if (building === 'jal_sansthan_water_works') {
       if (footprintTouchesWater(state, x, y, size.width, size.height)) return PLACEMENT_REASONS.water;
       if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return PLACEMENT_REASONS.waterWorksNearGanga;
+    }
+    if (building === 'embankment') {
+      if (tile.building.type === 'ghat') return PLACEMENT_REASONS.embankmentOnGhat;
+      if (state.mapId !== 'varanasi' || !isEmbankmentSiteInRange(x, y, state.gridSize)) return PLACEMENT_REASONS.embankmentNearGanga;
     }
     if (requiresWaterAdjacency(building)) {
       const waterCheck = getWaterAdjacency(state.grid, x, y, size.width, size.height, state.gridSize);

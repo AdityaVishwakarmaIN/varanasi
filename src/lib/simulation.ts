@@ -53,12 +53,14 @@ import {
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
+import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import {
   applyFloodToServices,
   getCityFloodMask,
+  getEffectiveLandValue,
   getFloodedPopulationShare,
   getFloodHappinessModifier,
   runFloodDay,
@@ -885,7 +887,7 @@ function createTile(x: number, y: number, buildingType: BuildingType = 'grass'):
 }
 
 // Building types that don't require construction (already complete when placed)
-const NO_CONSTRUCTION_TYPES: BuildingType[] = ['grass', 'empty', 'water', 'road', 'bridge', 'tree'];
+const NO_CONSTRUCTION_TYPES: BuildingType[] = ['grass', 'empty', 'water', 'road', 'bridge', 'tree', 'embankment'];
 
 function createBuilding(type: BuildingType): Building {
   // Buildings that don't require construction start at 100% complete
@@ -1866,7 +1868,7 @@ function evolveBuilding(
 
   const hasPower = building.powered;
   const hasWater = building.watered;
-  const landValue = tile.landValue;
+  const landValue = getEffectiveLandValue(grid, grid.length, x, y); // S4-T6: embankments lower nearby land value
   
   // Starter buildings (farms, house_small, shop_small) don't require power/water
   const isStarter = isStarterBuilding(x, y, building.type);
@@ -3870,6 +3872,9 @@ export function placeBuilding(
     } else if (buildingType === 'jal_sansthan_water_works') {
       // Draws from the Ganga, so it must stand close to the river (S3-T8)
       if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return state;
+    } else if (buildingType === 'embankment') {
+      // Varanasi only, on land within 4 tiles of the Ganga (S4-T6); ghats/water are refused by the tile check below
+      if (state.mapId !== 'varanasi' || !isEmbankmentSiteInRange(x, y, state.gridSize)) return state;
     } else if (requiresWaterAdjacency(buildingType)) {
       const waterCheck = getWaterAdjacency(newGrid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) {

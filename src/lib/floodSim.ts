@@ -41,10 +41,31 @@ export function collectEmbankments(grid: Tile[][], size: number): TilePos[] {
   for (let y = 0; y < size; y++) {
     const row = grid[y];
     for (let x = 0; x < size; x++) {
-      if ((row[x].building.type as string) === 'embankment') out.push({ x, y });
+      if (row[x].building.type === 'embankment') out.push({ x, y });
     }
   }
   return out;
+}
+
+/**
+ * Land value of a tile after the embankment penalty (S4-T6): an embankment blocks the river view, so tiles within
+ * `embankmentLandValueRadius` (Euclidean) of one lose `embankmentLandValuePenalty`. Several embankments do not stack.
+ * Returns the stored value unchanged when no embankment is near (so cities without embankments are unaffected).
+ */
+export function getEffectiveLandValue(grid: Tile[][], size: number, x: number, y: number): number {
+  const base = grid[y][x].landValue;
+  const r = FLOOD_CONFIG.embankmentLandValueRadius;
+  for (let ty = Math.max(0, y - r); ty <= Math.min(size - 1, y + r); ty++) {
+    const row = grid[ty];
+    for (let tx = Math.max(0, x - r); tx <= Math.min(size - 1, x + r); tx++) {
+      const dx = tx - x;
+      const dy = ty - y;
+      if (dx * dx + dy * dy <= r * r && row[tx].building.type === 'embankment') {
+        return Math.max(0, base + FLOOD_CONFIG.embankmentLandValuePenalty);
+      }
+    }
+  }
+  return base;
 }
 
 let embankmentCache: { key: string; list: TilePos[] } | null = null;

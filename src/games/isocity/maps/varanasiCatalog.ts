@@ -35,6 +35,7 @@ export const VARANASI_DISPLAY: Partial<Record<Tool, Display>> = {
   zone_residential: { name: msg('Residential'), description: msg('Homes grow here') },
   zone_commercial: { name: msg('Bazaar & Commercial'), description: msg('Shops and offices; dense bazaars grow homes above') },
   zone_industrial: { name: msg('Industrial'), description: msg('Workshops, godowns and factories') },
+  embankment: { name: msg('Embankment (Tatbandh)'), description: msg('Raised bank against monsoon floods. Land behind it floods one river level later. Within 4 tiles of the Ganga, not on ghats; lowers land value within 2 tiles.') },
 };
 
 /** Tools hidden from the build menu on the Varanasi map (S3-T1; the map is also fixed-size). */
@@ -57,10 +58,10 @@ export const VARANASI_HIDDEN_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
 ]);
 
 /** Tools that exist only on the Varanasi map. */
-export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works']);
+export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment']);
 
 /** The "Riverfront" build-menu group, listed first on the Varanasi map. */
-export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works'];
+export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment'];
 
 /** Should this tool appear in the build menu on this map? */
 export function isToolVisible(tool: Tool, mapId: MapId | undefined): boolean {
