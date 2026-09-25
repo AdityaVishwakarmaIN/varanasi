@@ -29,6 +29,7 @@ import {
   type OutbreakState,
 } from '@/lib/disease';
 import { getCollapseChance } from '@/lib/collapse';
+import { isLandmarkType } from '@/lib/landmarks';
 import { getFeederBounds, getFeederCount } from '@/lib/feederZones';
 import { getMohallaForFeeder } from '@/lib/citizenVoices';
 import { getDistanceToGanga } from '@/games/isocity/maps/riverZones';
@@ -317,6 +318,7 @@ export function runCollapseDay(
     for (let x = 0; x < size; x++) {
       const tile = row[x];
       const b = tile.building;
+      if (isLandmarkType(b.type)) continue; // Landmarks never collapse (S5-T1)
       const chance = getCollapseChance({
         zone: tile.zone,
         age: b.age ?? 0,

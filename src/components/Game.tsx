@@ -45,6 +45,7 @@ import { MiniMap } from '@/components/game/MiniMap';
 import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
+import { LandmarkBulldozeDialog } from '@/components/game/LandmarkBulldozeDialog';
 import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
@@ -416,6 +417,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           {/* Panels - render as fullscreen modals on mobile */}
           {state.activePanel === 'budget' && <BudgetPanel />}
           {state.activePanel === 'statistics' && <StatisticsPanel />}
+          <LandmarkBulldozeDialog />
           {state.activePanel === 'advisors' && <AdvisorsPanel />}
           {state.activePanel === 'settings' && <SettingsPanel />}
           
@@ -515,6 +517,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         
         {state.activePanel === 'budget' && <BudgetPanel />}
         {state.activePanel === 'statistics' && <StatisticsPanel />}
+        <LandmarkBulldozeDialog />
         {state.activePanel === 'advisors' && <AdvisorsPanel />}
         {state.activePanel === 'settings' && <SettingsPanel />}
         <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />

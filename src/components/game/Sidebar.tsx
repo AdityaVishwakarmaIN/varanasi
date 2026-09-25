@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tool, TOOL_INFO } from '@/types/game';
 
@@ -21,6 +21,7 @@ const CATEGORY_LABELS: Record<string, unknown> = {
   utilities: msg('Utilities'),
   special: msg('Special'),
   riverfront: msg('Riverfront'),
+  landmarks: msg('Landmarks'),
 };
 
 // UI labels for translation
@@ -51,8 +52,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatINR } from '@/lib/format';
-import { getToolDisplay, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { formatIndianNumber, formatINR } from '@/lib/format';
+import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS, type LandmarkMenuStatus } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Hover Submenu Component for collapsible tool categories
@@ -65,6 +67,9 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   onSelectTool,
   forceOpenUpward = false,
   mapId,
+  toolStatus,
+  glow = false,
+  onOpen,
 }: {
   label: unknown; // Message object from msg() for translation
   tools: Tool[];
@@ -73,6 +78,11 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   onSelectTool: (tool: Tool) => void;
   forceOpenUpward?: boolean;
   mapId?: MapId;
+  /** Landmarks (S5-T1): locked tools are greyed with a lock, built ones say "Built". */
+  toolStatus?: Partial<Record<Tool, LandmarkMenuStatus>>;
+  /** Pulses the category button (a landmark was unlocked and not seen yet). */
+  glow?: boolean;
+  onOpen?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, buttonHeight: 0, openUpward: false });
@@ -81,6 +91,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const m = useMessages();
+  const gt = useGT();
   
   const hasSelectedTool = tools.includes(selectedTool);
   const SUBMENU_GAP = 12; // Gap between sidebar and submenu
@@ -112,7 +123,8 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
       });
     }
     setIsOpen(true);
-  }, [clearCloseTimeout, forceOpenUpward]);
+    onOpen?.();
+  }, [clearCloseTimeout, forceOpenUpward, onOpen]);
   
   // Triangle rule: Check if cursor is moving toward the submenu
   const isMovingTowardSubmenu = useCallback((e: React.MouseEvent) => {
@@ -183,7 +195,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
         variant={hasSelectedTool ? 'default' : 'ghost'}
         className={`w-full justify-between gap-2 px-3 py-2.5 h-auto text-sm group transition-all duration-200 ${
           hasSelectedTool ? 'bg-primary text-primary-foreground' : ''
-        } ${isOpen ? 'bg-muted/80' : ''}`}
+        } ${isOpen ? 'bg-muted/80' : ''} ${glow ? 'ring-2 ring-amber-400/80 animate-pulse' : ''}`}
       >
         <span className="font-medium">{m(label as Parameters<typeof m>[0])}</span>
         <svg 
@@ -237,20 +249,25 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
               const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
               const isSelected = selectedTool === tool;
               const canAfford = money >= info.cost;
+              const status = toolStatus?.[tool];
+              const statusNote = status?.locked && isLandmarkType(tool)
+                ? gt('Unlocks at {count} people', { count: formatIndianNumber(LANDMARKS[tool].unlockPopulation) })
+                : status?.built ? gt('Built') : null;
               
               return (
                 <Button
                   key={tool}
                   onClick={() => onSelectTool(tool)}
-                  disabled={!canAfford && info.cost > 0}
+                  disabled={(!canAfford && info.cost > 0) || !!status?.locked || !!status?.built}
                   variant={isSelected ? 'default' : 'ghost'}
                   className={`w-full justify-start gap-2 px-3 py-2 h-auto text-sm transition-all duration-150 ${
                     isSelected ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted/60'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
                 >
+                  {status?.locked && <span aria-hidden className="text-xs">🔒</span>}
                   <span className="flex-1 text-left truncate">{m(info.name)}</span>
-                  <span className={`text-xs ${isSelected ? 'opacity-80' : 'opacity-50'}`}>{formatINR(info.cost)}</span>
+                  <span className={`text-xs ${isSelected ? 'opacity-80' : 'opacity-50'}`}>{statusNote ?? formatINR(info.cost)}</span>
                 </Button>
               );
             })}
@@ -471,7 +488,7 @@ function ExitDialog({
 
 // Memoized Sidebar Component
 export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => void }) {
-  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity } = useGame();
+  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity, markLandmarksSeen } = useGame();
   const { selectedTool, stats, activePanel } = state;
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -533,7 +550,10 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   const mapId = state.mapId;
   const submenuCategories = useMemo(() => [
     ...(mapId === 'varanasi'
-      ? [{ key: 'riverfront', label: CATEGORY_LABELS.riverfront, tools: [...RIVERFRONT_TOOLS] as Tool[], forceOpenUpward: false }]
+      ? [
+          { key: 'riverfront', label: CATEGORY_LABELS.riverfront, tools: [...RIVERFRONT_TOOLS] as Tool[], forceOpenUpward: false },
+          { key: 'landmarks', label: CATEGORY_LABELS.landmarks, tools: [...LANDMARK_TOOLS] as Tool[], forceOpenUpward: false },
+        ]
       : []),
     { 
       key: 'services', 
@@ -575,6 +595,15 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   ]
     .map((c) => ({ ...c, tools: visibleTools(c.tools, mapId) }))
     .filter((c) => c.tools.length > 0), [mapId]);
+
+  // Landmarks (S5-T1): lock/built status per tool, and a glow while an unlocked landmark is unseen.
+  const { peakPopulation, landmarksBuilt, landmarksSeen } = state;
+  const landmarkStatus = useMemo(() => {
+    const out: Partial<Record<Tool, LandmarkMenuStatus>> = {};
+    for (const id of LANDMARK_TOOLS) out[id] = getLandmarkMenuStatus(id, { peakPopulation, landmarksBuilt, stats });
+    return out;
+  }, [peakPopulation, landmarksBuilt, stats]);
+  const landmarksGlow = hasUnseenLandmarks({ peakPopulation, landmarksSeen, mapId, stats });
   
   return (
     <div className="w-56 bg-sidebar border-r border-sidebar-border flex flex-col h-screen fixed left-0 top-0 z-40">
@@ -712,6 +741,9 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               onSelectTool={setTool}
               forceOpenUpward={forceOpenUpward}
               mapId={mapId}
+              {...(key === 'landmarks'
+                ? { toolStatus: landmarkStatus, glow: landmarksGlow, onOpen: markLandmarksSeen }
+                : {})}
             />
           ))}
         </div>

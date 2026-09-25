@@ -34,7 +34,9 @@ export type BuildingType =
   // Informal settlements (S3-T9): spawn by themselves, never placed by the player
   | 'informal_housing'
   // Flood counterplay (S4-T6)
-  | 'embankment';
+  | 'embankment'
+  // Landmarks (S5-T2): one each, never placed by growth
+  | 'landmark_dashashwamedh' | 'landmark_kashi_vishwanath' | 'landmark_bhu' | 'landmark_sarnath' | 'landmark_ramnagar_fort';
 
 export type BridgeType = 'small' | 'medium' | 'large' | 'suspension';
 export type BridgeOrientation = 'ns' | 'ew';
@@ -141,4 +143,10 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   informal_housing: { maxPop: 14, maxJobs: 0, pollution: 0, landValue: -8 },
   // S4-T6: the land-value penalty (-10 within 2 tiles) is applied in calculateLandValue via FLOOD_CONFIG
   embankment: { maxPop: 0, maxJobs: 0, pollution: 0, landValue: 0 },
+  // S5-T2 landmarks: effects come from LANDMARKS in src/lib/landmarks.ts
+  landmark_dashashwamedh: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: 0 },
+  landmark_kashi_vishwanath: { maxPop: 0, maxJobs: 30, pollution: 0, landValue: 0 },
+  landmark_bhu: { maxPop: 0, maxJobs: 120, pollution: 0, landValue: 0 },
+  landmark_sarnath: { maxPop: 0, maxJobs: 20, pollution: -5, landValue: 0 },
+  landmark_ramnagar_fort: { maxPop: 0, maxJobs: 25, pollution: 0, landValue: 0 },
 };

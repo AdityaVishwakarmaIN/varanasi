@@ -34,7 +34,9 @@ import {
   createBridgesOnPath,
   recalculateDerivedState,
   upgradeServiceBuilding,
+  findBuildingOrigin,
 } from '@/lib/simulation';
+import { getPeakDisplayedPopulation, getUnlockedLandmarks, isLandmarkType, type LandmarkId } from '@/lib/landmarks';
 import {
   SPRITE_PACKS,
   DEFAULT_SPRITE_PACK_ID,
@@ -128,6 +130,12 @@ type GameContextValue = {
   /** Puts a forecast on the calendar strip and sends a warning notification (S4-T4). */
   addForecast: (title: string, description: string, daysAhead: number, icon?: string, extras?: Partial<Omit<ForecastInput, 'title' | 'description' | 'daysAhead' | 'icon'>>) => void;
   setPauseOnCrisis: (enabled: boolean) => void;
+  /** S5-T1: the player opened the Landmarks menu, so its glow stops. */
+  markLandmarksSeen: () => void;
+  /** S5-T1: a landmark the player tried to bulldoze, waiting for the confirm dialog. */
+  pendingLandmarkBulldoze: { x: number; y: number; id: LandmarkId } | null;
+  /** Answer the landmark bulldoze dialog (true bulldozes it, with no refund). */
+  resolveLandmarkBulldoze: (confirmed: boolean) => void;
   // Sprite pack management
   currentSpritePack: SpritePack;
   availableSpritePacks: SpritePack[];
@@ -215,6 +223,11 @@ const toolBuildingMap: Partial<Record<Tool, BuildingType>> = {
   sewage_treatment_plant: 'sewage_treatment_plant',
   jal_sansthan_water_works: 'jal_sansthan_water_works',
   embankment: 'embankment',
+  landmark_dashashwamedh: 'landmark_dashashwamedh',
+  landmark_kashi_vishwanath: 'landmark_kashi_vishwanath',
+  landmark_bhu: 'landmark_bhu',
+  landmark_sarnath: 'landmark_sarnath',
+  landmark_ramnagar_fort: 'landmark_ramnagar_fort',
 };
 
 const toolZoneMap: Partial<Record<Tool, ZoneType>> = {
@@ -650,6 +663,7 @@ export function GameProvider({
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
+  const [pendingLandmarkBulldoze, setPendingLandmarkBulldoze] = useState<{ x: number; y: number; id: LandmarkId } | null>(null);
   const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
   // The state React last committed: lets the tick's UI sync see a newer player action.
@@ -965,6 +979,17 @@ export function GameProvider({
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
     const currentTool = latestStateRef.current.selectedTool;
+
+    // S5-T1: bulldozing a landmark asks first (a remote bulldoze was already confirmed by that player)
+    if (!isRemote && currentTool === 'bulldoze') {
+      const s = latestStateRef.current;
+      const origin = findBuildingOrigin(s.grid, x, y, s.gridSize);
+      if (origin && isLandmarkType(origin.buildingType)) {
+        const id = origin.buildingType;
+        setPendingLandmarkBulldoze((p) => p ?? { x, y, id });
+        return;
+      }
+    }
     
     setState((prev) => {
       const tool = prev.selectedTool;
@@ -1191,6 +1216,28 @@ export function GameProvider({
   const setPauseOnCrisis = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, pauseOnCrisis: enabled }));
   }, []);
+
+  const markLandmarksSeen = useCallback(() => {
+    setState((prev) => {
+      const seen = getUnlockedLandmarks(getPeakDisplayedPopulation(prev)).length;
+      return (prev.landmarksSeen ?? 0) >= seen ? prev : { ...prev, landmarksSeen: seen };
+    });
+  }, []);
+
+  const resolveLandmarkBulldoze = useCallback((confirmed: boolean) => {
+    const pending = pendingLandmarkBulldoze;
+    setPendingLandmarkBulldoze(null);
+    if (!confirmed || !pending) return;
+    const cost = TOOL_INFO.bulldoze.cost;
+    setState((prev) => {
+      if (prev.stats.money < cost) return prev;
+      const next = bulldozeTile(prev, pending.x, pending.y);
+      if (next === prev) return prev;
+      // No refund for a landmark: only the normal bulldoze cost is paid
+      return recalculateDerivedState({ ...next, stats: { ...next.stats, money: next.stats.money - cost } });
+    });
+    placeCallbackRef.current?.({ x: pending.x, y: pending.y, tool: 'bulldoze' });
+  }, [pendingLandmarkBulldoze]);
 
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
@@ -1783,6 +1830,9 @@ export function GameProvider({
     addNotification,
     addForecast,
     setPauseOnCrisis,
+    markLandmarksSeen,
+    pendingLandmarkBulldoze,
+    resolveLandmarkBulldoze,
     // Sprite pack management
     currentSpritePack,
     availableSpritePacks: SPRITE_PACKS,

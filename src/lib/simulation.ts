@@ -76,6 +76,11 @@ import {
   runHeatwaveDay,
 } from '@/lib/crisisSim';
 import { getHeatwaveDemandMultipliers, isHeatwaveActive } from '@/lib/heatwave';
+import {
+  canPlaceLandmark, getLandmarkBonuses, getLandmarkPlacementContext, getLandmarkUnlockNotification,
+  getNewlyUnlockedLandmarks, isLandmarkType, type PlacedLandmark,
+} from '@/lib/landmarks';
+import { POPULATION_DISPLAY_SCALE } from '@/lib/format';
 import { DISEASE_CONFIG } from '@/lib/disease';
 import { computeFloodMask, FLOOD_CONFIG } from '@/lib/floods';
 import {
@@ -1425,12 +1430,14 @@ export const SERVICE_CONFIG = {
   water_tower: withRange(12, {}),
   // Varanasi (S3-T8): a big piped network from one riverside plant
   jal_sansthan_water_works: withRange(20, {}),
+  // S5-T2: Banaras Hindu University teaches with twice the college range
+  landmark_bhu: withRange(38, { type: 'education' as const }),
 } as const;
 
 // Building types that provide services
 export const SERVICE_BUILDING_TYPES = new Set([
   'police_station', 'fire_station', 'hospital', 'school', 'university',
-  'power_plant', 'water_tower', 'jal_sansthan_water_works'
+  'power_plant', 'water_tower', 'jal_sansthan_water_works', 'landmark_bhu'
 ]);
 
 // Service building upgrade constants
@@ -1470,6 +1477,7 @@ const SERVICE_TYPE_BY_CODE: readonly (keyof typeof SERVICE_CONFIG)[] = [
   'power_plant',
   'water_tower',
   'jal_sansthan_water_works',
+  'landmark_bhu',
 ];
 
 /** Numeric code of a service building type (see SERVICE_TYPE_BY_CODE), or 0. A switch is the fastest lookup here. */
@@ -1483,6 +1491,7 @@ function serviceTypeCode(type: BuildingType): number {
     case 'power_plant': return 6;
     case 'water_tower': return 7;
     case 'jal_sansthan_water_works': return 8;
+    case 'landmark_bhu': return 9;
     default: return 0;
   }
 }
@@ -2139,6 +2148,8 @@ interface GridTotals {
   /** Origin tiles of ghats and Sewage Treatment Plants (Varanasi riverfront, S2). */
   ghats: { x: number; y: number }[];
   stps: { x: number; y: number }[];
+  /** Finished landmarks (S5-T2). */
+  landmarks: PlacedLandmark[];
   /** Power and water capacity inputs (S3-T7/T8). Only filled when scanGridTotals gets the uncut coverage. */
   utility?: UtilityTotals;
 }
@@ -2221,6 +2232,7 @@ function scanGridTotals(
   let lastIsReducer = false;
   const ghats: { x: number; y: number }[] = [];
   const stps: { x: number; y: number }[] = [];
+  const landmarks: PlacedLandmark[] = [];
 
   for (let y = 0; y < size; y++) {
     const row = grid[y];
@@ -2282,6 +2294,7 @@ function scanGridTotals(
         case 'ghat': if (isComplete && !building.abandoned) ghats.push({ x, y }); break;
         case 'sewage_treatment_plant': stps.push({ x, y }); break;
       }
+      if (isComplete && !building.abandoned && isLandmarkType(type)) landmarks.push({ id: type, x, y });
 
       // --- power and water capacity (S3-T7/T8) ---
       let inPowerCoverage = building.powered;
@@ -2342,7 +2355,7 @@ function scanGridTotals(
     railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount, museumCount,
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, waterWorksCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings,
-    abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, utility,
+    abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, landmarks, utility,
     informalSettlements, informalPopulation, informalDryPopulation,
   };
 }
@@ -2443,14 +2456,19 @@ function calculateStats(
   // Amusement Park: Big boost to commercial (tourism, entertainment)
   const amusementParkCommercialBonus = hasAmusementPark ? 18 : 0;
   
+  // Landmarks (S5-T2): Varanasi only
+  const landmarkFx = river?.mapId === 'varanasi' && totals.landmarks.length > 0
+    ? getLandmarkBonuses(totals.landmarks, river.gangaHealth)
+    : null;
+
   // Calculate base demands from economic factors
   const baseResidentialDemand = (jobs - population * 0.7) / 18;
   const baseCommercialDemand = (population * 0.3 - jobs * 0.3) / 4 + subwayBonus;
   const baseIndustrialDemand = (population * 0.35 - jobs * 0.3) / 2.0;
   
   // Add special building bonuses to base demands
-  const residentialWithBonuses = baseResidentialDemand + cityHallResidentialBonus + spaceProgramResidentialBonus + museumResidentialBonus;
-  const commercialWithBonuses = baseCommercialDemand + airportCommercialBonus + cityHallCommercialBonus + stadiumCommercialBonus + museumCommercialBonus + amusementParkCommercialBonus + railCommercialBonus;
+  const residentialWithBonuses = baseResidentialDemand + cityHallResidentialBonus + spaceProgramResidentialBonus + museumResidentialBonus + (landmarkFx?.residentialDemand ?? 0);
+  const commercialWithBonuses = baseCommercialDemand + (landmarkFx?.commercialDemand ?? 0) + airportCommercialBonus + cityHallCommercialBonus + stadiumCommercialBonus + museumCommercialBonus + amusementParkCommercialBonus + railCommercialBonus;
   const industrialWithBonuses = baseIndustrialDemand + airportIndustrialBonus + cityHallIndustrialBonus + spaceProgramIndustrialBonus + railIndustrialBonus;
   
   // Apply tax effect: multiply by tax factor, then add small modifier
@@ -2475,7 +2493,10 @@ function calculateStats(
     const target = calculateGangaTargetHealth(inputs).targetHealth;
     const floodMask = river.floodMask;
     const openGhats = floodMask ? totals.ghats.filter((g) => !floodMask[g.y * size + g.x]) : totals.ghats;
-    tourismIncome = Math.floor(calculateTourismIncome(grid, size, openGhats, river.gangaHealth, seasonFx?.tourism ?? 1));
+    const tourGhats = landmarkFx ? [...openGhats, ...landmarkFx.extraGhats] : openGhats;
+    tourismIncome = Math.floor(
+      calculateTourismIncome(grid, size, tourGhats, river.gangaHealth, seasonFx?.tourism ?? 1) + (landmarkFx?.tourismIncome ?? 0)
+    );
     gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
     gangaRatingsInput = {
       health: river.gangaHealth,
@@ -2547,6 +2568,7 @@ function calculateStats(
       health = Math.max(0, Math.min(100, health));
     }
   }
+  if (landmarkFx) happiness = Math.max(0, Math.min(100, happiness + landmarkFx.happiness));
 
   return {
     population,
@@ -2929,6 +2951,12 @@ let informalSettlementsEnabled = true;
 let floodsEnabled = true;
 
 let crisesEnabled = true;
+let landmarkUnlocksEnabled = true;
+
+/** Turn peak-population tracking and landmark unlock notifications (S5-T1) on or off. Tests use this for the golden fingerprints. */
+export function setLandmarkUnlocksEnabled(enabled: boolean): void {
+  landmarkUnlocksEnabled = enabled;
+}
 
 /** Turn heatwaves, disease and collapse (S4-T7/T9/T10) on or off. Tests use this for the pre-S4 golden fingerprints. */
 export function setCrisesEnabled(enabled: boolean): void {
@@ -3546,11 +3574,28 @@ export function simulateTick(
     if (isHeatwaveActive(heat.heatwave, today)) weatherFields = { ...weatherFields, weather: 'heat_haze' };
   }
 
+  // Landmark unlocks (S5-T1) follow the PEAK population, so they never lock again
+  let landmarkFields: Pick<GameState, 'peakPopulation'> = {};
+  const landmarkNotifications: GameState['notifications'] = [];
+  if (landmarkUnlocksEnabled && newStats.population > (state.peakPopulation ?? -1)) {
+    landmarkFields = { peakPopulation: newStats.population };
+    // Old saves (no peak yet) just start tracking, without announcing landmarks retroactively
+    if (state.mapId === 'varanasi' && state.peakPopulation !== undefined) {
+      const unlocked = getNewlyUnlockedLandmarks(
+        Math.round(state.peakPopulation * POPULATION_DISPLAY_SCALE),
+        Math.round(newStats.population * POPULATION_DISPLAY_SCALE)
+      );
+      for (const id of unlocked) {
+        landmarkNotifications.push({ ...getLandmarkUnlockNotification(id), id: `landmark-unlock-${id}`, timestamp: Date.now() });
+      }
+    }
+  }
+
   // Generate advisor messages
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
-  const addedNotifications = [...floodNotifications, ...crisisNotifications, ...informalNotifications];
+  const addedNotifications = [...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
   let newNotifications = pushNotifications(state.notifications, addedNotifications);
   const pauseForCrisis = shouldPauseForCrisis(state, addedNotifications);
   // Forecasts that have happened drop off the calendar strip; new ones go on it with a warning
@@ -3610,6 +3655,7 @@ export function simulateTick(
     ...weatherFields,
     ...floodFields,
     ...crisisFields,
+    ...landmarkFields,
   };
 }
 
@@ -3654,6 +3700,12 @@ const BUILDING_SIZES: Partial<Record<BuildingType, { width: number; height: numb
   // Varanasi riverfront
   sewage_treatment_plant: { width: 2, height: 2 },
   jal_sansthan_water_works: { width: 3, height: 3 },
+  // Landmarks (S5-T2)
+  landmark_dashashwamedh: { width: 2, height: 2 },
+  landmark_kashi_vishwanath: { width: 2, height: 2 },
+  landmark_bhu: { width: 4, height: 4 },
+  landmark_sarnath: { width: 3, height: 3 },
+  landmark_ramnagar_fort: { width: 3, height: 3 },
 };
 
 // Get the size of a building (how many tiles it spans)
@@ -3984,6 +4036,9 @@ export function placeBuilding(
     } else if (buildingType === 'embankment') {
       // Varanasi only, on land within 4 tiles of the Ganga (S4-T6); ghats/water are refused by the tile check below
       if (state.mapId !== 'varanasi' || !isEmbankmentSiteInRange(x, y, state.gridSize)) return state;
+    } else if (isLandmarkType(buildingType)) {
+      // S5-T1: Varanasi only, unlocked, not built yet, and the landmark's own site rule
+      if (!canPlaceLandmark(buildingType, x, y, getLandmarkPlacementContext(state)).ok) return state;
     } else if (requiresWaterAdjacency(buildingType)) {
       const waterCheck = getWaterAdjacency(newGrid, x, y, size.width, size.height, state.gridSize);
       if (!waterCheck.hasWater) {
@@ -4054,12 +4109,13 @@ export function placeBuilding(
     grid: newGrid,
     structureVersion: nextStructureVersion,
     roadNetworkVersion: nextRoadNetworkVersion,
+    ...(buildingType && isLandmarkType(buildingType) ? { landmarksBuilt: [...(state.landmarksBuilt ?? []), buildingType] } : {}),
   };
 }
 
 // Find the origin tile of a multi-tile building that contains the given tile
 // Returns null if the tile is not part of a multi-tile building
-function findBuildingOrigin(
+export function findBuildingOrigin(
   grid: Tile[][],
   x: number,
   y: number,
@@ -4202,8 +4258,13 @@ function findAdjacentBridgeTiles(
 
 // Bulldoze a tile (or entire multi-tile building if applicable)
 export function bulldozeTile(state: GameState, x: number, y: number): GameState {
-  const result = bulldozeTileStructure(state, x, y);
+  let result = bulldozeTileStructure(state, x, y);
   if (result === state) return state;
+  // A bulldozed landmark can be built again (at full price: bulldozing never refunds)
+  const origin = findBuildingOrigin(state.grid, x, y, state.gridSize);
+  if (origin && isLandmarkType(origin.buildingType)) {
+    result = { ...result, landmarksBuilt: (state.landmarksBuilt ?? []).filter((id) => id !== origin.buildingType) };
+  }
   const type = state.grid[y][x].building.type;
   if (type === 'grass' || type === 'tree') return result;
   // Remember the bulldoze for the settlement spawn cooldown; bulldozing a settlement displaces families (S3-T9)

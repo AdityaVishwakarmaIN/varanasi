@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tool, TOOL_INFO } from '@/types/game';
 import { Button } from '@/components/ui/button';
@@ -26,9 +26,10 @@ import {
   EducationIcon,
   SafetyIcon,
 } from '@/components/ui/Icons';
-import { getToolDisplay, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
-import { formatINR } from '@/lib/format';
+import { formatIndianNumber, formatINR } from '@/lib/format';
 
 // Tool category icons
 const CategoryIcons: Record<string, React.ReactNode> = {
@@ -202,6 +203,7 @@ const QuickToolIcons: Partial<Record<Tool, React.ReactNode>> = {
 // Category labels for translation
 const CATEGORY_LABELS: Record<string, unknown> = {
   RIVERFRONT: msg('Riverfront'),
+  LANDMARKS: msg('Landmarks'),
   'TOOLS': msg('Tools'),
   'ZONES': msg('Zones'),
   'EXPAND_CITY': msg('Expand City'),
@@ -252,7 +254,9 @@ const toolCategories = {
 /** Menu categories for this map: Riverfront first on Varanasi, tools hidden per map (S3-T1). */
 function getMapToolCategories(mapId: MapId | undefined): [string, Tool[]][] {
   const base: [string, Tool[]][] = Object.entries(toolCategories);
-  const withRiverfront: [string, Tool[]][] = mapId === 'varanasi' ? [['RIVERFRONT', [...RIVERFRONT_TOOLS]], ...base] : base;
+  const withRiverfront: [string, Tool[]][] = mapId === 'varanasi'
+    ? [['RIVERFRONT', [...RIVERFRONT_TOOLS]], ['LANDMARKS', [...LANDMARK_TOOLS]], ...base]
+    : base;
   return withRiverfront
     .map(([category, tools]): [string, Tool[]] => [category, visibleTools(tools, mapId)])
     .filter(([, tools]) => tools.length > 0);
@@ -270,8 +274,11 @@ interface MobileToolbarProps {
 }
 
 export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode, drawMode = false, onDrawModeChange }: MobileToolbarProps) {
-  const { state, setTool, expandCity, shrinkCity } = useGame();
+  const { state, setTool, expandCity, shrinkCity, markLandmarksSeen } = useGame();
   const { selectedTool, stats } = state;
+  const gt = useGT();
+  // S5-T1: the Landmarks category glows while an unlocked landmark has not been seen.
+  const landmarksGlow = hasUnseenLandmarks(state);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [expandCityExpanded, setExpandCityExpanded] = useState(false);
@@ -282,6 +289,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       setExpandedCategory(null);
     } else {
       setExpandedCategory(category);
+      if (category === 'LANDMARKS') markLandmarksSeen();
     }
   };
 
@@ -400,7 +408,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             <Button
               variant={showMenu ? 'default' : 'secondary'}
               size="icon"
-              className="h-11 w-11"
+              className={`h-11 w-11 ${landmarksGlow && !showMenu ? 'ring-2 ring-amber-400/80 animate-pulse' : ''}`}
               onClick={() => setShowMenu(!showMenu)}
             >
               {showMenu ? (
@@ -609,7 +617,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
                     <Button
                       variant={expandedCategory === category ? 'secondary' : 'ghost'}
-                      className="w-full justify-start gap-3 h-12"
+                      className={`w-full justify-start gap-3 h-12 ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-amber-400/80 animate-pulse' : ''}`}
                       onClick={() => handleCategoryClick(category)}
                     >
                       <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}</span>
@@ -631,17 +639,24 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                           if (!TOOL_INFO[tool]) return null;
                           const info = getToolDisplay(tool, TOOL_INFO[tool], state.mapId);
                           const canAfford = stats.money >= info.cost;
+                          const status = isLandmarkType(tool) ? getLandmarkMenuStatus(tool, state) : null;
+                          const statusNote = status?.locked && isLandmarkType(tool)
+                            ? gt('Unlocks at {count} people', { count: formatIndianNumber(LANDMARKS[tool].unlockPopulation) })
+                            : status?.built ? gt('Built') : null;
 
                           return (
                             <Button
                               key={tool}
                               variant={selectedTool === tool ? 'default' : 'ghost'}
                               className="w-full justify-start gap-3 h-11"
-                              disabled={!canAfford && info.cost > 0}
+                              disabled={(!canAfford && info.cost > 0) || !!status?.locked || !!status?.built}
                               onClick={() => handleToolSelect(tool, true)}
                             >
+                              {status?.locked && <span aria-hidden className="text-xs">🔒</span>}
                               <span className="flex-1 text-left">{m(info.name)}</span>
-                              {info.cost > 0 && (
+                              {statusNote ? (
+                                <span className="text-xs text-muted-foreground">{statusNote}</span>
+                              ) : info.cost > 0 && (
                                 <span className={`text-xs font-mono ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
                                   {formatINR(info.cost)}
                                 </span>

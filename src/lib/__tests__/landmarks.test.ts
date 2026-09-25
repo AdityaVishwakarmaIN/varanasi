@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { getDistanceToGanga, getRiverZone } from '@/games/isocity/maps/riverZones';
+import type { Tile } from '@/games/isocity/types/game';
+import { isBuildingFireEligible } from '@/lib/fireConfig';
+import { getFloodDamageChance } from '@/lib/floods';
+import { riverFactor } from '@/lib/tourism';
+import { createRng } from '@/lib/rng';
+import { bulldozeTile, createInitialGameState, placeBuilding } from '@/lib/simulation';
 import {
   LANDMARKS,
   LANDMARK_IDS,
   LANDMARK_REASONS,
   canPlaceLandmark,
+  collectLandmarks,
   formatNextLandmarkLine,
+  getLandmarkBonuses,
+  getLandmarkLandValueBonus,
+  getLandmarkMenuStatus,
+  getLandmarkPlacementContext,
+  getLandmarkUnlockNotification,
+  getNewlyUnlockedLandmarks,
+  hasUnseenLandmarks,
   getNextLandmark,
   getUnlockedLandmarks,
   isLandmarkType,
@@ -153,5 +167,106 @@ describe('landmark placement: each landmark', () => {
     }
     expect(canPlaceLandmark('landmark_ramnagar_fort', 5, 80, ctx).reason).toBe(LANDMARK_REASONS.ramnagarEast);
     expect(findOrigin('landmark_ramnagar_fort', LANDMARK_REASONS.ramnagarFloodplain)).not.toBeNull();
+  });
+});
+
+describe('landmark unlock events and menu status', () => {
+  it('reports each landmark once as the displayed peak crosses its threshold', () => {
+    expect(getNewlyUnlockedLandmarks(0, 49_999)).toEqual([]);
+    expect(getNewlyUnlockedLandmarks(49_999, 50_000)).toEqual(['landmark_dashashwamedh']);
+    expect(getNewlyUnlockedLandmarks(50_000, 60_000)).toEqual([]);
+    expect(getNewlyUnlockedLandmarks(0, 1_000_000)).toEqual([...LANDMARK_IDS]);
+  });
+
+  it('unlock notification is celebratory, not a crisis', () => {
+    const n = getLandmarkUnlockNotification('landmark_sarnath');
+    expect(n.icon).toBe('landmark');
+    expect(n.severity).toBe('info');
+    expect(n.title).toContain('Sarnath');
+  });
+
+  it('menu status: locked below the peak threshold, built once standing, a dip never re-locks', () => {
+    const base = { stats: { population: 5_000 } as never, landmarksBuilt: [] as LandmarkId[] };
+    expect(getLandmarkMenuStatus('landmark_dashashwamedh', { ...base, peakPopulation: 0 }).locked).toBe(false);
+    expect(getLandmarkMenuStatus('landmark_kashi_vishwanath', { ...base, peakPopulation: 0 }).locked).toBe(true);
+    expect(getLandmarkMenuStatus('landmark_kashi_vishwanath', { ...base, peakPopulation: 10_000 }).locked).toBe(false);
+    const built = getLandmarkMenuStatus('landmark_dashashwamedh', { ...base, peakPopulation: 5_000, landmarksBuilt: ['landmark_dashashwamedh'] });
+    expect(built).toMatchObject({ locked: false, built: true });
+  });
+
+  it('the menu glows only on Varanasi while an unlocked landmark is unseen', () => {
+    const s = { stats: { population: 12_000 } as never, peakPopulation: 12_000 };
+    expect(hasUnseenLandmarks({ ...s, mapId: 'varanasi', landmarksSeen: 0 })).toBe(true);
+    expect(hasUnseenLandmarks({ ...s, mapId: 'varanasi', landmarksSeen: 2 })).toBe(false);
+    expect(hasUnseenLandmarks({ ...s, mapId: undefined, landmarksSeen: 0 })).toBe(false);
+  });
+});
+
+describe('landmark effects', () => {
+  it('sums bonuses; Ganga-affected tourism scales with river health', () => {
+    const b = getLandmarkBonuses(
+      [
+        { id: 'landmark_dashashwamedh', x: 10, y: 10 },
+        { id: 'landmark_kashi_vishwanath', x: 20, y: 20 },
+        { id: 'landmark_sarnath', x: 30, y: 30 },
+      ],
+      64
+    );
+    expect(b.happiness).toBe(5);
+    expect(b.commercialDemand).toBe(10);
+    expect(b.extraGhats).toHaveLength(4);
+    expect(new Set(b.extraGhats).size).toBe(4);
+    expect(b.tourismIncome).toBeCloseTo(150 * riverFactor(64) + 200);
+  });
+
+  it('Ramnagar Fort raises land value within 6 tiles of its footprint', () => {
+    const size = 30;
+    const grid: Tile[][] = Array.from({ length: size }, () =>
+      Array.from({ length: size }, () => ({ building: { type: 'grass', constructionProgress: 100, abandoned: false } }) as unknown as Tile)
+    );
+    grid[10][10] = { building: { type: 'landmark_ramnagar_fort', constructionProgress: 100, abandoned: false } } as unknown as Tile;
+    expect(collectLandmarks(grid, size)).toEqual([{ id: 'landmark_ramnagar_fort', x: 10, y: 10 }]);
+    expect(getLandmarkLandValueBonus(grid, size, 11, 11)).toBe(20);
+    expect(getLandmarkLandValueBonus(grid, size, 18, 12)).toBe(20);
+    expect(getLandmarkLandValueBonus(grid, size, 19, 12)).toBe(0);
+    expect(getLandmarkLandValueBonus(grid, size, 0, 0)).toBe(0);
+  });
+
+  it('landmarks never burn or take flood damage', () => {
+    for (const id of LANDMARK_IDS) {
+      expect(isBuildingFireEligible(id)).toBe(false);
+      expect(getFloodDamageChance(id)).toBe(0);
+    }
+  });
+});
+
+describe('landmark placement in the simulation', () => {
+  function firstOk(state: ReturnType<typeof createInitialGameState>, id: LandmarkId): { x: number; y: number } {
+    const c = getLandmarkPlacementContext(state);
+    for (let y = 0; y < state.gridSize; y++) {
+      for (let x = 0; x < state.gridSize; x++) if (canPlaceLandmark(id, x, y, c).ok) return { x, y };
+    }
+    throw new Error(`no site for ${id}`);
+  }
+
+  it('refuses a locked landmark, places an unlocked one once, and bulldozing frees it again', () => {
+    let state = createInitialGameState(SIZE, 'Landmarks', createRng(3), 'varanasi');
+    state.stats.money = 1_000_000;
+    const id: LandmarkId = 'landmark_dashashwamedh';
+
+    state.peakPopulation = 5_000;
+    const site = firstOk(state, id);
+    state.peakPopulation = 0;
+    expect(placeBuilding(state, site.x, site.y, id, null)).toBe(state);
+
+    state.peakPopulation = 5_000;
+    state = placeBuilding(state, site.x, site.y, id, null);
+    expect(state.grid[site.y][site.x].building.type).toBe(id);
+    expect(state.landmarksBuilt).toEqual([id]);
+    expect(canPlaceLandmark(id, site.x, site.y, getLandmarkPlacementContext(state)).reason).toBe(LANDMARK_REASONS.alreadyBuilt(LANDMARKS[id].name));
+
+    state = bulldozeTile(state, site.x + 1, site.y + 1);
+    expect(state.grid[site.y][site.x].building.type).not.toBe(id);
+    expect(state.landmarksBuilt).toEqual([]);
   });
 });

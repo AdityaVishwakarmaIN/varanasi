@@ -5,9 +5,12 @@
  * Landmarks are shown respectfully: they never catch fire, collapse, become abandoned or take flood damage
  * (`isLandmarkType` lets those systems skip them).
  */
-import { formatIndianNumber } from '@/lib/format';
+import { formatIndianNumber, POPULATION_DISPLAY_SCALE } from '@/lib/format';
+import { riverFactor } from '@/lib/tourism';
+import { getFloodRiskLevel } from '@/lib/floods';
 import { getDistanceToGanga, getRiverZone, type RiverZone } from '@/games/isocity/maps/riverZones';
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import type { GameState, Notification, Tile } from '@/games/isocity/types/game';
 
 export type LandmarkId =
   | 'landmark_dashashwamedh'
@@ -244,4 +247,142 @@ export function canPlaceLandmark(id: LandmarkId, x: number, y: number, ctx: Land
       return tiles.every((t) => t.zone === 'eastBank') ? { ok: true } : { ok: false, reason: R.ramnagarEast };
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Wiring helpers (S5-T1/T2): state → placement context, unlock notifications, effects
+// ---------------------------------------------------------------------------
+
+/** Peak population as shown to the player. `peakPopulation` is stored in simulation units, like `stats.population`. */
+export function getPeakDisplayedPopulation(state: Pick<GameState, 'peakPopulation' | 'stats'>): number {
+  return Math.round(Math.max(state.peakPopulation ?? 0, state.stats.population) * POPULATION_DISPLAY_SCALE);
+}
+
+/** Placement context for a game state: clear land = grass or tree; flood zone = floods at any river level (Sprint 4 mask). */
+export function getLandmarkPlacementContext(
+  state: Pick<GameState, 'grid' | 'gridSize' | 'mapId' | 'landmarksBuilt' | 'peakPopulation' | 'stats'>
+): LandmarkPlacementContext {
+  const { grid, gridSize } = state;
+  return {
+    gridSize,
+    mapId: state.mapId,
+    isLandFree: (x, y) => {
+      const t = grid[y]?.[x]?.building.type;
+      return t === 'grass' || t === 'tree';
+    },
+    built: state.landmarksBuilt ?? [],
+    isFloodZone: (x, y) => getFloodRiskLevel(gridSize)[y * gridSize + x] > 0,
+    peakDisplayedPopulation: getPeakDisplayedPopulation(state),
+  };
+}
+
+/** Landmarks that unlock when the displayed peak rises from `before` to `after`. */
+export function getNewlyUnlockedLandmarks(before: number, after: number): LandmarkId[] {
+  return LANDMARK_IDS.filter((id) => LANDMARKS[id].unlockPopulation > before && LANDMARKS[id].unlockPopulation <= after);
+}
+
+/** Celebratory (not crisis) notification for an unlock. The toast styles icon 'landmark' in gold. */
+export function getLandmarkUnlockNotification(id: LandmarkId): Omit<Notification, 'id' | 'timestamp'> {
+  const def = LANDMARKS[id];
+  return {
+    title: `Landmark unlocked: ${def.name}`,
+    description: `Kashi has grown to ${formatIndianNumber(def.unlockPopulation)} people. Build it from the Landmarks menu (${def.placement.toLowerCase()}).`,
+    icon: 'landmark',
+    severity: 'info',
+  };
+}
+
+export interface PlacedLandmark {
+  id: LandmarkId;
+  /** Origin (top-left) tile. */
+  x: number;
+  y: number;
+}
+
+export interface LandmarkBonuses {
+  happiness: number;
+  residentialDemand: number;
+  commercialDemand: number;
+  /** ₹ per tick, after the Ganga factor where it applies. */
+  tourismIncome: number;
+  /** Extra ghat positions for the ghat tourism model (Dashashwamedh counts as 4 ghats). Distinct objects, so they cluster. */
+  extraGhats: { x: number; y: number }[];
+}
+
+/** Sum of the city-wide effects of the finished landmarks. */
+export function getLandmarkBonuses(placed: readonly PlacedLandmark[], gangaHealth: number): LandmarkBonuses {
+  const out: LandmarkBonuses = { happiness: 0, residentialDemand: 0, commercialDemand: 0, tourismIncome: 0, extraGhats: [] };
+  for (const p of placed) {
+    const e = LANDMARKS[p.id].effects;
+    out.happiness += e.happiness ?? 0;
+    out.residentialDemand += e.residentialDemand ?? 0;
+    out.commercialDemand += e.commercialDemand ?? 0;
+    if (e.tourismPerTick) out.tourismIncome += e.tourismPerTick * (e.tourismGangaAffected ? riverFactor(gangaHealth) : 1);
+    for (let i = 0; i < (e.countsAsGhats ?? 0); i++) out.extraGhats.push({ x: p.x, y: p.y });
+  }
+  return out;
+}
+
+/** Finished (constructed, not abandoned) landmarks on a grid, by origin tile. */
+export function collectLandmarks(grid: Tile[][], size: number): PlacedLandmark[] {
+  const out: PlacedLandmark[] = [];
+  for (let y = 0; y < size; y++) {
+    const row = grid[y];
+    for (let x = 0; x < size; x++) {
+      const b = row[x].building;
+      if (!isLandmarkType(b.type) || b.abandoned) continue;
+      if (b.constructionProgress !== undefined && b.constructionProgress < 100) continue;
+      out.push({ id: b.type, x, y });
+    }
+  }
+  return out;
+}
+
+const landValueSources = new WeakMap<Tile[][], PlacedLandmark[]>();
+
+/**
+ * Land value bonus at (x, y) from landmarks with `landValueBonus` (Ramnagar Fort: +20 within 6 tiles of its footprint,
+ * Euclidean). The landmark list is scanned once per grid object and cached.
+ */
+export function getLandmarkLandValueBonus(grid: Tile[][], size: number, x: number, y: number): number {
+  let list = landValueSources.get(grid);
+  if (!list) {
+    list = collectLandmarks(grid, size).filter((p) => LANDMARKS[p.id].effects.landValueBonus);
+    landValueSources.set(grid, list);
+  }
+  let bonus = 0;
+  for (const p of list) {
+    const def = LANDMARKS[p.id];
+    const r = def.effects.landValueRadius ?? 0;
+    const dx = Math.max(p.x - x, 0, x - (p.x + def.size.width - 1));
+    const dy = Math.max(p.y - y, 0, y - (p.y + def.size.height - 1));
+    if (dx * dx + dy * dy <= r * r) bonus = Math.max(bonus, def.effects.landValueBonus ?? 0);
+  }
+  return bonus;
+}
+
+export interface LandmarkMenuStatus {
+  locked: boolean;
+  built: boolean;
+  /** "Unlocks at 1,00,000 people" / "Built", or undefined when it can be chosen. */
+  note?: string;
+}
+
+/** How a landmark tool appears in the build menu: greyed with a lock until unlocked, "Built" once standing. */
+export function getLandmarkMenuStatus(
+  id: LandmarkId,
+  state: Pick<GameState, 'peakPopulation' | 'stats' | 'landmarksBuilt'>
+): LandmarkMenuStatus {
+  const def = LANDMARKS[id];
+  if (getPeakDisplayedPopulation(state) < def.unlockPopulation) {
+    return { locked: true, built: false, note: LANDMARK_REASONS.locked(def.unlockPopulation) };
+  }
+  if ((state.landmarksBuilt ?? []).includes(id)) return { locked: false, built: true, note: 'Built' };
+  return { locked: false, built: false };
+}
+
+/** True while an unlocked landmark has not been seen in the Landmarks menu yet (the menu button glows). */
+export function hasUnseenLandmarks(state: Pick<GameState, 'peakPopulation' | 'stats' | 'landmarksSeen' | 'mapId'>): boolean {
+  if (state.mapId !== 'varanasi') return false;
+  return getUnlockedLandmarks(getPeakDisplayedPopulation(state)).length > (state.landmarksSeen ?? 0);
 }
