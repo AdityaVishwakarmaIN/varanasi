@@ -49,7 +49,7 @@ By the end of this sprint:
 - [x] S4-T2: Weather owned by the simulation, following the season
 - [x] S4-T3: Seasonal effects
 - [x] S4-T4: Crisis notifications (locate, jump, auto-pause)
-- [ ] S4-T5: Monsoon floods
+- [x] S4-T5: Monsoon floods
 - [ ] S4-T6: Embankments (flood counterplay)
 - [ ] S4-T7: Heatwaves
 - [ ] S4-T8: Winter fog
@@ -209,6 +209,11 @@ Also fixed a flaky S3-T10 pilgrim test: walkers can pause briefly (`idle`) on th
 9. Unit tests: the flood mask for each level on a 60×60 Varanasi map (counts go up as the level goes up; ghat tiles flood at level 2).
 
 **Acceptance criteria:** in a heavy monsoon the east bank and ghats go under and recede in September. The overlay predicts exactly which tiles flooded. There is no frame-time regression.
+
+**Done:** model in `floods.ts`, city wiring in `floodSim.ts` (`runFloodDay` once per in-game day from `simulateTick`, toggle `setFloodsEnabled`).
+Flooded tiles lose power and water (`applyFloodToServices`), don't spawn or grow, flooded ghats earn no tourism, happiness falls with the flooded share of residents.
+Flood water and silt are drawn on the base layer (`floodDraw.ts`, both renderers) from memoised masks; ripples are static strokes, since the base layer
+is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they reach one. Tile info shows "Floods in". Tests in `floodSim.test.ts` (11).
 
 ---
 
