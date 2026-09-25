@@ -50,7 +50,7 @@ By the end of this sprint:
 - [x] S4-T3: Seasonal effects
 - [x] S4-T4: Crisis notifications (locate, jump, auto-pause)
 - [x] S4-T5: Monsoon floods
-- [ ] S4-T6: Embankments (flood counterplay)
+- [x] S4-T6: Embankments (flood counterplay)
 - [x] S4-T7: Heatwaves
 - [x] S4-T8: Winter fog
 - [x] S4-T9: Disease outbreaks
@@ -231,6 +231,12 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 | Art | Placeholder: a grey-brown raised bank. Real art later |
 
 **Acceptance criteria:** a line of embankments visibly shrinks the flood overlay behind it, and the flood mask tests are extended to cover it.
+
+**Done:** `embankment` building/tool (₹300, Riverfront group, Varanasi only, "Embankment (Tatbandh)"), drag-places like other tools and is built
+instantly (no power/water needed). Placement in `placeBuilding` via `isEmbankmentSiteInRange` (land within 4 tiles of the Ganga; ghats/water
+refused) with reasons in `getPlacementCheck`. Land value −10 within 2 tiles (non-stacking) via `floodSim.getEffectiveLandValue`, used by
+`evolveBuilding` and the tile info panel. Drawn with the procedural placeholder sprite. Flood mask/overlay/damage already honoured embankments
+(S4-T5). Tests in `embankments.test.ts` (5, incl. a real-grid line of embankments shrinking `getCityFloodMask`).
 
 ---
 

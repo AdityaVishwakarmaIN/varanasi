@@ -15,7 +15,7 @@ import type { GameState } from '@/types/game';
 
 const SIZE = 20;
 
-function grid(value: boolean | number, size = SIZE) {
+function grid<T extends boolean | number>(value: T, size = SIZE): T[][] {
   return Array.from({ length: size }, () => Array.from({ length: size }, () => value));
 }
 

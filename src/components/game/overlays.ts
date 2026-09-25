@@ -134,6 +134,7 @@ export const TOOL_TO_OVERLAY_MAP: Record<string, OverlayMode> = {
   ghat: 'ganga',
   sewage_treatment_plant: 'ganga',
   jal_sansthan_water_works: 'water',
+  embankment: 'ganga',
 };
 
 /** Get the button class name for an overlay button */

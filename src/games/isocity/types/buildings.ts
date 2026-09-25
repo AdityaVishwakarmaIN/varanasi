@@ -32,7 +32,9 @@ export type BuildingType =
   // Varanasi utilities (Sprint 3)
   | 'jal_sansthan_water_works'
   // Informal settlements (S3-T9): spawn by themselves, never placed by the player
-  | 'informal_housing';
+  | 'informal_housing'
+  // Flood counterplay (S4-T6)
+  | 'embankment';
 
 export type BridgeType = 'small' | 'medium' | 'large' | 'suspension';
 export type BridgeOrientation = 'ns' | 'ew';
@@ -137,4 +139,6 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   sewage_treatment_plant: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: -5 },
   jal_sansthan_water_works: { maxPop: 0, maxJobs: 30, pollution: 0, landValue: -5 },
   informal_housing: { maxPop: 14, maxJobs: 0, pollution: 0, landValue: -8 },
+  // S4-T6: the land-value penalty (-10 within 2 tiles) is applied in calculateLandValue via FLOOD_CONFIG
+  embankment: { maxPop: 0, maxJobs: 0, pollution: 0, landValue: 0 },
 };

@@ -20,7 +20,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 import { INFORMAL_CONFIG } from '@/lib/informal';
 import { getMonsoonsThatFlood } from '@/lib/floods';
-import { getCityFloodMask, getCityFloodRisk } from '@/lib/floodSim';
+import { getCityFloodMask, getCityFloodRisk, getEffectiveLandValue } from '@/lib/floodSim';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
 
 interface TileInfoPanelProps {
@@ -178,7 +178,7 @@ export function TileInfoPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Land Value</span>
-          <span>{formatINR(tile.landValue)}</span>
+          <span>{formatINR(getEffectiveLandValue(state.grid, state.gridSize, x, y))}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Pollution</span>
