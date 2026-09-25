@@ -51,10 +51,10 @@ By the end of this sprint the game is **ready for real players**:
 - [ ] S5-T2: The five landmarks
 - [x] S5-T3: Festival calendar and visual festivals
 - [x] S5-T4: Management events: Dev Deepawali and Maha Shivratri
-- [ ] S5-T5: Problem icons (feedback layer 1)
-- [ ] S5-T6: Named advisors (feedback layer 2)
-- [ ] S5-T7: Citizen feed (feedback layer 3)
-- [ ] S5-T8: Contextual tips for every system
+- [x] S5-T5: Problem icons (feedback layer 1)
+- [x] S5-T6: Named advisors (feedback layer 2)
+- [x] S5-T7: Citizen feed (feedback layer 3)
+- [x] S5-T8: Contextual tips for every system
 - [x] S5-T9: Music and sound
 - [x] S5-T10: Mobile polish
 - [ ] S5-T11: Undo last action (stretch)
@@ -172,6 +172,8 @@ religious imagery, no text.
 
 **Acceptance criteria:** icons are readable at every zoom, never cluttered, and cheap (perf HUD).
 
+**Done:** `src/lib/problemIcons.ts` (pure, tested) derives one problem per building from the grid, the flood mask, outbreaks and rolling cuts. `src/components/game/problemIconsDraw.ts` draws vector badges (no emoji) on the air layer in both the canvas and Pixi paths. It rescans at most once a second, only when state changed, and adds a `problemIcons` perf-HUD count. Below zoom 0.6 it draws one badge per 16×16 block, with a count. Infected blocks get one biohazard badge each (deferred from S4-T9). Settings has "Show problem icons". Notes: at building zoom, fire keeps the existing pulsing incident marker rather than getting a second badge. No-road badges also mark empty zoned lots, which is why those lots never grow. Readability and perf were not checked in a browser (no dev server in this task).
+
 ---
 
 ### S5-T6: Named advisors (feedback layer 2)
@@ -192,6 +194,8 @@ religious imagery, no text.
 
 **Acceptance criteria:** every crisis and system from Sprints 2–5 produces a message from the right advisor, with a working "Show me".
 
+**Done:** `src/lib/advisorFeed.ts` derives notes for the five advisors from GameState once per in-game day (`useAdvisorNotes`). They are capped at 3 per advisor and sorted by priority through `mergeAdvisorMessages`. `AdvisorsPanel` shows SVG avatars, the problem, the fix and "Show me" (jump plus overlay, as in S4-T4). The badge counts high and critical notes on the desktop sidebar button and on the mobile menu. Deferred: festival and landmark notes only use the pure `festivals.ts`/`landmarks.ts` rules; they will not use S5-T1..T4 game state until that is wired in. The old `state.advisorMessages` in simulation.ts is left as it was, and the panel no longer reads it. Avatars are simple SVG portraits.
+
 ---
 
 ### S5-T7: Citizen feed (feedback layer 3)
@@ -211,6 +215,8 @@ religious imagery, no text.
 
 **Acceptance criteria:** the feed reflects what is happening in the city. The owner reviews all templates.
 
+**Done:** `src/lib/citizenFeed.ts` maps the city's current state to `CITIZEN_VOICES` conditions and posts at most one message per in-game week. `{area}` is the mohalla of the place, or a random one on Varanasi. `CitizenFeed.tsx` is collapsible and keeps the last 8 messages per city in localStorage. Clicking a message that has a place jumps to it. On desktop the feed sits bottom-left, above the overlay bar. There is no mobile notifications sheet, so on mobile it is a collapsed chip bottom-left, above the toolbar. The owner has not reviewed the templates yet.
+
 ---
 
 ### S5-T8: Contextual tips for every system
@@ -221,6 +227,8 @@ Add tips (same pattern as `useTipSystem.ts`) that fire **once**, when a system f
 A **"Reset tips"** button in Settings.
 
 **Acceptance criteria:** a new player sees each tip exactly once, at the right moment.
+
+**Done:** `src/lib/systemTips.ts` (pure, tested) holds the nine conditions, and `useTipSystem.ts` has their messages, ranked above the general tips. Crisis tips need disasters on. Settings → "Reset tips" clears the shown list, including in the running game. Notes: `first_landmark_unlocked` uses current population (there is no peak-population field yet), and `festival_prep` refers to the Event panel from S5-T4.
 
 ---
 

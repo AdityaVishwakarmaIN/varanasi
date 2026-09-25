@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { msg, useMessages } from 'gt-next';
@@ -22,6 +22,7 @@ import { LocaleSelector } from 'gt-next';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
+import { getShowProblemIcons, resetShownTips, setShowProblemIcons, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Translatable UI labels
@@ -32,6 +33,11 @@ const UI_LABELS = {
   disastersDesc: msg('Enable random fires and disasters'),
   pauseOnCrisis: msg('Pause when a crisis starts'),
   pauseOnCrisisDesc: msg('Stop the clock on floods, outbreaks and collapses so you can respond'),
+  showProblemIcons: msg('Show problem icons'),
+  showProblemIconsDesc: msg('Small icons over buildings with no power, water or road, fires, floods and disease'),
+  resetTips: msg('Reset tips'),
+  resetTipsDesc: msg('Show every tip again the next time it applies'),
+  tipsReset: msg('Tips reset'),
   spritePack: msg('Sprite Pack'),
   spritePackDesc: msg('Choose building artwork style'),
   language: msg('Language'),
@@ -131,6 +137,8 @@ async function loadExampleState(
 export function SettingsPanel() {
   const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
+  const showProblemIcons = useSyncExternalStore(subscribeFeedbackPrefs, getShowProblemIcons, () => true);
+  const [tipsWereReset, setTipsWereReset] = useState(false);
   const m = useMessages();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -246,6 +254,32 @@ export function SettingsPanel() {
                 checked={pauseOnCrisis !== false}
                 onCheckedChange={setPauseOnCrisis}
               />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.showProblemIcons)}</Label>
+                <p className="text-muted-foreground text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
+              </div>
+              <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.resetTips)}</Label>
+                <p className="text-muted-foreground text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tipsWereReset}
+                onClick={() => {
+                  resetShownTips();
+                  setTipsWereReset(true);
+                }}
+              >
+                {m(tipsWereReset ? UI_LABELS.tipsReset : UI_LABELS.resetTips)}
+              </Button>
             </div>
             
             <div className="py-2">

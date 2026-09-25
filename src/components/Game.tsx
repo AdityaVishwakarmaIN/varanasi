@@ -49,6 +49,8 @@ import { NotificationToasts } from '@/components/game/NotificationToasts';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
+import { CitizenFeed } from '@/components/game/CitizenFeed';
+import type { AdvisorNote } from '@/lib/advisors';
 import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
@@ -111,6 +113,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     const festival = festivalFromEventId(n.id);
     if (festival) setEventPanel(festival);
   }, []);
+  // Advisor "Show me" (S5-T6) and citizen feed (S5-T7): same jump as notifications
+  const showAdvisorNote = useCallback((note: AdvisorNote) => {
+    if (note.x !== undefined && note.y !== undefined) setNavigationTarget({ x: note.x, y: note.y });
+    if (note.overlay) setOverlayMode(note.overlay as OverlayMode);
+  }, []);
+  const locateTile = useCallback((x: number, y: number) => setNavigationTarget({ x, y }), []);
   const minimapViewportRef = useRef<ViewportState | null>(null);
   const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
   const isInitialMount = useRef(true);
@@ -386,9 +394,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onLocate={locateNotification}
               className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30"
             />
-            <FailureOverlays bannerClassName="absolute bottom-[84px] left-3 right-3 z-30" />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[140px] left-3 z-20" />
+            <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" />
+            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
+            <CitizenFeed
+              compact
+              onLocate={locateTile}
+              className="absolute bottom-[84px] left-3 z-20 w-[min(18rem,calc(100%-1.5rem))]"
+            />
             
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
@@ -439,7 +452,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           {/* Panels - render as fullscreen modals on mobile */}
           {state.activePanel === 'budget' && <BudgetPanel />}
           {state.activePanel === 'statistics' && <StatisticsPanel />}
-          {state.activePanel === 'advisors' && <AdvisorsPanel />}
+          {state.activePanel === 'advisors' && <AdvisorsPanel onShowMe={showAdvisorNote} />}
           {state.activePanel === 'settings' && <SettingsPanel />}
           
           <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
@@ -495,6 +508,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <FailureOverlays bannerClassName="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
+            <CitizenFeed
+              onLocate={locateTile}
+              className={`absolute left-4 z-20 w-72 ${showOverlayPanel ? 'bottom-24' : 'bottom-4'}`}
+            />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}
@@ -542,7 +559,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         
         {state.activePanel === 'budget' && <BudgetPanel />}
         {state.activePanel === 'statistics' && <StatisticsPanel />}
-        {state.activePanel === 'advisors' && <AdvisorsPanel />}
+        {state.activePanel === 'advisors' && <AdvisorsPanel onShowMe={showAdvisorNote} />}
         {state.activePanel === 'settings' && <SettingsPanel />}
         <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />
         

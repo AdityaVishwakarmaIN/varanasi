@@ -12,6 +12,8 @@ import {
   needsFirstGhat,
   nextGangaFallingDays,
 } from '@/lib/gangaTips';
+import { SYSTEM_TIP_CHECKS, type SystemTipId } from '@/lib/systemTips';
+import { SHOWN_TIPS_KEY, TIPS_RESET_EVENT } from '@/lib/feedbackPrefs';
 
 // Tip definitions with their conditions and messages
 export type TipId = 
@@ -23,7 +25,8 @@ export type TipId =
   | 'needs_health_education'
   | 'build_first_ghat'
   | 'ganga_falling'
-  | 'needs_stp';
+  | 'needs_stp'
+  | SystemTipId;
 
 /**
  * Ganga numbers the tips need that are not in GameState. Updated once per in-game day (never per frame)
@@ -196,10 +199,64 @@ const TIP_DEFINITIONS: TipDefinition[] = [
     priority: 8,
     check: (state: GameState, context: TipContext) => state.mapId === 'varanasi' && context.sewageDominant,
   },
+  // One tip per system, the first time it matters (S5-T8). Crisis tips outrank the general advice above.
+  {
+    id: 'debt_warning',
+    message: msg('The treasury is in debt. Raise taxes or cut spending on the Budget panel. After three months in debt, the city is offered an emergency loan: it clears the debt, but you repay it with interest every month.'),
+    priority: -9,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.debt_warning(state),
+  },
+  {
+    id: 'first_outbreak',
+    message: msg('Disease has broken out in a neighbourhood (the biohazard icon). Clean water, working sewers and a nearby hospital stop it spreading.'),
+    priority: -8,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_outbreak(state),
+  },
+  {
+    id: 'first_heatwave',
+    message: msg('A heatwave is coming. Power and water demand will jump. Trees, parks and hospitals keep people safe in the heat.'),
+    priority: -7,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_heatwave(state),
+  },
+  {
+    id: 'monsoon_forecast',
+    message: msg('The monsoon is coming and the Ganga will rise. Open the Flood overlay to see which tiles will go under, and build embankments along the bank to hold the water back.'),
+    priority: -6,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.monsoon_forecast(state),
+  },
+  {
+    id: 'first_power_cut',
+    message: msg('Demand is higher than supply, so blocks are taking turns without power (the flickering bolt). Build more power plants to end the rolling cuts.'),
+    priority: -5,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_power_cut(state),
+  },
+  {
+    id: 'first_water_shortage',
+    message: msg('There is not enough water for everyone. Build more water towers, and check the Water overlay for homes without pipes.'),
+    priority: -4,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_water_shortage(state),
+  },
+  {
+    id: 'festival_prep',
+    message: msg('A big festival is coming. Open the Event panel from the calendar to see the readiness checklist: crowd safety, fire and medical cover, road access, sanitation and lights.'),
+    priority: -3,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.festival_prep(state),
+  },
+  {
+    id: 'first_informal_settlement',
+    message: msg('Families who cannot find a home have built an informal settlement. Zone the settlement residential and give it road access, power and water. After 30 days with all of these, it is formalised into proper homes.'),
+    priority: -2,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_informal_settlement(state),
+  },
+  {
+    id: 'first_landmark_unlocked',
+    message: msg('Your city has grown enough to build its first landmark. Look for it in the build menu. Landmarks draw pilgrims and tourists.'),
+    priority: -1,
+    check: (state: GameState) => SYSTEM_TIP_CHECKS.first_landmark_unlocked(state),
+  },
 ];
 
 const STORAGE_KEY = 'isocity-tips-disabled';
-const SHOWN_TIPS_KEY = 'isocity-tips-shown';
 const MIN_TIP_INTERVAL_MS = 15000; // Minimum 15 seconds between tips
 const TIP_CHECK_INTERVAL_MS = 5000; // Check for tip conditions every 5 seconds
 const INITIAL_TIP_DELAY_MS = 3000; // Wait 3 seconds before first tip
@@ -274,6 +331,14 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     }
     
     hasLoadedRef.current = true;
+  }, []);
+
+  // Settings -> "Reset tips" (S5-T8): every tip can show once more
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onReset = () => setShownTips(new Set());
+    window.addEventListener(TIPS_RESET_EVENT, onReset);
+    return () => window.removeEventListener(TIPS_RESET_EVENT, onReset);
   }, []);
 
   // Save shown tips to localStorage when they change
