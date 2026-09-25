@@ -40,18 +40,7 @@ export const CLOUD_PUFF_SIZE_MIN = 20; // Smallest puff radius.
 export const CLOUD_PUFF_SIZE_MAX = 55; // Largest puff radius.
 
 export const DEFAULT_CLOUD_WEATHER_MODE: CloudWeatherMode = 'clear'; // Weather used when the game starts or resets.
-export const CLOUD_WEATHER_CHANGE_INTERVAL = 15; // Seconds between automatic weather rolls.
-
-export const CLOUD_WEATHER_PROBABILITY_SPLIT: Array<{ mode: CloudWeatherMode; probability: number }> = [
-  // Clear: most common state.
-  { mode: 'clear', probability: 0.05 },
-  // Light clouds: common, but not dominant.
-  { mode: 'light_clouds', probability: 0 },
-  // Storm: less common than calm weather.
-  { mode: 'storm', probability: 0 },
-  // Severe storm: the rarest roll.
-  { mode: 'severe_storm', probability: 0.95 },
-];
+// Which weather is active is decided by the simulation from the season (SEASON_WEATHER in src/lib/seasons.ts, S4-T2).
 
 // Weather profiles are grouped here so density, opacity, scale, and lightning stay in sync.
 export const CLOUD_WEATHER_CONFIG: Record<CloudWeatherMode, CloudWeatherConfig> = {
@@ -122,6 +111,40 @@ export const CLOUD_WEATHER_CONFIG: Record<CloudWeatherMode, CloudWeatherConfig> 
     },
     palette: 'severe', // Use the darkest palette.
     lightningProfile: 'rapid', // Severe storms flash quickly.
+  },
+  // Fog (S4-T2): a few low, flat clouds; the white wash comes from scene lighting.
+  fog: {
+    showClouds: true, // A thin low layer.
+    cloudCountMultiplier: 0.2, // Only a few clouds.
+    spawnIntervalMultiplier: 2, // Spawn slowly.
+    opacityMultiplier: 0.3, // Soft and pale.
+    scaleMultiplier: 1.1, // Broad, flat banks.
+    typeWeightMultiplier: {
+      cumulus: 0,
+      stratus: 1.5,
+      cirrus: 0,
+      cumulonimbus: 0,
+      altocumulus: 0.3,
+    },
+    palette: 'light', // Pale tones.
+    lightningProfile: 'none', // Fog never flashes.
+  },
+  // Heat haze (S4-T2): a clear sky; the warm tint comes from scene lighting.
+  heat_haze: {
+    showClouds: false, // Hot, cloudless sky.
+    cloudCountMultiplier: 0,
+    spawnIntervalMultiplier: 1,
+    opacityMultiplier: 0,
+    scaleMultiplier: 1,
+    typeWeightMultiplier: {
+      cumulus: 0,
+      stratus: 0,
+      cirrus: 0,
+      cumulonimbus: 0,
+      altocumulus: 0,
+    },
+    palette: 'light',
+    lightningProfile: 'none',
   },
 };
 

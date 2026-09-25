@@ -59,7 +59,6 @@ import {
 } from '@/lib/isocityStorage';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
 import { SaveErrorToast } from '@/components/game/SaveErrorToast';
-import type { CloudWeatherMode } from '@/components/game/types';
 import {
   copyLegacyGridToBuffer,
   createIsoCityGridBufferFromGrid,
@@ -107,7 +106,6 @@ type GameContextValue = {
   discoverCity: (cityId: string) => void;
   checkAndDiscoverCities: (onDiscover?: (city: { id: string; direction: 'north' | 'south' | 'east' | 'west'; name: string }) => void) => void;
   setDisastersEnabled: (enabled: boolean) => void;
-  setCloudWeatherMode: (mode: CloudWeatherMode) => void;
   newGame: (options?: NewGameOptions) => void;
   loadState: (stateString: string) => boolean;
   exportState: () => string;
@@ -640,7 +638,6 @@ export function GameProvider({
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
-  const cloudWeatherModeRef = useRef<CloudWeatherMode>('clear');
   const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
   // The state React last committed: lets the tick's UI sync see a newer player action.
@@ -886,7 +883,7 @@ export function GameProvider({
       const now = performance.now();
 
       // PERF: Run simulation and update ref immediately (for canvas)
-      const newState = simulateTick(latestStateRef.current, cloudWeatherModeRef.current);
+      const newState = simulateTick(latestStateRef.current);
       recordTick(performance.now() - now);
       latestStateRef.current = newState;
       stateChangedRef.current = true;
@@ -1176,10 +1173,6 @@ export function GameProvider({
     setState((prev) => ({ ...prev, disastersEnabled: enabled }));
   }, []);
 
-  const setCloudWeatherMode = useCallback((mode: CloudWeatherMode) => {
-    if (cloudWeatherModeRef.current === mode) return;
-    cloudWeatherModeRef.current = mode;
-  }, []);
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
     placeCallbackRef.current = callback;
@@ -1229,7 +1222,6 @@ export function GameProvider({
 
   const newGame = useCallback((options?: NewGameOptions) => {
     clearGameState(); // Clear saved state when starting fresh
-    cloudWeatherModeRef.current = 'clear';
     replaceCity(createNewGameState(options, isMobile), latestStateRef.current);
   }, [replaceCity]);
 
@@ -1300,7 +1292,6 @@ export function GameProvider({
           }
         }
         // Increment gameVersion to clear vehicles/entities when loading a new state
-        cloudWeatherModeRef.current = 'clear';
         const normalizedState = normalizeGameStateVersions(parsed as GameState);
         replaceCity(normalizedState, normalizedState);
         return true;
@@ -1317,7 +1308,6 @@ export function GameProvider({
 
   const generateRandomCity = useCallback(() => {
     clearGameState(); // Clear saved state when generating a new city
-    cloudWeatherModeRef.current = 'clear';
     replaceCity(ensureUtilityCapacity(generateRandomAdvancedCity(DEFAULT_GRID_SIZE)), latestStateRef.current);
   }, [replaceCity]);
 
@@ -1558,7 +1548,6 @@ export function GameProvider({
     const savedState = loadSavedCityState();
     if (savedState) {
       skipNextSaveRef.current = true;
-      cloudWeatherModeRef.current = 'clear';
       const normalizedSavedState = normalizeGameStateVersions(savedState);
       setState((prev) => ({
         ...normalizedSavedState,
@@ -1694,7 +1683,6 @@ export function GameProvider({
     }
     
     skipNextSaveRef.current = true;
-    cloudWeatherModeRef.current = 'clear';
     const normalizedCityState = normalizeGameStateVersions(cityState);
     setState((prev) => ({
       ...normalizedCityState,
@@ -1767,7 +1755,6 @@ export function GameProvider({
     discoverCity,
     checkAndDiscoverCities,
     setDisastersEnabled,
-    setCloudWeatherMode,
     newGame,
     loadState,
     exportState,

@@ -30,6 +30,10 @@ export const FIRE_WEATHER_MULTIPLIERS: Record<CloudWeatherMode, number> = {
   light_clouds: 2,
   storm: 5,
   severe_storm: 12,
+  /** Damp winter air (S4-T2). */
+  fog: 0.8,
+  /** Hot, dry summer air: fires start and spread more easily (S4-T2). */
+  heat_haze: 1.5,
 };
 
 export const FIRE_ADJACENT_OFFSETS: ReadonlyArray<readonly [number, number]> = [

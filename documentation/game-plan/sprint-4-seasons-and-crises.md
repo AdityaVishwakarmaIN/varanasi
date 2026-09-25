@@ -46,7 +46,7 @@ By the end of this sprint:
 ## 4. Tasks
 
 - [x] S4-T1: Seasons model and the calendar strip
-- [ ] S4-T2: Weather owned by the simulation, following the season
+- [x] S4-T2: Weather owned by the simulation, following the season
 - [ ] S4-T3: Seasonal effects
 - [ ] S4-T4: Crisis notifications (locate, jump, auto-pause)
 - [ ] S4-T5: Monsoon floods
@@ -111,6 +111,14 @@ flows through `GameContext.tsx` into `simulateTick`.
 6. Existing behaviour that depends on weather (fire, tree growth, lighting) now reads the simulation's weather. Check each one still works.
 
 **Acceptance criteria:** July is mostly stormy, April is often hazy, and January mornings are foggy. Weather survives save/load. There are tests for the weather pick with a seeded RNG.
+
+**Done (notes):** `GameState.weather` / `weatherUntilDay` (absolute day from `seasons.absoluteDay`). `simulateTick(state, forcedWeather?, rng?)` calls
+`advanceWeather` once per in-game day (and on the first tick of an old save). `forcedWeather` is only for tests and benchmarks: it is used for that
+tick and nothing is stored, so the golden fingerprints are unchanged. The canvas syncs `state.weather` into `worldStateRef` every frame; the
+renderer's `pickWeatherMode`, its 15 s timer, `CLOUD_WEATHER_PROBABILITY_SPLIT` and `setCloudWeatherMode` / `cloudWeatherModeRef` are gone.
+`fog`: a few pale stratus clouds, white wash 0.42 until 9, thinning to 0.06 by 11, a lighter night. `heat_haze`: no clouds, warm tint at 0.1.
+Fire ×0.8 in fog, ×1.5 in heat haze; no tree growth in either; wind 0.05 / 0.25. Tests: `simWeather.test.ts`, `sceneLighting.test.ts`.
+All maps use the seasonal weather (the random map used to roll 95% severe storms).
 
 ---
 

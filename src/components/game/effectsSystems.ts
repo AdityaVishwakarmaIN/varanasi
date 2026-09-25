@@ -45,10 +45,8 @@ import {
   CLOUD_LAYER_OPACITY,
   CLOUD_WIND_ANGLE,
   CLOUD_SPEED_BASE,
-  CLOUD_WEATHER_CHANGE_INTERVAL,
   CLOUD_WEATHER_CONFIG,
   CLOUD_LIGHTNING_CONFIG,
-  CLOUD_WEATHER_PROBABILITY_SPLIT,
   CLOUD_TYPE_WEIGHTS_BY_HOUR,
   CLOUD_TYPE_WEIGHTS_DEFAULT,
   CLOUD_TYPES_ORDERED,
@@ -82,8 +80,6 @@ export interface EffectsSystemRefs {
   lightningStrikeRef: React.MutableRefObject<LightningStrike | null>;
   lightningCooldownRef: React.MutableRefObject<number>;
   lightningIdRef: React.MutableRefObject<number>;
-  weatherChangeTimerRef: React.MutableRefObject<number>;
-  weatherInitializedRef: React.MutableRefObject<boolean>;
 }
 
 export interface EffectsSystemState {
@@ -111,8 +107,6 @@ export function createEffectsSystems(
     lightningStrikeRef,
     lightningCooldownRef,
     lightningIdRef,
-    weatherChangeTimerRef,
-    weatherInitializedRef,
   } = refs;
 
   const { worldStateRef, structureVersionRef, isMobile } = systemState;
@@ -659,20 +653,6 @@ export function createEffectsSystems(
     ctx.restore();
   };
 
-  const pickWeatherMode = () => {
-    const roll = Math.random();
-    let threshold = 0;
-
-    for (const entry of CLOUD_WEATHER_PROBABILITY_SPLIT) {
-      threshold += entry.probability;
-      if (roll < threshold) {
-        return entry.mode;
-      }
-    }
-
-    return CLOUD_WEATHER_PROBABILITY_SPLIT[CLOUD_WEATHER_PROBABILITY_SPLIT.length - 1]?.mode ?? 'severe_storm';
-  };
-
   // Pick cloud type based on time-of-day weights and the active weather mode.
   const pickCloudType = (currentHour: number): CloudType => {
     const hour = Math.floor(currentHour) % 24;
@@ -986,18 +966,7 @@ export function createEffectsSystems(
     const speedMultiplier = gameSpeed === 1 ? 1 : gameSpeed === 2 ? 2 : 3;
     const scaledDelta = delta * speedMultiplier;
 
-    if (!weatherInitializedRef.current) {
-      worldStateRef.current.cloudWeatherMode = pickWeatherMode();
-      weatherInitializedRef.current = true;
-      weatherChangeTimerRef.current = 0;
-    } else {
-      weatherChangeTimerRef.current += scaledDelta;
-      if (weatherChangeTimerRef.current >= CLOUD_WEATHER_CHANGE_INTERVAL) {
-        worldStateRef.current.cloudWeatherMode = pickWeatherMode();
-        weatherChangeTimerRef.current = 0;
-      }
-    }
-
+    // Weather mode comes from the simulation (state.weather, S4-T2), synced into worldStateRef by the canvas
     const weatherConfig = CLOUD_WEATHER_CONFIG[worldStateRef.current.cloudWeatherMode];
 
     const preset = getActivePreset();

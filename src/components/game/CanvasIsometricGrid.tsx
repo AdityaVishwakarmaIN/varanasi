@@ -224,7 +224,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     currentSpritePack,
     setTool,
     visualHour,
-    setCloudWeatherMode,
   } = useGame();
   const {
     grid,
@@ -383,8 +382,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lightningStrikeRef = useRef<LightningStrike | null>(null);
   const lightningCooldownRef = useRef(0);
   const lightningIdRef = useRef(0);
-  const weatherChangeTimerRef = useRef(0);
-  const weatherInitializedRef = useRef(false);
   const windStateRef = useRef(createDefaultWindVisualState());
   const visibleWindTreesRef = useRef<WindTreeRenderItem[]>([]);
 
@@ -620,8 +617,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     lightningStrikeRef,
     lightningCooldownRef,
     lightningIdRef,
-    weatherChangeTimerRef,
-    weatherInitializedRef,
   };
 
   const effectsSystemState: EffectsSystemState = {
@@ -684,6 +679,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         worldStateRef.current.grid = latest.grid;
         worldStateRef.current.gridSize = latest.gridSize;
       }
+      // Weather is owned by the simulation (S4-T2); the renderer only draws it
+      worldStateRef.current.cloudWeatherMode = latest.weather ?? DEFAULT_CLOUD_WEATHER_MODE;
 
       const latestStructureVersion = latest.structureVersion ?? gridVersionRef.current;
       const latestRoadNetworkVersion = latest.roadNetworkVersion ?? roadNetworkVersionRef.current;
@@ -781,14 +778,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     lightningStrikeRef.current = null;
     lightningCooldownRef.current = 0;
     lightningIdRef.current = 0;
-    weatherChangeTimerRef.current = 0;
-    weatherInitializedRef.current = false;
-    worldStateRef.current.cloudWeatherMode = DEFAULT_CLOUD_WEATHER_MODE;
-    setCloudWeatherMode(DEFAULT_CLOUD_WEATHER_MODE);
+    worldStateRef.current.cloudWeatherMode = latestStateRef.current?.weather ?? DEFAULT_CLOUD_WEATHER_MODE;
     
     // Reset traffic light timer
     trafficLightTimerRef.current = 0;
-  }, [gameVersion, setCloudWeatherMode]);
+  }, [gameVersion, latestStateRef]);
 
   // Sync isPanning state to ref for animation loop access
   useEffect(() => {
@@ -3180,7 +3174,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         updateSmog(delta); // Update factory smog particles
         updateClouds(delta, visualHour); // Update atmospheric clouds
         updateWind(delta); // Update weather-dependent wind visuals
-        setCloudWeatherMode(worldStateRef.current.cloudWeatherMode);
         navLightFlashTimerRef.current += delta * 3; // Update nav light flash timer
         trafficLightTimerRef.current += delta; // Update traffic light cycle timer
         crossingFlashTimerRef.current += delta; // Update crossing flash timer
@@ -3343,7 +3336,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile, setCloudWeatherMode]);
+  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({

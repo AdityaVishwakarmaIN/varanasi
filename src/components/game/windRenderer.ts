@@ -24,6 +24,8 @@ const WIND_STRENGTH_BY_WEATHER: Record<CloudWeatherMode, number> = {
   light_clouds: 0.35,
   storm: 0.72,
   severe_storm: 1,
+  fog: 0.05,
+  heat_haze: 0.25,
 };
 
 export interface WindDustParticle {

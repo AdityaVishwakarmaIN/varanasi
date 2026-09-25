@@ -47,6 +47,7 @@ import {
   type CoverageAverages,
 } from './scoring';
 import type { Rng } from '@/lib/rng';
+import { absoluteDay, advanceWeather, getSeason, type SimWeather } from '@/lib/seasons';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
@@ -2887,11 +2888,24 @@ function getUtilityCut(stats: UtilitySupplyStats | undefined, rotationHour: numb
   return getCutFeeders(stats.ratio, stats.feeders, rotationHour);
 }
 
+/** The renderer's weather modes and the simulation's are the same set (S4-T2). */
+type _SameWeatherModes = [CloudWeatherMode, SimWeather] extends [SimWeather, CloudWeatherMode] ? true : never;
+const _sameWeatherModes: _SameWeatherModes = true;
+void _sameWeatherModes;
+
+/**
+ * Advances the city by one tick.
+ * Weather is owned by the simulation (S4-T2): it follows the season and is re-rolled when `weatherUntilDay` is reached.
+ * `forcedWeather` (tests and benchmarks) uses that weather for this tick without touching or storing the schedule.
+ * `rng` drives the weather pick only, so it can be seeded in tests.
+ */
 export function simulateTick(
   state: GameState,
-  cloudWeatherMode: CloudWeatherMode = 'clear'
+  forcedWeather?: CloudWeatherMode,
+  rng: Rng = Math.random
 ): GameState {
   const size = state.gridSize;
+  const cloudWeatherMode: CloudWeatherMode = forcedWeather ?? state.weather ?? 'clear';
   
   // Pre-calculate service coverage once (read-only operation on original grid). The same scan counts
   // burning tiles: with none, fire cannot spread, so the neighbour checks below can be skipped.
@@ -3344,6 +3358,13 @@ export function simulateTick(
     newYear++;
   }
 
+  // Weather (S4-T2): checked once per in-game day, and right away for old saves without it
+  let weatherFields: Pick<GameState, 'weather' | 'weatherUntilDay'> = {};
+  if (!forcedWeather && (newTick === 0 || state.weather === undefined)) {
+    const next = advanceWeather(state, absoluteDay(newYear, newMonth, newDay), getSeason(newMonth), rng);
+    weatherFields = { weather: next.weather, weatherUntilDay: next.weatherUntilDay };
+  }
+
   // Generate advisor messages
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
@@ -3394,6 +3415,7 @@ export function simulateTick(
     notifications: newNotifications,
     history,
     ...(newInformal ? { informal: newInformal } : {}),
+    ...weatherFields,
   };
 }
 

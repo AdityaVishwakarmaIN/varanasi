@@ -72,6 +72,10 @@ export const CLOUD_SPRITES_BY_WEATHER: WeatherSpritePools = {
     'cumulonimbus_rain',
     'cumulonimbus_severe',
   ],
+  fog: [
+    'stratus_layered',
+  ],
+  heat_haze: [],
 };
 
 const pickRandomSprite = (sprites: readonly CloudSpriteKey[]): CloudSpriteKey => (

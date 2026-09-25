@@ -508,7 +508,11 @@ export type CloudWeatherMode =
   | 'clear'
   | 'light_clouds'
   | 'storm'
-  | 'severe_storm';
+  | 'severe_storm'
+  /** Winter fog (S4-T2): few clouds, a soft white wash that is strongest in the morning. */
+  | 'fog'
+  /** Summer heat haze (S4-T2): clear sky, slightly warm and washed-out colours. */
+  | 'heat_haze';
 
 export type CloudSpriteKey =
   | 'cirrus_faint'

@@ -9,6 +9,8 @@ export const TREE_GROWTH_CONFIG: Record<CloudWeatherMode, number> = {
   light_clouds: 0.00002,  // 0.002% chance per tick
   storm: 0.00008,     // 0.008% chance per tick
   severe_storm: 0.0004,   // 0.04% chance per tick
+  fog: 0,             // No growth in winter fog
+  heat_haze: 0,       // No growth in summer heat
 };
 
 /**

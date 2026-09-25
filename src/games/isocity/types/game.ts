@@ -2,6 +2,7 @@
  * IsoCity Game State Types
  */
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import type { SimWeather } from '@/lib/seasons';
 
 import { msg } from 'gt-next';
 import { Building } from './buildings';
@@ -186,6 +187,10 @@ export interface GameState {
   mapId?: MapId;
   /** Informal settlement bookkeeping (S3-T9). Missing means nothing has happened yet. */
   informal?: InformalState;
+  /** Weather chosen by the simulation from the season (S4-T2). Missing (old saves) means a new pick on the next tick. */
+  weather?: SimWeather;
+  /** Absolute day (see `absoluteDay` in seasons.ts) on which the next weather is picked. */
+  weatherUntilDay?: number;
 }
 
 /** Saved per city. Keys are tile indices (y * gridSize + x) as strings, so the object survives JSON. */

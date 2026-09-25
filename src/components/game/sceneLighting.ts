@@ -39,7 +39,37 @@ const SCENE_BY_WEATHER: Record<CloudWeatherMode, {
     dayAmbient: { r: 79, g: 86, b: 109 },
     lightIntensity: 0.7,
   },
+  // Fog: the white wash is set per hour in getSceneLighting (FOG_LIGHTING); this is the midday leftover
+  fog: {
+    dayOverlayAlpha: 0.06,
+    dayAmbient: { r: 236, g: 238, b: 240 },
+    lightIntensity: 0.85,
+  },
+  // Heat haze: a faint warm, washed-out tint. Keep it subtle.
+  heat_haze: {
+    dayOverlayAlpha: 0.1,
+    dayAmbient: { r: 255, g: 222, b: 170 },
+    lightIntensity: 1,
+  },
 };
+
+/** Winter fog (S4-T2): thick white until `thickUntilHour`, thinning to the day value by `clearByHour`. */
+const FOG_LIGHTING = {
+  thickUntilHour: 9,
+  clearByHour: 11,
+  morningAlpha: 0.42,
+  /** Night fog lightens the night overlay a little. */
+  nightAmbient: { r: 70, g: 78, b: 96 } as AmbientColor,
+  nightOverlayAlpha: 0.55,
+};
+
+function getFogDayAlpha(hour: number): number {
+  const day = SCENE_BY_WEATHER.fog.dayOverlayAlpha;
+  if (hour < FOG_LIGHTING.thickUntilHour) return FOG_LIGHTING.morningAlpha;
+  if (hour >= FOG_LIGHTING.clearByHour) return day;
+  const t = (hour - FOG_LIGHTING.thickUntilHour) / (FOG_LIGHTING.clearByHour - FOG_LIGHTING.thickUntilHour);
+  return FOG_LIGHTING.morningAlpha + (day - FOG_LIGHTING.morningAlpha) * t;
+}
 
 export function getSceneLighting(hour: number, weatherMode: CloudWeatherMode): SceneLighting {
   const weather = SCENE_BY_WEATHER[weatherMode];
@@ -47,8 +77,16 @@ export function getSceneLighting(hour: number, weatherMode: CloudWeatherMode): S
 
   if (isDay) {
     return {
-      overlayAlpha: weather.dayOverlayAlpha,
+      overlayAlpha: weatherMode === 'fog' ? getFogDayAlpha(hour) : weather.dayOverlayAlpha,
       ambientColor: weather.dayAmbient,
+      lightIntensity: weather.lightIntensity,
+    };
+  }
+
+  if (weatherMode === 'fog') {
+    return {
+      overlayAlpha: FOG_LIGHTING.nightOverlayAlpha,
+      ambientColor: FOG_LIGHTING.nightAmbient,
       lightIntensity: weather.lightIntensity,
     };
   }
