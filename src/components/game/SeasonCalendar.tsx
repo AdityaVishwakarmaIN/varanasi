@@ -13,7 +13,9 @@ import {
   absoluteDay,
   getSeason,
   getUpcomingMonths,
+  isFogActive,
   type Season,
+  type SimWeather,
 } from '@/lib/seasons';
 
 /** Season names for the UI (wrapped with msg() like TOOL_INFO). */
@@ -126,3 +128,20 @@ export const SeasonStrip = React.memo(function SeasonStrip({
 
 /** Days in one strip, for tests and callers that place events. */
 export const CALENDAR_STRIP_DAYS = CALENDAR_STRIP_MONTHS * CALENDAR.daysPerMonth;
+
+/** Small "Fog" chip shown while winter fog is active (S4-T8): cars slow down and flights are grounded. */
+export function FogChip({ weather, hour, className = '' }: { weather: SimWeather | undefined; hour: number; className?: string }) {
+  const m = useMessages();
+  if (!isFogActive(weather, hour)) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded bg-slate-500/20 px-1 text-[10px] leading-4 text-slate-200 ${className}`}
+      title={m(FOG_TOOLTIP)}
+    >
+      ☁ {m(FOG_LABEL)}
+    </span>
+  );
+}
+
+const FOG_LABEL = msg('Fog');
+const FOG_TOOLTIP = msg('Winter fog: traffic is slower and flights are grounded until it lifts.');

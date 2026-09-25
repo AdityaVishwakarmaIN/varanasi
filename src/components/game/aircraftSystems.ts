@@ -14,6 +14,7 @@ import {
   HELICOPTER_MIN_ZOOM,
 } from './constants';
 import { gridToScreen } from './utils';
+import { isFogActive, type SimWeather } from '@/lib/seasons';
 import { findAirports, findHeliports } from './gridFinders';
 
 export interface AircraftSystemRefs {
@@ -30,6 +31,9 @@ export interface AircraftSystemState {
   structureVersionRef: React.MutableRefObject<number>;
   cachedPopulationRef: React.MutableRefObject<{ count: number; structureVersion: number }>;
   isMobile: boolean;
+  /** Simulation weather and rendered hour: no flights take off or land in morning fog (S4-T8). */
+  weather?: SimWeather;
+  visualHour?: number;
 }
 
 export function createAircraftSystems(
@@ -45,7 +49,8 @@ export function createAircraftSystems(
     helicopterSpawnTimerRef,
   } = refs;
 
-  const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
+  const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile, weather, visualHour = 12 } = systemState;
+  const fogGrounded = isFogActive(weather, visualHour);
 
   // Find airports callback
   const findAirportsCallback = (): { x: number; y: number }[] => {
@@ -106,7 +111,7 @@ export function createAircraftSystems(
 
     // Spawn timer
     airplaneSpawnTimerRef.current -= delta;
-    if (airplanesRef.current.length < maxAirplanes && airplaneSpawnTimerRef.current <= 0) {
+    if (!fogGrounded && airplanesRef.current.length < maxAirplanes && airplaneSpawnTimerRef.current <= 0) {
       // Pick a random airport
       const airport = airports[Math.floor(Math.random() * airports.length)];
       

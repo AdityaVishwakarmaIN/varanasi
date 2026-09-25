@@ -51,10 +51,10 @@ By the end of this sprint:
 - [x] S4-T4: Crisis notifications (locate, jump, auto-pause)
 - [x] S4-T5: Monsoon floods
 - [ ] S4-T6: Embankments (flood counterplay)
-- [ ] S4-T7: Heatwaves
-- [ ] S4-T8: Winter fog
-- [ ] S4-T9: Disease outbreaks
-- [ ] S4-T10: Old-building collapse
+- [x] S4-T7: Heatwaves
+- [x] S4-T8: Winter fog
+- [x] S4-T9: Disease outbreaks
+- [x] S4-T10: Old-building collapse
 - [ ] S4-T11: Bankruptcy, emergency loan and exodus (failure states)
 - [ ] S4-T12: Balance pass and sign-off
 
@@ -245,6 +245,8 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 
 **Acceptance criteria:** heatwaves are forecast, stress power and water, and hurt only the tiles that lack services. Greenery measurably helps (unit test).
 
+**Done:** heatwave wiring in `crisisSim.ts` (`runHeatwaveDay` daily from `simulateTick`: weekly summer roll → forecast, "Heatwave!" crisis notice on day one, weather forced to `heat_haze`). Power/water demand multipliers go through `calculateStats`; the population-weighted hit (`getHeatwaveCityHit`, cached shade mask) lowers health and happiness. Greenery test in `crisisSim.test.ts`.
+
 ---
 
 ### S4-T8: Winter fog
@@ -255,6 +257,8 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 - There is no crisis notification. It is atmosphere plus a small slowdown. Show a small ☁ "Fog" chip in the top bar.
 
 **Acceptance criteria:** foggy mornings look and feel slower and clear up by midday.
+
+**Done:** vehicle slowdown via `getVehicleSpeedMultiplier`, fog visuals via `sceneLighting`, airplanes grounded while `isFogActive` (`aircraftSystems.ts`), and a ☁ Fog chip (`FogChip` in `SeasonCalendar.tsx`) in the desktop and mobile top bars.
 
 ---
 
@@ -275,6 +279,8 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 
 **Acceptance criteria:** outbreaks happen mostly in dense, under-watered, flood-hit blocks during and after the monsoon, and building hospitals and water ends them. There are unit tests for `risk`.
 
+**Done:** `runDiseaseDay` in `crisisSim.ts` scans each feeder block (hospital and water coverage, catchment, floods from the silt record), rolls weekly, advances outbreaks and scales block population by the losses. Infected blocks don't grow and cost city health (`getDiseaseHealthPenalty`). Crisis notice with the block centre, `overlay: 'health'` and the top factor plus mohalla name. The floating biohazard icon comes with the S5 problem icons.
+
 ---
 
 ### S4-T10: Old-building collapse
@@ -287,6 +293,8 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 - Must be rare: **on average at most 1 collapse per in-game year** in a well-run 1-lakh city. Tune until true.
 
 **Acceptance criteria:** collapses are rare, explained and preventable.
+
+**Done:** `runCollapseDay` in `crisisSim.ts` (daily, monsoon and flooded-this-year multipliers, fire-coverage counterplay). A collapsed building becomes abandoned with population and jobs 0; crisis notice at the tile with `overlay: 'fire'`. Crises are gated by the disasters setting and by `setCrisesEnabled` (off in the golden tests).
 
 ---
 

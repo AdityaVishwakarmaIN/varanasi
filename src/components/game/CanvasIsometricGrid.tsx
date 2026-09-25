@@ -582,6 +582,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     structureVersionRef: gridVersionRef,
     cachedPopulationRef,
     isMobile,
+    weather: state.weather,
+    visualHour,
   };
 
   const {

@@ -35,7 +35,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
-import { SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -241,6 +241,7 @@ export const TopBar = React.memo(function TopBar({
               </TooltipContent>
             </Tooltip>
             <TimeOfDayIcon hour={visualHour} />
+            <FogChip weather={state.weather} hour={visualHour} />
           </div>
           <SeasonStrip month={month} year={year} day={day} events={state.forecasts} className="mt-0.5 max-w-[150px]" />
         </div>

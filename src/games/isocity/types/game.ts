@@ -4,6 +4,8 @@
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import type { SimWeather } from '@/lib/seasons';
 import type { MonsoonStrength } from '@/lib/floods';
+import type { HeatwaveState } from '@/lib/heatwave';
+import type { OutbreakState } from '@/lib/disease';
 import type { OverlayMode } from '@/components/game/types';
 
 import { msg } from 'gt-next';
@@ -225,6 +227,10 @@ export interface GameState {
   /** After the water falls: tiles that flooded at `siltLevel` but are dry now show silt until `siltUntilDay` (visual only). */
   siltLevel?: number;
   siltUntilDay?: number;
+  /** A forecast or running heatwave (S4-T7). */
+  heatwave?: HeatwaveState;
+  /** Feeder blocks with a disease outbreak (S4-T9). */
+  outbreaks?: OutbreakState[];
 }
 
 /** Saved per city. Keys are tile indices (y * gridSize + x) as strings, so the object survives JSON. */

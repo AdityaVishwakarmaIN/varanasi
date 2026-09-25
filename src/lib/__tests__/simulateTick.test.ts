@@ -21,6 +21,7 @@ import {
   setInformalSettlementsEnabled,
   setSeasonalEffectsEnabled,
   setFloodsEnabled,
+  setCrisesEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -230,6 +231,7 @@ beforeEach(() => {
   setInformalSettlementsEnabled(false);
   setSeasonalEffectsEnabled(false);
   setFloodsEnabled(false);
+  setCrisesEnabled(false);
 });
 
 afterEach(() => {
@@ -238,6 +240,7 @@ afterEach(() => {
   setInformalSettlementsEnabled(true);
   setSeasonalEffectsEnabled(true);
   setFloodsEnabled(true);
+  setCrisesEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

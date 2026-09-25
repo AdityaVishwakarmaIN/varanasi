@@ -35,7 +35,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
-import { SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
@@ -190,6 +190,7 @@ export function MobileTopBar({
               </div>
               <span className="text-muted-foreground text-[10px] font-mono">
                 <SeasonDateLabel month={month} year={year} />
+                <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
               </span>
             </div>
             <div className="flex flex-col items-start">
