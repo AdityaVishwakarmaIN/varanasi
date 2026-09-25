@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
+import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
 import { Tool, TOOL_INFO } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -271,6 +272,13 @@ interface MobileToolbarProps {
 
 export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode, drawMode = false, onDrawModeChange }: MobileToolbarProps) {
   const { state, setTool, expandCity, shrinkCity } = useGame();
+  // S5-T6: badge with the count of high and critical advisor messages
+  const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
+  const advisorBadge = urgentAdvisorCount > 0 ? (
+    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center">
+      {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}
+    </span>
+  ) : null;
   const { selectedTool, stats } = state;
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -400,9 +408,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             <Button
               variant={showMenu ? 'default' : 'secondary'}
               size="icon"
-              className="h-11 w-11"
+              className="h-11 w-11 relative"
               onClick={() => setShowMenu(!showMenu)}
             >
+              {!showMenu && advisorBadge}
               {showMenu ? (
                 <CloseIcon size={20} />
               ) : (
@@ -449,10 +458,11 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-11 w-full text-xs"
+                  className="h-11 w-full text-xs relative"
                   onClick={() => { onOpenPanel('advisors'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.advisors)}
+                  {advisorBadge}
                 </Button>
                 <Button
                   variant="ghost"

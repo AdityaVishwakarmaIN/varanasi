@@ -142,6 +142,8 @@ import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/c
 import type { Application } from 'pixi.js';
 import { getCityFloodMask, getCityFloodRisk, getCitySiltMask } from '@/lib/floodSim';
 import { drawFloodMask } from '@/components/game/floodDraw';
+import { ProblemIconLayer } from '@/components/game/problemIconsDraw';
+import { getShowProblemIcons } from '@/lib/feedbackPrefs';
 import { absoluteDay } from '@/lib/seasons';
 import { FLOOD_CONFIG } from '@/lib/floods';
 import { CAMERA_CONFIG, SharedControlsState, setCameraControls, TOUCH_CONFIG } from '@/lib/controlsConfig';
@@ -462,6 +464,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     overlayQueue: [] as OverlayDrawItem[],
   });
 
+  // S5-T5: problem icons, cached and refreshed at most once per second
+  const problemIconLayerRef = useRef<ProblemIconLayer | null>(null);
   const worldStateRef = useRef<WorldRenderState>({
     grid,
     gridSize,
@@ -3182,6 +3186,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     let animationFrameId: number;
     let lastTime = performance.now();
     let lastRenderTime = 0;
+
+    // S5-T5: problem icons on the air layer (above buildings), both backends
+    const drawProblemIcons = (r: IsoRenderer, delta: number, now: number) => {
+      const latest = latestStateRef.current;
+      if (!latest || !getShowProblemIcons()) return;
+      if (!problemIconLayerRef.current) problemIconLayerRef.current = new ProblemIconLayer();
+      const layer = problemIconLayerRef.current;
+      layer.update(latest, now);
+      const ws = worldStateRef.current;
+      layer.draw(r, { offset: ws.offset, zoom: ws.zoom, dpr: getRenderDpr(), width: r.canvas.width, height: r.canvas.height }, delta);
+      setEntityCount('problemIcons', layer.count());
+    };
     
     // Target 30fps on mobile (33ms per frame), 60fps on desktop (16ms per frame)
     const targetFrameTime = isMobile ? 33 : 16;
@@ -3306,6 +3322,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         
         // Draw incident indicators on air canvas (above buildings so tooltips are visible)
         drawIncidentIndicators(airCtx, delta); // Draw fire/crime incident indicators!
+        drawProblemIcons(airCtx, delta, time);
         
         // Draw recreation pedestrians on air canvas (above parks, not other buildings)
         drawRecreationPedestrians(airCtx); // Draw recreation pedestrians (at parks, benches, etc.)
@@ -3345,6 +3362,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         drawWindTrees(pixi);
         pixi.setLayer('air');
         drawIncidentIndicators(pixi, delta);
+        drawProblemIcons(pixi, delta, time);
         drawRecreationPedestrians(pixi);
         if (!skipSmallElements) {
           drawHelicopters(pixi);
@@ -3397,7 +3415,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile]);
+  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile, latestStateRef]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({

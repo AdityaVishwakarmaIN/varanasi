@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
+import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
 import { Tool, TOOL_INFO } from '@/types/game';
 
 // Translatable category labels
@@ -472,6 +473,8 @@ function ExitDialog({
 // Memoized Sidebar Component
 export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => void }) {
   const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity } = useGame();
+  // S5-T6: badge with the count of high and critical advisor messages
+  const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
   const { selectedTool, stats, activePanel } = state;
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -730,10 +733,18 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               onClick={() => setActivePanel(activePanel === panel ? 'none' : panel)}
               variant={activePanel === panel ? 'default' : 'ghost'}
               size="icon-sm"
-              className="w-full"
+              className="w-full relative"
               title={String(m(UI_LABELS[labelKey]))}
             >
               {icon}
+              {panel === 'advisors' && urgentAdvisorCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
+                  aria-label={`${urgentAdvisorCount}`}
+                >
+                  {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}
+                </span>
+              )}
             </Button>
           ))}
         </div>
