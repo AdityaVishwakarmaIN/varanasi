@@ -15,6 +15,7 @@ import {
   EducationIcon,
   SubwayIcon,
   RiverIcon,
+  FloodIcon,
 } from '@/components/ui/Icons';
 import { OverlayMode } from './types';
 import { OVERLAY_CONFIG, getOverlayButtonClass, getOverlayModesForMap } from './overlays';
@@ -46,6 +47,7 @@ const OVERLAY_ICONS: Record<OverlayMode, React.ReactNode> = {
   education: <EducationIcon size={14} />,
   subway: <SubwayIcon size={14} />,
   ganga: <RiverIcon size={14} />,
+  flood: <FloodIcon size={14} />,
 };
 
 // ============================================================================

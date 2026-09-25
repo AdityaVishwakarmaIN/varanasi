@@ -55,7 +55,15 @@ import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
-import { pruneForecasts, pushNotifications, shouldPauseForCrisis } from '@/lib/notifications';
+import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
+import {
+  applyFloodToServices,
+  getCityFloodMask,
+  getFloodedPopulationShare,
+  getFloodHappinessModifier,
+  runFloodDay,
+  type FloodStateFields,
+} from '@/lib/floodSim';
 import {
   POWER_CONFIG, WATER_CONFIG, calculatePowerSupply, calculatePowerDemand, calculateWaterSupply, calculateWaterDemand,
   supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
@@ -2330,6 +2338,13 @@ interface RiverContext {
   mapId: MapId | undefined;
   /** Current (slow-moving) Ganga Health carried over from the previous state. */
   gangaHealth: number;
+  /** Tiles under flood water (S4-T5): ghats there are closed and earn no tourism. */
+  floodMask?: Uint8Array | null;
+}
+
+function riverContextWithFlood(state: GameState, floodMask: Uint8Array | null): RiverContext | undefined {
+  const river = getRiverContext(state);
+  return river && floodMask ? { ...river, floodMask } : river;
 }
 
 function getRiverContext(state: GameState): RiverContext | undefined {
@@ -2442,7 +2457,9 @@ function calculateStats(
   if (river && river.mapId === 'varanasi') {
     const inputs = gatherGangaInputs(grid, size, totals.stps);
     const target = calculateGangaTargetHealth(inputs).targetHealth;
-    tourismIncome = Math.floor(calculateTourismIncome(grid, size, totals.ghats, river.gangaHealth, seasonFx?.tourism ?? 1));
+    const floodMask = river.floodMask;
+    const openGhats = floodMask ? totals.ghats.filter((g) => !floodMask[g.y * size + g.x]) : totals.ghats;
+    tourismIncome = Math.floor(calculateTourismIncome(grid, size, openGhats, river.gangaHealth, seasonFx?.tourism ?? 1));
     gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
     gangaRatingsInput = {
       health: river.gangaHealth,
@@ -2893,6 +2910,12 @@ export function setUtilityCapacityEnabled(enabled: boolean): void {
 }
 
 let informalSettlementsEnabled = true;
+let floodsEnabled = true;
+
+/** Turn monsoon floods (S4-T5) on or off. Tests use this for the pre-S4 golden fingerprints. */
+export function setFloodsEnabled(enabled: boolean): void {
+  floodsEnabled = enabled;
+}
 
 /** Turn informal settlements (S3-T9) on or off. Tests use this for the pre-S3 golden fingerprints. */
 export function setInformalSettlementsEnabled(enabled: boolean): void {
@@ -2934,7 +2957,9 @@ export function simulateTick(
   const rotationHour = getRotationHour(getTotalTicks(state));
   const powerCut = utilityCapacityEnabled ? getUtilityCut(state.stats.power, rotationHour) : NO_CUT;
   const waterCut = utilityCapacityEnabled ? getUtilityCut(state.stats.water, rotationHour) : NO_CUT;
-  const services = applyFeederCuts(baseServices, powerCut, waterCut, size);
+  // Monsoon floods (S4-T5): flooded tiles have no power or water, cannot grow, and ghats there close
+  const floodMask = floodsEnabled ? getCityFloodMask(state) : null;
+  const services = applyFloodToServices(applyFeederCuts(baseServices, powerCut, waterCut, size), floodMask, size);
   // Upper bound of burning tiles per row (input fires plus fires started this tick). Buildings are
   // only ever put out or replaced during the tick otherwise, so the bound stays valid; when rows
   // y-1, y and y+1 are all 0 the neighbour count is 0 without looking at the tiles.
@@ -3121,7 +3146,8 @@ export function simulateTick(
         const wouldBeStarter = isStarterBuilding(x, y, candidate);
         const hasUtilities = hasPower && hasWater;
         
-        if (roadAccess && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
+        const flooded = floodMask !== null && floodMask[y * size + x] === 1;
+        if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
           const candidateSize = getBuildingSize(candidate);
           if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
           didStructureChange = true;
@@ -3132,6 +3158,8 @@ export function simulateTick(
             applyBuildingFootprint(newGrid, x, y, candidate, tile.zone, 1, services, writableTile);
           }
         }
+      } else if (floodMask !== null && floodMask[y * size + x] === 1 && tile.zone !== 'none') {
+        // Under flood water: nothing grows or is built (power and water are already off)
       } else if (tile.zone !== 'none' && tile.building.type !== 'grass' && tile.building.type !== 'informal_housing') {
         // Evolve existing building (a zoned informal settlement waits for formalisation instead, S3-T9) - this may modify multiple tiles for multi-tile buildings
         // The evolveBuilding function handles its own row modifications internally
@@ -3293,7 +3321,7 @@ export function simulateTick(
   const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, getRiverContext(state), {
+  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, riverContextWithFlood(state, floodMask), {
     power: Array.from(powerCut).sort((a, b) => a - b),
     water: Array.from(waterCut).sort((a, b) => a - b),
   }, season);
@@ -3369,6 +3397,11 @@ export function simulateTick(
     const modifier = getInformalHappinessModifier(newInformal, getAbsoluteDay({ year: state.year, month: state.month, day: newDay }));
     if (modifier !== 0) newStats.happiness = Math.max(0, Math.min(100, newStats.happiness + modifier));
   }
+  // Flooded homes make their residents unhappy (S4-T5)
+  if (floodMask) {
+    const floodedShare = getFloodedPopulationShare(newGrid, size, floodMask, newStats.population);
+    if (floodedShare > 0) newStats.happiness = Math.max(0, newStats.happiness + getFloodHappinessModifier(floodedShare));
+  }
 
   if (newDay > 30) {
     newDay = 1;
@@ -3387,14 +3420,41 @@ export function simulateTick(
     weatherFields = { weather: next.weather, weatherUntilDay: next.weatherUntilDay };
   }
 
+  // Monsoon floods (S4-T5): once per in-game day on the Varanasi map
+  let floodFields: FloodStateFields = {};
+  let floodForecast: ForecastInput | undefined;
+  const floodNotifications: GameState['notifications'] = [];
+  if (floodsEnabled && newTick === 0 && state.mapId === 'varanasi') {
+    const today = absoluteDay(newYear, newMonth, newDay);
+    const flood = runFloodDay({ ...state, grid: newGrid }, newMonth, newDay, today, rng);
+    floodFields = flood.fields;
+    floodForecast = flood.forecast;
+    for (const n of flood.notifications) {
+      floodNotifications.push({ ...n, id: `flood-${today}-${floodNotifications.length}`, timestamp: Date.now() });
+    }
+    for (const { x, y } of flood.damaged) {
+      const b = writableTile(x, y).building;
+      b.abandoned = true;
+      b.population = 0;
+      b.jobs = 0;
+      didStructureChange = true;
+    }
+  }
+
   // Generate advisor messages
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
-  const newNotifications = pushNotifications(state.notifications, informalNotifications);
-  const pauseForCrisis = shouldPauseForCrisis(state, informalNotifications);
-  // Forecasts that have happened drop off the calendar strip
-  const forecasts = newTick === 0 ? pruneForecasts(state.forecasts, absoluteDay(newYear, newMonth, newDay)) : state.forecasts;
+  const addedNotifications = [...floodNotifications, ...informalNotifications];
+  let newNotifications = pushNotifications(state.notifications, addedNotifications);
+  const pauseForCrisis = shouldPauseForCrisis(state, addedNotifications);
+  // Forecasts that have happened drop off the calendar strip; new ones go on it with a warning
+  let forecasts = newTick === 0 ? pruneForecasts(state.forecasts, absoluteDay(newYear, newMonth, newDay)) : state.forecasts;
+  if (floodForecast) {
+    const added = addForecast({ year: newYear, month: newMonth, day: newDay, forecasts, notifications: newNotifications }, floodForecast);
+    forecasts = added.forecasts;
+    newNotifications = added.notifications;
+  }
 
   // Update history quarterly
   const history = [...state.history];
@@ -3438,6 +3498,7 @@ export function simulateTick(
     history,
     ...(newInformal ? { informal: newInformal } : {}),
     ...weatherFields,
+    ...floodFields,
   };
 }
 

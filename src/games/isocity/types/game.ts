@@ -3,6 +3,7 @@
  */
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import type { SimWeather } from '@/lib/seasons';
+import type { MonsoonStrength } from '@/lib/floods';
 import type { OverlayMode } from '@/components/game/types';
 
 import { msg } from 'gt-next';
@@ -215,6 +216,15 @@ export interface GameState {
   weather?: SimWeather;
   /** Absolute day (see `absoluteDay` in seasons.ts) on which the next weather is picked. */
   weatherUntilDay?: number;
+  /** This year's monsoon, rolled on 1 June (S4-T5, Varanasi only). */
+  monsoonStrength?: MonsoonStrength;
+  /** River level 0–3 during July–September floods (S4-T5). Missing means 0. */
+  riverLevel?: number;
+  /** Highest river level already announced this flood season, so each rise is reported once. */
+  floodNotifiedLevel?: number;
+  /** After the water falls: tiles that flooded at `siltLevel` but are dry now show silt until `siltUntilDay` (visual only). */
+  siltLevel?: number;
+  siltUntilDay?: number;
 }
 
 /** Saved per city. Keys are tile indices (y * gridSize + x) as strings, so the object survives JSON. */

@@ -114,6 +114,17 @@ export function RiverIcon({ size = 18, className }: IconProps) {
   );
 }
 
+/** A house with water up to its walls: used for the flood-risk overlay (S4-T5). */
+export function FloodIcon({ size = 18, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+      <path {...baseStroke} d="M5 13V8l7-5 7 5v5" />
+      <path {...baseStroke} d="M2 16c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0 2 .6 2 .6" />
+      <path {...baseStroke} d="M2 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0 2 .6 2 .6" />
+    </svg>
+  );
+}
+
 export function WaterIcon({ size = 18, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>

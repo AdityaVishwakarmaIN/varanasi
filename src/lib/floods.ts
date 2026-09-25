@@ -60,6 +60,10 @@ export const FLOOD_CONFIG = {
   siltDays: 10,
   /** Flood water drawn over land tiles. */
   waterColor: 'rgba(110, 95, 60, 0.55)',
+  /** Light ripple lines on flood water. */
+  rippleColor: 'rgba(200, 185, 150, 0.35)',
+  /** Silt left on land after the water goes down. */
+  siltColor: 'rgba(140, 115, 70, 0.3)',
   /** Flood-risk overlay colours by the lowest river level that floods the tile. */
   overlayColors: { 1: '#8b1a1a', 2: '#f08c1a', 3: '#f2d33a' } as Record<1 | 2 | 3, string>,
   /** Embankment reach, in tiles (Euclidean). */

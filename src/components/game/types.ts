@@ -589,7 +589,8 @@ export type WorldRenderState = {
 // Overlay modes for visualization
 export type OverlayMode = 'none' | 'power' | 'water' | 'fire' | 'police' | 'health' | 'education' | 'subway'
   // Varanasi (append only)
-  | 'ganga';
+  | 'ganga'
+  | 'flood';
 
 // ============================================================================
 // Train Types

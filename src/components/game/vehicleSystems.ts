@@ -95,6 +95,8 @@ export interface VehicleSystemState {
     /** Calendar month and simulation weather: monsoon and fog slow traffic (S4-T3). */
     month?: number;
     weather?: SimWeather;
+    /** Flooded tiles (S4-T5): cars don't spawn on or drive through flooded roads. */
+    floodMask?: Uint8Array | null;
   };
   /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
   visualHour: number;
@@ -177,6 +179,7 @@ export function createVehicleSystems(
         ? randomTileInBounds(spawnBounds)
         : { x: Math.floor(Math.random() * currentGridSize), y: Math.floor(Math.random() * currentGridSize) };
       if (!isRoadTile(currentGrid, currentGridSize, tileX, tileY)) continue;
+      if (state.floodMask?.[tileY * currentGridSize + tileX]) continue;
       
       const options = getDirectionOptions(currentGrid, currentGridSize, tileX, tileY);
       if (options.length === 0) continue;
@@ -1201,6 +1204,8 @@ export function createVehicleSystems(
       if (car.age > car.maxAge) {
         continue; // Car has exceeded its lifespan
       }
+      // A car that reaches flood water turns back out of sight (S4-T5)
+      if (state.floodMask?.[car.tileY * currentGridSize + car.tileX]) continue;
       
       // Skip update if car is somehow off the road, but keep it alive
       const onRoad = isRoadTile(currentGrid, currentGridSize, car.tileX, car.tileY);

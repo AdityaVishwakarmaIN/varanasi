@@ -20,6 +20,7 @@ import {
   placeBuilding,
   setInformalSettlementsEnabled,
   setSeasonalEffectsEnabled,
+  setFloodsEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -228,6 +229,7 @@ beforeEach(() => {
   setUtilityCapacityEnabled(false);
   setInformalSettlementsEnabled(false);
   setSeasonalEffectsEnabled(false);
+  setFloodsEnabled(false);
 });
 
 afterEach(() => {
@@ -235,6 +237,7 @@ afterEach(() => {
   setUtilityCapacityEnabled(true);
   setInformalSettlementsEnabled(true);
   setSeasonalEffectsEnabled(true);
+  setFloodsEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

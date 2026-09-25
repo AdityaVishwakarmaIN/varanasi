@@ -60,6 +60,7 @@ import {
 import {
   getOverlayFillStyle,
   getGangaOverlayContext,
+  getFloodOverlayContext,
   getOverlayBaseRadius,
   OVERLAY_TO_BUILDING_TYPES,
   OVERLAY_CIRCLE_COLORS,
@@ -139,6 +140,10 @@ import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
 import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/components/game/gpu';
 import type { Application } from 'pixi.js';
+import { getCityFloodMask, getCityFloodRisk, getCitySiltMask } from '@/lib/floodSim';
+import { drawFloodMask } from '@/components/game/floodDraw';
+import { absoluteDay } from '@/lib/seasons';
+import { FLOOD_CONFIG } from '@/lib/floods';
 import { CAMERA_CONFIG, SharedControlsState, setCameraControls, TOUCH_CONFIG } from '@/lib/controlsConfig';
 import { clampZoom, getInteractionSkips, PanVelocityTracker, type CameraPose } from '@/lib/cameraMotion';
 import { useSmoothCamera } from '@/components/game/useSmoothCamera';
@@ -264,6 +269,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     structureVersion,
     roadNetworkVersion,
   } = state;
+  // S4-T5: flood water and silt (both masks are memoised, so they only change when the river does)
+  const floodMask = getCityFloodMask(state);
+  const siltMask = getCitySiltMask(state, absoluteDay(state.year, state.month, state.day));
   
   // S1-T7: renderer + quality preset (Settings → Graphics; auto-quality adjusts the level)
   useEffect(() => {
@@ -533,6 +541,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       mapId: state.mapId,
       month: state.month,
       weather: state.weather,
+      floodMask,
     },
     visualHour,
     isMobile,
@@ -1396,7 +1405,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const overlayQueue = queues.overlayQueue;
     const gangaOverlay = overlayMode === 'ganga'
       ? getGangaOverlayContext(grid, gridSize, state.mapId, state.stats.gangaHealth)
-      : undefined;
+      : overlayMode === 'flood'
+        ? getFloodOverlayContext(gridSize, getCityFloodRisk(state))
+        : undefined;
     
     // PERF: Insertion sort for nearly-sorted arrays (O(n) vs O(n log n) for .sort())
     // Since tiles are iterated in diagonal order, queues are already nearly sorted
@@ -2151,8 +2162,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // For other overlays, show buildings only
         const showOverlay =
           overlayMode !== 'none' &&
-          (overlayMode === 'ganga'
-            ? true // Ganga overlay tints the river and every catchment tile (the fill style decides)
+          (overlayMode === 'ganga' || overlayMode === 'flood'
+            ? true // Ganga and flood-risk overlays tint land as well as buildings (the fill style decides)
             : overlayMode === 'subway' 
             ? tile.building.type !== 'water'  // For subway mode, show all non-water tiles
             : (tile.building.type !== 'grass' &&
@@ -2366,6 +2377,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // The beachQueue is no longer used for drawing beaches on land tiles
     
     
+    // Flood water and silt on land (S4-T5), under the buildings
+    const floodView = { left: viewLeft, top: viewTop, right: viewRight, bottom: viewBottom };
+    const isFloodableLand = (x: number, y: number) => {
+      const type = grid[y][x].building.type;
+      return type !== 'water' && type !== 'bridge';
+    };
+    if (siltMask) drawFloodMask(ctx, siltMask, gridSize, floodView, FLOOD_CONFIG.siltColor, isFloodableLand);
+    if (floodMask) drawFloodMask(ctx, floodMask, gridSize, floodView, FLOOD_CONFIG.waterColor, isFloodableLand, FLOOD_CONFIG.rippleColor);
+
     // Draw buildings sorted by depth so multi-tile sprites sit above adjacent tiles
     // NOTE: Building sprites are now drawn on a separate canvas (buildingsCanvasRef) 
     // that renders on top of cars/trains. We render them here so we can use the same
@@ -2676,6 +2696,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const { tile, screenX, screenY } = bridgeQueue[i];
             if (tile.building.bridgeType === 'suspension') drawSuspensionBridgeTowers(gpuMain, screenX, screenY, tile.building, zoom);
           }
+          if (siltMask) drawFloodMask(gpuMain, siltMask, gridSize, floodView, FLOOD_CONFIG.siltColor, isFloodableLand);
+          if (floodMask) drawFloodMask(gpuMain, floodMask, gridSize, floodView, FLOOD_CONFIG.waterColor, isFloodableLand, FLOOD_CONFIG.rippleColor);
           gpuMain.restore();
         });
         gpuMain.redrawLayer('buildings', () => {
@@ -2787,7 +2809,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   const placementPreview = useMemo(() => {

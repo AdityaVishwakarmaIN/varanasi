@@ -7,6 +7,7 @@ import { Tile } from '@/types/game';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { GANGA_TILE_EFFECT, getCachedGangaTileEffects, getGangaRiverColor } from '@/lib/ganga';
 import { SCORING_CONFIG } from '@/lib/scoring';
+import { FLOOD_CONFIG } from '@/lib/floods';
 import { OverlayMode } from './types';
 
 // ============================================================================
@@ -93,10 +94,16 @@ export const OVERLAY_CONFIG: Record<OverlayMode, OverlayConfig> = {
     activeColor: 'bg-cyan-600',
     hoverColor: 'hover:bg-cyan-700',
   },
+  flood: {
+    label: 'Flood risk',
+    title: 'Flood risk: red floods in any monsoon, orange in normal ones, yellow only in heavy ones',
+    activeColor: 'bg-orange-600',
+    hoverColor: 'hover:bg-orange-700',
+  },
 };
 
 /** Overlays that only make sense on the Varanasi map. */
-const VARANASI_ONLY_OVERLAYS: ReadonlySet<OverlayMode> = new Set<OverlayMode>(['ganga']);
+const VARANASI_ONLY_OVERLAYS: ReadonlySet<OverlayMode> = new Set<OverlayMode>(['ganga', 'flood']);
 
 /** Overlay modes available on a map, in display / Tab-cycling order. */
 export function getOverlayModesForMap(mapId: MapId | undefined): OverlayMode[] {
@@ -109,6 +116,8 @@ export interface OverlayRiverContext {
   /** Per-tile GANGA_TILE_EFFECT codes (index y * gridSize + x). */
   effect: Uint8Array;
   gridSize: number;
+  /** Flood overlay (S4-T5): lowest river level that floods each tile (0 = never), from `getCityFloodRisk`. */
+  floodRisk?: Uint8Array;
 }
 
 /** Map of building tools to their corresponding overlay mode */
@@ -222,10 +231,27 @@ export function getOverlayFillStyle(
       return NO_OVERLAY;
     }
 
+    case 'flood': {
+      const risk = river?.floodRisk?.[tile.y * river.gridSize + tile.x] ?? 0;
+      return risk === 1 || risk === 2 || risk === 3 ? FLOOD_RISK_FILL[risk] : NO_OVERLAY;
+    }
+
     case 'none':
     default:
       return NO_OVERLAY;
   }
+}
+
+/** Flood overlay fills, from FLOOD_CONFIG.overlayColors (level 1 = floods in any monsoon). */
+const FLOOD_RISK_FILL: Record<1 | 2 | 3, string> = {
+  1: hexToRgba(FLOOD_CONFIG.overlayColors[1], 0.6),
+  2: hexToRgba(FLOOD_CONFIG.overlayColors[2], 0.5),
+  3: hexToRgba(FLOOD_CONFIG.overlayColors[3], 0.45),
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /** Ganga overlay: land that adds pollution or untreated sewage. */
@@ -243,7 +269,7 @@ export function getOverlayForTool(tool: string): OverlayMode {
 
 /** List of all overlay modes (for iteration) */
 export const OVERLAY_MODES: OverlayMode[] = [
-  'none', 'power', 'water', 'fire', 'police', 'health', 'education', 'subway', 'ganga'
+  'none', 'power', 'water', 'fire', 'police', 'health', 'education', 'subway', 'ganga', 'flood'
 ];
 
 // ============================================================================
@@ -261,6 +287,7 @@ export const OVERLAY_TO_BUILDING_TYPES: Record<OverlayMode, string[]> = {
   education: ['school', 'university'],
   subway: ['subway_station'],
   ganga: ['sewage_treatment_plant'],
+  flood: [],
 };
 
 /** Overlay circle stroke colors (light/visible colors) */
@@ -274,6 +301,7 @@ export const OVERLAY_CIRCLE_COLORS: Record<OverlayMode, string> = {
   education: 'rgba(196, 181, 253, 0.8)', // Light purple
   subway: 'rgba(253, 224, 71, 0.8)',   // Yellow
   ganga: 'rgba(34, 211, 238, 0.85)',   // Cyan
+  flood: 'transparent',
 };
 
 /** Building highlight glow colors */
@@ -287,6 +315,7 @@ export const OVERLAY_HIGHLIGHT_COLORS: Record<OverlayMode, string> = {
   education: 'rgba(168, 85, 247, 1)',  // Purple
   subway: 'rgba(234, 179, 8, 1)',      // Yellow
   ganga: 'rgba(6, 182, 212, 1)',       // Cyan
+  flood: 'transparent',
 };
 
 /** Overlay circle fill colors (subtle, for area visibility) */
@@ -300,6 +329,7 @@ export const OVERLAY_CIRCLE_FILL_COLORS: Record<OverlayMode, string> = {
   education: 'rgba(196, 181, 253, 0.12)',
   subway: 'rgba(253, 224, 71, 0.12)',
   ganga: 'rgba(34, 211, 238, 0.1)',
+  flood: 'transparent',
 };
 
 // ============================================================================
@@ -331,6 +361,18 @@ export function getGangaOverlayContext(
   gangaContextCache.set(grid, { gangaHealth: health, context });
   return context;
 }
+
+/** Flood-risk overlay context (S4-T5). `floodRisk` comes from `getCityFloodRisk` (memoized per embankment set). */
+export function getFloodOverlayContext(gridSize: number, floodRisk: Uint8Array | null): OverlayRiverContext | undefined {
+  if (!floodRisk) return undefined;
+  const cached = floodContextCache.get(floodRisk);
+  if (cached) return cached;
+  const context: OverlayRiverContext = { gangaHealth: 0, effect: EMPTY_EFFECT, gridSize, floodRisk };
+  floodContextCache.set(floodRisk, context);
+  return context;
+}
+const floodContextCache = new WeakMap<Uint8Array, OverlayRiverContext>();
+const EMPTY_EFFECT = new Uint8Array(0);
 
 /**
  * Base radius (tiles, before level scaling) drawn for a building on its overlay, or null if it has none.

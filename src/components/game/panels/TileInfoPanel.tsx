@@ -19,6 +19,8 @@ import {
 import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 import { INFORMAL_CONFIG } from '@/lib/informal';
+import { getMonsoonsThatFlood } from '@/lib/floods';
+import { getCityFloodMask, getCityFloodRisk } from '@/lib/floodSim';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
 
 interface TileInfoPanelProps {
@@ -89,6 +91,11 @@ export function TileInfoPanel({
     const info = getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, x, y);
     return info ? describeGangaTileEffect(info, formatPopulation) : null;
   }, [state.grid, state.gridSize, state.mapId, x, y]);
+  
+  // S4-T5: which monsoons flood this tile, and whether it is under water now
+  const floodRisk = getCityFloodRisk(state)?.[y * state.gridSize + x] ?? 0;
+  const floodsIn = getMonsoonsThatFlood(floodRisk);
+  const isFlooded = !!getCityFloodMask(state)?.[y * state.gridSize + x];
   
   // S3-T9: how to turn a settlement into proper homes, and how far along it is
   const isInformal = tile.building.type === 'informal_housing';
@@ -179,6 +186,14 @@ export function TileInfoPanel({
             {Math.round(tile.pollution)}%
           </span>
         </div>
+        {state.mapId === 'varanasi' && tile.building.type !== 'water' && (
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">Floods in</span>
+            <span className={isFlooded ? 'text-red-400' : floodsIn.length > 0 ? 'text-amber-400' : 'text-green-400'}>
+              {isFlooded ? 'Under water now' : floodsIn.length > 0 ? `${floodsIn.join(' / ')} monsoons` : 'Never'}
+            </span>
+          </div>
+        )}
         {gangaEffectLines && (
           <div className="flex flex-col gap-0.5">
             <span className="text-muted-foreground">Effect on Ganga</span>
