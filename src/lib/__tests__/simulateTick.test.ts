@@ -19,6 +19,7 @@ import {
   generateRandomAdvancedCity,
   placeBuilding,
   setInformalSettlementsEnabled,
+  setSeasonalEffectsEnabled,
   setServiceCoverageCacheEnabled,
   setUtilityCapacityEnabled,
   simulateTick,
@@ -221,17 +222,19 @@ function runScenario(scenario: Scenario, seed: number): { final: GameState; perT
   }
 }
 
-// The goldens predate power/water capacity (S3-T7/T8) and informal settlements (S3-T9);
+// The goldens predate power/water capacity (S3-T7/T8), informal settlements (S3-T9) and seasonal effects (S4-T3);
 // those are tested in utilityCuts.test.ts and informalSim.test.ts.
 beforeEach(() => {
   setUtilityCapacityEnabled(false);
   setInformalSettlementsEnabled(false);
+  setSeasonalEffectsEnabled(false);
 });
 
 afterEach(() => {
   setServiceCoverageCacheEnabled(true);
   setUtilityCapacityEnabled(true);
   setInformalSettlementsEnabled(true);
+  setSeasonalEffectsEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

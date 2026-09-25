@@ -47,7 +47,9 @@ import {
   type CoverageAverages,
 } from './scoring';
 import type { Rng } from '@/lib/rng';
-import { absoluteDay, advanceWeather, getSeason, type SimWeather } from '@/lib/seasons';
+import {
+  SEASON_CONFIG, absoluteDay, advanceWeather, getGangaRecoveryMultiplier, getSeason, type Season, type SimWeather,
+} from '@/lib/seasons';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
@@ -2351,8 +2353,11 @@ function calculateStats(
   services: ServiceCoverage,
   totals: GridTotals = scanGridTotals(grid, size),
   river?: RiverContext,
-  cuts?: { power: number[]; water: number[] }
+  cuts?: { power: number[]; water: number[] },
+  /** Current season: scales power and water demand and tourism (S4-T3). */
+  season?: Season
 ): Stats {
+  const seasonFx = season && seasonalEffectsEnabled ? SEASON_CONFIG[season] : undefined;
   const {
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
     subwayStations, railTiles, railStations, hasAirport, hasCityHall, hasSpaceProgram, stadiumCount,
@@ -2436,7 +2441,7 @@ function calculateStats(
   if (river && river.mapId === 'varanasi') {
     const inputs = gatherGangaInputs(grid, size, totals.stps);
     const target = calculateGangaTargetHealth(inputs).targetHealth;
-    tourismIncome = Math.floor(calculateTourismIncome(grid, size, totals.ghats, river.gangaHealth));
+    tourismIncome = Math.floor(calculateTourismIncome(grid, size, totals.ghats, river.gangaHealth, seasonFx?.tourism ?? 1));
     gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
     gangaRatingsInput = {
       health: river.gangaHealth,
@@ -2484,10 +2489,10 @@ function calculateStats(
   let utilityStats: Pick<Stats, 'power' | 'water'> = {};
   if (utility) {
     const powerSupply = calculatePowerSupply(utility.plants);
-    const powerDemand = calculatePowerDemand(utility.powerPopulation, utility.powerJobs);
+    const powerDemand = calculatePowerDemand(utility.powerPopulation, utility.powerJobs, seasonFx?.powerDemand ?? 1);
     // The works' output follows the river it draws from; maps without the Ganga have no works
     const waterSupply = calculateWaterSupply(utility.tanks, utility.works, river?.gangaHealth ?? 100);
-    const waterDemand = calculateWaterDemand(utility.waterPopulation);
+    const waterDemand = calculateWaterDemand(utility.waterPopulation, seasonFx?.waterDemand ?? 1);
     const sortNum = (a: number, b: number) => a - b;
     utilityStats = {
       power: {
@@ -2712,7 +2717,9 @@ export function recalculateDerivedState(state: GameState): GameState {
     state.effectiveTaxRate,
     services,
     totals,
-    getRiverContext(state)
+    getRiverContext(state),
+    undefined,
+    getSeason(state.month)
   );
   stats.money = state.stats.money;
 
@@ -2866,6 +2873,15 @@ function getTotalTicks(t: { year: number; month: number; day: number; tick: numb
 const NO_CUT: ReadonlySet<number> = new Set();
 
 let utilityCapacityEnabled = true;
+let seasonalEffectsEnabled = true;
+
+/**
+ * Turn the seasonal multipliers (S4-T3: power/water demand, tourism, tree growth, Ganga recovery) on or off.
+ * The golden fingerprint tests predate seasons and turn them off.
+ */
+export function setSeasonalEffectsEnabled(enabled: boolean): void {
+  seasonalEffectsEnabled = enabled;
+}
 
 /**
  * Turn power/water capacity and rolling cuts (S3-T7/T8) on or off. Tests use this to check that the
@@ -2906,6 +2922,7 @@ export function simulateTick(
 ): GameState {
   const size = state.gridSize;
   const cloudWeatherMode: CloudWeatherMode = forcedWeather ?? state.weather ?? 'clear';
+  const season = getSeason(state.month);
   
   // Pre-calculate service coverage once (read-only operation on original grid). The same scan counts
   // burning tiles: with none, fire cannot spread, so the neighbour checks below can be skipped.
@@ -3190,7 +3207,7 @@ export function simulateTick(
 
   // Tree auto-growth on grass tiles based on weather conditions
   // Early exit: skip entire pass for clear weather (0% growth chance)
-  const treeGrowthChance = TREE_GROWTH_CONFIG[cloudWeatherMode];
+  const treeGrowthChance = TREE_GROWTH_CONFIG[cloudWeatherMode] * (seasonalEffectsEnabled ? SEASON_CONFIG[season].treeGrowth : 1);
   if (treeGrowthChance > 0) {
     // tryGrowTree only reads and replaces `tile.building`, so it gets a reusable probe object and the
     // real tile is copied only when a tree actually grows.
@@ -3278,7 +3295,7 @@ export function simulateTick(
   const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, getRiverContext(state), {
     power: Array.from(powerCut).sort((a, b) => a - b),
     water: Array.from(waterCut).sort((a, b) => a - b),
-  });
+  }, season);
   newStats.money = state.stats.money;
 
   // Smooth demand to prevent flickering in large cities
@@ -3312,7 +3329,11 @@ export function simulateTick(
     newDay++;
     // Ganga Health is a slow stock: once per in-game day it moves a fixed share toward its target (S2-T7).
     if (newStats.gangaHealth !== undefined && newStats.gangaHealthTarget !== undefined) {
-      newStats.gangaHealth = stepGangaHealth(newStats.gangaHealth, newStats.gangaHealthTarget);
+      // Monsoon fresh water speeds recovery (S4-T3). River level 0 until floods land (S4-T5).
+      const recovery = seasonalEffectsEnabled
+        ? getGangaRecoveryMultiplier(season, 0, newStats.gangaHealth, newStats.gangaHealthTarget)
+        : 1;
+      newStats.gangaHealth = stepGangaHealth(newStats.gangaHealth, newStats.gangaHealthTarget, recovery);
     }
     // Weekly income/expense (deposit every 7 days at 1/4 monthly rate)
     // Only deposit when day changes to a multiple of 7

@@ -47,7 +47,7 @@ By the end of this sprint:
 
 - [x] S4-T1: Seasons model and the calendar strip
 - [x] S4-T2: Weather owned by the simulation, following the season
-- [ ] S4-T3: Seasonal effects
+- [x] S4-T3: Seasonal effects
 - [ ] S4-T4: Crisis notifications (locate, jump, auto-pause)
 - [ ] S4-T5: Monsoon floods
 - [ ] S4-T6: Embankments (flood counterplay)
@@ -136,6 +136,13 @@ All maps use the seasonal weather (the random map used to roll 95% severe storms
 | Ganga Health drift | — | river recovers 2× faster when not flooded (fresh water) | — | — | the "5% per day" step in S2-T7 |
 
 **Acceptance criteria:** each multiplier is visible in the numbers (for example the tourism line in the budget drops in monsoon). A unit test covers each pure function that uses them.
+
+**Done (notes):** `calculateStats(..., season)` scales power and water demand (`calculatePowerDemand` / `calculateWaterDemand`) and tourism
+(`calculateTourismIncome(..., seasonMultiplier)`, so the budget's tourism line and the pilgrim crowds drop in the monsoon). Tree growth chance is
+`TREE_GROWTH_CONFIG[weather] × treeGrowth`. `stepGangaHealth(current, target, approachMultiplier)` gets `getGangaRecoveryMultiplier` (river level 0
+until S4-T5). Cars and buses multiply their speed by `seasons.getVehicleSpeedMultiplier(season, weather, visualHour)`, which already includes the
+fog-morning slowdown (S4-T8 adds planes and visuals). `setSeasonalEffectsEnabled(false)` keeps the pre-season golden fingerprints valid.
+Tests: `seasonEffects.test.ts`. Numbers are tuned in S4-T12.
 
 ---
 

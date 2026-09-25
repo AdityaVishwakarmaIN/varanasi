@@ -32,6 +32,7 @@ import {
 } from './pedestrianSystem';
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
 import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
+import { getSeason, getVehicleSpeedMultiplier as getSeasonVehicleSpeed, type SimWeather } from '@/lib/seasons';
 import { drawVehicleBody } from './drawVehicleKinds';
 import { COW_CONFIG, getMaxCows } from '@/lib/trafficConfig';
 import { drawCow, getCowSlowdown, getStandingCowTiles, spawnCow, stepCow, type Cow } from './cowSystem';
@@ -91,6 +92,9 @@ export interface VehicleSystemState {
       tourismIncome?: number;
     };
     mapId?: MapId;
+    /** Calendar month and simulation weather: monsoon and fog slow traffic (S4-T3). */
+    month?: number;
+    weather?: SimWeather;
   };
   /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
   visualHour: number;
@@ -1137,7 +1141,9 @@ export function createVehicleSystems(
       return;
     }
     
-    const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
+    // Monsoon roads (and winter fog mornings) slow everyone down (S4-T3)
+    const seasonSpeed = getSeasonVehicleSpeed(getSeason(state.month ?? 1), state.weather, visualHour);
+    const speedMultiplier = (currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4) * seasonSpeed;
     
     // S1-T8: cars live near the view. Their number follows the road tiles in the spawn area
     // (O(1) prefix-sum lookup), scaled and capped by the quality preset; far-away cars are removed.
@@ -1405,7 +1411,8 @@ export function createVehicleSystems(
       return;
     }
 
-    const speedMultiplier = currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4;
+    const seasonSpeed = getSeasonVehicleSpeed(getSeason(state.month ?? 1), state.weather, visualHour);
+    const speedMultiplier = (currentSpeed === 0 ? 0 : currentSpeed === 1 ? 1 : currentSpeed === 2 ? 2.5 : 4) * seasonSpeed;
 
     const currentGridVersion = roadNetworkVersionRef.current;
     let roadTileCount: number;

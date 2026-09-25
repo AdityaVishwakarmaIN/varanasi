@@ -55,7 +55,9 @@ export function calculateTourismIncome(
   grid: Tile[][],
   gridSize: number,
   ghats: readonly { x: number; y: number }[],
-  gangaHealth: number
+  gangaHealth: number,
+  /** Season multiplier (S4-T3): fewer visitors in the monsoon, the peak after it. */
+  seasonMultiplier = 1
 ): number {
   if (ghats.length === 0) return 0;
   const c = TOURISM_CONFIG;
@@ -81,5 +83,5 @@ export function calculateTourismIncome(
     }
     total += calculateGhatIncome({ gangaHealth, hasRoadAccess, commercialTilesNearby, otherGhatsNearby });
   }
-  return total;
+  return total * Math.max(0, seasonMultiplier);
 }

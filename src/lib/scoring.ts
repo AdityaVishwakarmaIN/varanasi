@@ -282,8 +282,10 @@ export function calculateGangaTargetHealth(input: GangaLoadInput): GangaLoadResu
 }
 
 /** One in-game day of the slow stock: move a fixed fraction of the way toward the target. */
-export function stepGangaHealth(current: number, target: number): number {
-  const next = current + (target - current) * GANGA.dailyApproach;
+export function stepGangaHealth(current: number, target: number, approachMultiplier = 1): number {
+  // `approachMultiplier`: the monsoon's fresh water speeds up recovery (S4-T3, `getGangaRecoveryMultiplier`)
+  const approach = Math.min(1, GANGA.dailyApproach * Math.max(0, approachMultiplier));
+  const next = current + (target - current) * approach;
   return Math.min(100, Math.max(0, next));
 }
 
