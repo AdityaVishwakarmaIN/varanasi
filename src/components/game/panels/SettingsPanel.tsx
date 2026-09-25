@@ -27,6 +27,8 @@ const UI_LABELS = {
   gameSettings: msg('Game Settings'),
   disasters: msg('Disasters'),
   disastersDesc: msg('Enable random fires and disasters'),
+  pauseOnCrisis: msg('Pause when a crisis starts'),
+  pauseOnCrisisDesc: msg('Stop the clock on floods, outbreaks and collapses so you can respond'),
   spritePack: msg('Sprite Pack'),
   spritePackDesc: msg('Choose building artwork style'),
   language: msg('Language'),
@@ -124,8 +126,8 @@ async function loadExampleState(
 
 
 export function SettingsPanel() {
-  const { state, setActivePanel, setDisastersEnabled, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
-  const { disastersEnabled, cityName, gridSize, id: currentCityId } = state;
+  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
+  const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
   const m = useMessages();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -227,6 +229,17 @@ export function SettingsPanel() {
               <Switch
                 checked={disastersEnabled}
                 onCheckedChange={setDisastersEnabled}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
+                <p className="text-muted-foreground text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
+              </div>
+              <Switch
+                checked={pauseOnCrisis !== false}
+                onCheckedChange={setPauseOnCrisis}
               />
             </div>
             

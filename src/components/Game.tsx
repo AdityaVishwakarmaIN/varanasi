@@ -44,6 +44,8 @@ import {
 import { MiniMap } from '@/components/game/MiniMap';
 import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
+import { NotificationToasts } from '@/components/game/NotificationToasts';
+import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
 const CARGO_TYPE_NAMES = [msg('containers'), msg('bulk materials'), msg('oil')];
@@ -84,6 +86,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   );
   const [selectedTile, setSelectedTile] = useState<{ x: number; y: number } | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number } | null>(null);
+  const clearNavigationTarget = useCallback(() => setNavigationTarget(null), []);
+  // Crisis notifications (S4-T4): jump to the problem and show the overlay that explains it
+  const locateNotification = useCallback((n: Notification) => {
+    if (n.x !== undefined && n.y !== undefined) setNavigationTarget({ x: n.x, y: n.y });
+    if (n.overlay) setOverlayMode(n.overlay);
+  }, []);
   const minimapViewportRef = useRef<ViewportState | null>(null);
   const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
   const isInitialMount = useRef(true);
@@ -347,9 +355,16 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               selectedTile={selectedTile} 
               setSelectedTile={selectTileOnMobile}
               isMobile={true}
+              navigationTarget={navigationTarget}
+              onNavigationComplete={clearNavigationTarget}
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
               touchDrawMode={touchDrawMode}
+            />
+            <NotificationToasts
+              notifications={state.notifications}
+              onLocate={locateNotification}
+              className="absolute top-[80px] left-3 right-3 z-30"
             />
             
             {/* Multiplayer Players Indicator - Mobile */}
@@ -443,10 +458,15 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               selectedTile={selectedTile} 
               setSelectedTile={setSelectedTile}
               navigationTarget={navigationTarget}
-              onNavigationComplete={() => setNavigationTarget(null)}
+              onNavigationComplete={clearNavigationTarget}
               onViewportChange={handleViewportChange}
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
+            />
+            <NotificationToasts
+              notifications={state.notifications}
+              onLocate={locateNotification}
+              className="absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]"
             />
             {showOverlayPanel && (
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />

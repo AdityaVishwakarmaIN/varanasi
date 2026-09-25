@@ -444,7 +444,7 @@ export function MobileTopBar({
           >
             {/* Season calendar (S4-T1) */}
             <div className="px-4 pt-4">
-              <SeasonStrip month={month} year={year} day={day} variant="full" />
+              <SeasonStrip month={month} year={year} day={day} events={state.forecasts} variant="full" />
             </div>
 
             {/* Stats grid */}

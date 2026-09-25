@@ -121,6 +121,8 @@ export const CAMERA_CONFIG = {
   panVelocitySampleMs: 80,
   /** If the pointer was still for longer than this before release, there is no inertia. */
   panReleaseIdleMs: 60,
+  /** Minimap clicks and notification "show on map" glide the view to the target over this long (S4-T4). */
+  glideToTargetMs: 450,
 } as const;
 
 /**

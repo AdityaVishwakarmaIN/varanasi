@@ -48,7 +48,8 @@ describe('pilgrims at the ghats (S3-T10)', () => {
     const grid = makeGrid();
     const ped = spawnPilgrimWalking(2, GHAT.x, GHAT.y, grid, SIZE, HOME.x, HOME.y)!;
     expect(ped.state).toBe('walking');
-    for (let i = 0; i < 2000 && ped.state === 'walking'; i++) {
+    // Walkers can pause briefly on the way ('idle', PEDESTRIAN_IDLE_CHANCE), so run until they arrive
+    for (let i = 0; i < 2000 && ped.state !== 'at_recreation'; i++) {
       expect(updatePedestrianState(ped, 0.1, 1, grid, SIZE, [ped])).toBe(true);
     }
     expect(ped.state).toBe('at_recreation');

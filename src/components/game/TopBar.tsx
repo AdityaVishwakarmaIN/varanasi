@@ -242,7 +242,7 @@ export const TopBar = React.memo(function TopBar({
             </Tooltip>
             <TimeOfDayIcon hour={visualHour} />
           </div>
-          <SeasonStrip month={month} year={year} day={day} className="mt-0.5 max-w-[150px]" />
+          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} className="mt-0.5 max-w-[150px]" />
         </div>
         
         <div className="flex items-center gap-0 bg-secondary rounded-md p-0">

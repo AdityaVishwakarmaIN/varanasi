@@ -67,6 +67,13 @@ import {
 } from '@/games/isocity/gridBuffer';
 import { isMobile } from 'react-device-detect';
 import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
+import {
+  addForecast as addForecastToState,
+  pushNotifications,
+  shouldPauseForCrisis,
+  type ForecastInput,
+  type NotificationExtras,
+} from '@/lib/notifications';
 
 // Map size for new games. The UI layer decides desktop vs phone; simulation.ts stays device-agnostic.
 const DEFAULT_GRID_SIZE = getDefaultGridSize(isMobile);
@@ -116,7 +123,11 @@ type GameContextValue = {
   isStateReady: boolean; // True when initial state loading is complete
   isSaving: boolean;
   addMoney: (amount: number) => void;
-  addNotification: (title: string, description: string, icon: string) => void;
+  /** Adds a notification. With x/y it can be located; `severity: 'crisis'` may pause the city (S4-T4). */
+  addNotification: (title: string, description: string, icon: string, extras?: NotificationExtras) => void;
+  /** Puts a forecast on the calendar strip and sends a warning notification (S4-T4). */
+  addForecast: (title: string, description: string, daysAhead: number, icon?: string, extras?: Partial<Omit<ForecastInput, 'title' | 'description' | 'daysAhead' | 'icon'>>) => void;
+  setPauseOnCrisis: (enabled: boolean) => void;
   // Sprite pack management
   currentSpritePack: SpritePack;
   availableSpritePacks: SpritePack[];
@@ -883,6 +894,7 @@ export function GameProvider({
       const now = performance.now();
 
       // PERF: Run simulation and update ref immediately (for canvas)
+      const prevSpeed = latestStateRef.current.speed;
       const newState = simulateTick(latestStateRef.current);
       recordTick(performance.now() - now);
       latestStateRef.current = newState;
@@ -891,7 +903,9 @@ export function GameProvider({
       // PERF: Only sync to React every 500ms to avoid expensive reconciliation
       // Canvas reads from latestStateRef so it sees updates immediately
       // React state is only needed for UI elements (stats, budget display)
-      if (now - lastUiSyncRef.current >= GAME_LOOP_CONFIG.uiSyncIntervalMs) {
+      // A crisis auto-pause (S4-T4) syncs right away so the speed controls and the loop stop together.
+      const pausedByTick = newState.speed !== prevSpeed;
+      if (pausedByTick || now - lastUiSyncRef.current >= GAME_LOOP_CONFIG.uiSyncIntervalMs) {
         lastUiSyncRef.current = now;
         // A player action queued since the last commit wins over this sync; its commit
         // re-points latestStateRef at the action's state and the next sync carries on.
@@ -1171,6 +1185,10 @@ export function GameProvider({
 
   const setDisastersEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, disastersEnabled: enabled }));
+  }, []);
+
+  const setPauseOnCrisis = useCallback((enabled: boolean) => {
+    setState((prev) => ({ ...prev, pauseOnCrisis: enabled }));
   }, []);
 
   
@@ -1515,27 +1533,23 @@ export function GameProvider({
     }));
   }, []);
 
-  const addNotification = useCallback((title: string, description: string, icon: string) => {
+  const addNotification = useCallback((title: string, description: string, icon: string, extras?: NotificationExtras) => {
     setState((prev) => {
-      const newNotifications = [
-        {
-          id: `cheat-${Date.now()}-${Math.random()}`,
-          title,
-          description,
-          icon,
-          timestamp: Date.now(),
-        },
-        ...prev.notifications,
-      ];
-      // Keep only recent notifications
-      while (newNotifications.length > 10) {
-        newNotifications.pop();
-      }
+      const added = [{ id: `note-${Date.now()}-${Math.random()}`, title, description, icon, timestamp: Date.now(), ...extras }];
       return {
         ...prev,
-        notifications: newNotifications,
+        notifications: pushNotifications(prev.notifications, added),
+        // A crisis pauses the city when the player wants that (S4-T4)
+        ...(shouldPauseForCrisis(prev, added) ? { speed: 0 as const } : {}),
       };
     });
+  }, []);
+
+  const addForecast = useCallback((title: string, description: string, daysAhead: number, icon = '🔮', extras?: Partial<Omit<ForecastInput, 'title' | 'description' | 'daysAhead' | 'icon'>>) => {
+    setState((prev) => ({
+      ...prev,
+      ...addForecastToState(prev, { id: extras?.id ?? `${title}-${daysAhead}`, title, description, daysAhead, icon, ...extras }),
+    }));
   }, []);
 
   // Save current city for restore (when viewing shared cities)
@@ -1766,6 +1780,8 @@ export function GameProvider({
     isSaving,
     addMoney,
     addNotification,
+    addForecast,
+    setPauseOnCrisis,
     // Sprite pack management
     currentSpritePack,
     availableSpritePacks: SPRITE_PACKS,

@@ -3,6 +3,7 @@
  */
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import type { SimWeather } from '@/lib/seasons';
+import type { OverlayMode } from '@/components/game/types';
 
 import { msg } from 'gt-next';
 import { Building } from './buildings';
@@ -140,12 +141,31 @@ export interface WaterBody {
   centerY: number;
 }
 
+export type NotificationSeverity = 'info' | 'warning' | 'crisis';
+
 export interface Notification {
   id: string;
   title: string;
   description: string;
   icon: string;
   timestamp: number;
+  /** Tile the notification is about: clicking it moves the camera there (S4-T4). */
+  x?: number;
+  y?: number;
+  /** Overlay to turn on when the notification is clicked. */
+  overlay?: OverlayMode;
+  /** 'crisis' pauses the game when `pauseOnCrisis` is on. Missing means 'info'. */
+  severity?: NotificationSeverity;
+}
+
+/** An upcoming event shown on the calendar strip (S4-T1/S4-T4): forecasts now, festivals in Sprint 5. */
+export interface Forecast {
+  id: string;
+  /** Absolute day (see `absoluteDay` in seasons.ts) the event is expected. */
+  day: number;
+  icon: string;
+  title: string;
+  description: string;
 }
 
 export interface AdvisorMessage {
@@ -187,6 +207,10 @@ export interface GameState {
   mapId?: MapId;
   /** Informal settlement bookkeeping (S3-T9). Missing means nothing has happened yet. */
   informal?: InformalState;
+  /** Pause the game when a crisis notification arrives (S4-T4). Missing means on. */
+  pauseOnCrisis?: boolean;
+  /** Upcoming events on the calendar strip (S4-T4). */
+  forecasts?: Forecast[];
   /** Weather chosen by the simulation from the season (S4-T2). Missing (old saves) means a new pick on the next tick. */
   weather?: SimWeather;
   /** Absolute day (see `absoluteDay` in seasons.ts) on which the next weather is picked. */

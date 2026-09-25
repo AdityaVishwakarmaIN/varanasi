@@ -48,7 +48,7 @@ By the end of this sprint:
 - [x] S4-T1: Seasons model and the calendar strip
 - [x] S4-T2: Weather owned by the simulation, following the season
 - [x] S4-T3: Seasonal effects
-- [ ] S4-T4: Crisis notifications (locate, jump, auto-pause)
+- [x] S4-T4: Crisis notifications (locate, jump, auto-pause)
 - [ ] S4-T5: Monsoon floods
 - [ ] S4-T6: Embankments (flood counterplay)
 - [ ] S4-T7: Heatwaves
@@ -157,6 +157,18 @@ Tests: `seasonEffects.test.ts`. Numbers are tuned in S4-T12.
 4. **Forecasts:** a helper `addForecast(title, description, daysAhead)` that puts an entry on the calendar strip (S4-T1) and sends a `warning` notification.
 
 **Acceptance criteria:** a test crisis notification jumps the camera, turns on the overlay and pauses the game when the setting is on.
+
+**Done (notes):** `Notification` gains `x`, `y`, `overlay` and `severity`; `GameState` gains `pauseOnCrisis?` (missing = on) and `forecasts?`.
+Pure helpers in `src/lib/notifications.ts` (`NOTIFICATION_CONFIG`, `pushNotifications`, `shouldPauseForCrisis`, `addForecast`, `pruneForecasts`).
+`simulateTick` merges new notifications through them, sets `speed: 0` when a crisis arrives and the setting is on, and drops past forecasts at the
+day rollover. The context's `addNotification(title, description, icon, extras?)` applies the same pause; new `addForecast(...)` and
+`setPauseOnCrisis`. The game loop syncs React at once when a tick changes the speed, so the speed buttons show the pause straight away.
+New `NotificationToasts.tsx` (desktop: top-centre of the canvas; mobile: under the top bar) shows up to 3 new notifications (crisis ones stay
+12 s and are outlined in red; save failures keep their own toast). "Show on map" glides the camera (`CAMERA_CONFIG.glideToTargetMs`, eased; it stops if
+the player pans, and jumps when reduced motion is on) and turns on the overlay. Minimap clicks use the same glide, and the mobile canvas now
+supports navigation too. Settings has "Pause when a crisis starts". Forecasts show as icons on the calendar strip (desktop and mobile). Tests in
+`notifications.test.ts`. The first real crisis notifications arrive with S4-T5 (floods); the in-browser click-through is part of the S4-T12 sign-off.
+Also fixed a flaky S3-T10 pilgrim test: walkers can pause briefly (`idle`) on the way, and the test stopped too early when they did.
 
 ---
 

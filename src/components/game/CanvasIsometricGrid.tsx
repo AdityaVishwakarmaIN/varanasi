@@ -213,6 +213,34 @@ type PointerDownInput = Pick<React.MouseEvent, 'button' | 'clientX' | 'clientY' 
 type PointerMoveInput = Pick<React.MouseEvent, 'clientX' | 'clientY'>;
 
 // Canvas-based Isometric Grid - HIGH PERFORMANCE
+type Offset = { x: number; y: number };
+
+/**
+ * Glides the view offset from `from` to `to` (S4-T4), easing out like the S1-T10 zoom. Stops early if the offset changes under it
+ * (the player panned or zoomed). The frame id lives in `frameRef` so the caller can cancel it.
+ */
+function glideCamera(
+  frameRef: { current: number },
+  offsetRef: { current: Offset },
+  from: Offset,
+  to: Offset,
+  setOffset: (offset: Offset) => void
+) {
+  const start = performance.now();
+  let last = from;
+  const step = (now: number) => {
+    const cur = offsetRef.current;
+    if (Math.abs(cur.x - last.x) > 0.5 || Math.abs(cur.y - last.y) > 0.5) return; // player took over
+    const t = Math.min(1, (now - start) / CAMERA_CONFIG.glideToTargetMs);
+    const eased = 1 - Math.pow(1 - t, 3);
+    last = { x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased };
+    offsetRef.current = last;
+    setOffset(last);
+    if (t < 1) frameRef.current = requestAnimationFrame(step);
+  };
+  frameRef.current = requestAnimationFrame(step);
+}
+
 export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery, controlsRef, touchDrawMode = false }: CanvasIsometricGridProps) {
   const {
     state,
@@ -279,6 +307,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const renderPendingRef = useRef<number | null>(null); // PERF: Track pending render frame
   const lastMainRenderTimeRef = useRef<number>(0); // PERF: Throttle main renders at high speed
   const [offset, setOffset] = useState({ x: isMobile ? 200 : 620, y: isMobile ? 100 : 160 });
+  // Latest offset for the smooth camera move (S4-T4), which must not restart on every frame
+  const offsetRef = useRef(offset);
+  const glideFrameRef = useRef(0);
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+  useEffect(() => () => cancelAnimationFrame(glideFrameRef.current), []);
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isWheelZooming, setIsWheelZooming] = useState(false); // State to trigger re-render when wheel zooming stops
@@ -3547,31 +3582,25 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     });
   }, [cityKey, canvasSize.width, canvasSize.height, gridSize, state.mapId, zoom, getMapBounds]);
 
-  // Handle minimap navigation - center the view on the target tile
+  // Minimap and notification navigation: glide the view to centre the target tile (S4-T4).
+  // The move stops if the player pans or zooms mid-way (the offset no longer matches what we set).
   useEffect(() => {
     if (!navigationTarget) return;
-    
-    // Convert grid coordinates to screen coordinates
     const { screenX, screenY } = gridToScreen(navigationTarget.x, navigationTarget.y, 0, 0);
-    
-    // Calculate offset to center this position on the canvas
-    const centerX = canvasSize.width / 2;
-    const centerY = canvasSize.height / 2;
-    
-    const newOffset = {
-      x: centerX - screenX * zoom,
-      y: centerY - screenY * zoom,
-    };
-    
-    // Clamp and set the new offset - this is a legitimate use case for responding to navigation requests
     const bounds = getMapBounds(zoom, canvasSize.width, canvasSize.height);
-    setOffset({ // eslint-disable-line
-      x: Math.max(bounds.minOffsetX, Math.min(bounds.maxOffsetX, newOffset.x)),
-      y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, newOffset.y)),
-    });
-    
-    // Signal that navigation is complete
+    const to = {
+      x: Math.max(bounds.minOffsetX, Math.min(bounds.maxOffsetX, canvasSize.width / 2 - screenX * zoom)),
+      y: Math.max(bounds.minOffsetY, Math.min(bounds.maxOffsetY, canvasSize.height / 2 - screenY * zoom)),
+    };
+    cancelAnimationFrame(glideFrameRef.current);
+    const from = { ...offsetRef.current };
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     onNavigationComplete?.();
+    if (reducedMotion || Math.hypot(to.x - from.x, to.y - from.y) < 1) {
+      setOffset(to);
+      return;
+    }
+    glideCamera(glideFrameRef, offsetRef, from, to, setOffset);
   }, [navigationTarget, zoom, canvasSize.width, canvasSize.height, getMapBounds, onNavigationComplete]);
 
   const handleMouseMove = useCallback((e: PointerMoveInput) => {

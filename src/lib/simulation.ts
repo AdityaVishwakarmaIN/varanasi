@@ -55,6 +55,7 @@ import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
 import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERFRONT_CONFIG } from '@/lib/ganga';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
+import { pruneForecasts, pushNotifications, shouldPauseForCrisis } from '@/lib/notifications';
 import {
   POWER_CONFIG, WATER_CONFIG, calculatePowerSupply, calculatePowerDemand, calculateWaterSupply, calculateWaterDemand,
   supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
@@ -3389,13 +3390,11 @@ export function simulateTick(
   // Generate advisor messages
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
-  // Keep existing notifications (newest first)
-  const newNotifications = [...informalNotifications, ...state.notifications];
-
-  // Keep only recent notifications
-  while (newNotifications.length > 10) {
-    newNotifications.pop();
-  }
+  // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
+  const newNotifications = pushNotifications(state.notifications, informalNotifications);
+  const pauseForCrisis = shouldPauseForCrisis(state, informalNotifications);
+  // Forecasts that have happened drop off the calendar strip
+  const forecasts = newTick === 0 ? pruneForecasts(state.forecasts, absoluteDay(newYear, newMonth, newDay)) : state.forecasts;
 
   // Update history quarterly
   const history = [...state.history];
@@ -3434,6 +3433,8 @@ export function simulateTick(
     roadNetworkVersion: state.roadNetworkVersion ?? 0,
     advisorMessages,
     notifications: newNotifications,
+    ...(forecasts !== state.forecasts ? { forecasts } : {}),
+    ...(pauseForCrisis ? { speed: 0 as const } : {}),
     history,
     ...(newInformal ? { informal: newInformal } : {}),
     ...weatherFields,
