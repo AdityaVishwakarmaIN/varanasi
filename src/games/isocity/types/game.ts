@@ -6,6 +6,7 @@ import type { SimWeather } from '@/lib/seasons';
 import type { MonsoonStrength } from '@/lib/floods';
 import type { HeatwaveState } from '@/lib/heatwave';
 import type { OutbreakState } from '@/lib/disease';
+import type { FestivalState } from '@/lib/festivals';
 import type { OverlayMode } from '@/components/game/types';
 
 import { msg } from 'gt-next';
@@ -233,6 +234,8 @@ export interface GameState {
   heatwave?: HeatwaveState;
   /** Feeder blocks with a disease outbreak (S4-T9). */
   outbreaks?: OutbreakState[];
+  /** Festival calendar bookkeeping and the last management event's effects (S5-T3/T4). */
+  festival?: FestivalState;
 }
 
 /** Saved per city. Keys are tile indices (y * gridSize + x) as strings, so the object survives JSON. */

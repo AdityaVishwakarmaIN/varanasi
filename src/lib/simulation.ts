@@ -75,6 +75,7 @@ import {
   runDiseaseDay,
   runHeatwaveDay,
 } from '@/lib/crisisSim';
+import { applyFestivalForecasts, applyFestivalStats, runFestivalDay } from '@/lib/festivalSim';
 import { getHeatwaveDemandMultipliers, isHeatwaveActive } from '@/lib/heatwave';
 import { DISEASE_CONFIG } from '@/lib/disease';
 import { computeFloodMask, FLOOD_CONFIG } from '@/lib/floods';
@@ -2935,6 +2936,13 @@ export function setCrisesEnabled(enabled: boolean): void {
   crisesEnabled = enabled;
 }
 
+let festivalsEnabled = true;
+
+/** Turn the festival calendar and management events (S5-T3/T4) on or off. Tests use this for the pre-S5 golden fingerprints. */
+export function setFestivalsEnabled(enabled: boolean): void {
+  festivalsEnabled = enabled;
+}
+
 /** Turn monsoon floods (S4-T5) on or off. Tests use this for the pre-S4 golden fingerprints. */
 export function setFloodsEnabled(enabled: boolean): void {
   floodsEnabled = enabled;
@@ -3354,6 +3362,8 @@ export function simulateTick(
     water: Array.from(waterCut).sort((a, b) => a - b),
   }, season, crisesOn ? getHeatwaveDemandMultipliers(state.heatwave, tickDay) : undefined);
   newStats.money = state.stats.money;
+  // Festivals (S5-T4): a management event's tourism boost and the mood it leaves behind
+  if (festivalsEnabled) applyFestivalStats(newStats, state.festival, tickDay);
 
   // Smooth demand to prevent flickering in large cities
   // Rate of change: 12% of difference per tick, so changes stabilize in ~20-30 ticks (~1 game day)
@@ -3565,6 +3575,17 @@ export function simulateTick(
     forecasts = added.forecasts;
     newNotifications = added.notifications;
   }
+  // Festivals (S5-T3/T4): once a day, announce 30 days ahead and resolve management events on their first day
+  let festivalFields: Pick<GameState, 'festival'> = {};
+  if (festivalsEnabled && newTick === 0 && state.mapId === 'varanasi') {
+    const today = absoluteDay(newYear, newMonth, newDay);
+    const fest = runFestivalDay({ ...state, grid: newGrid, services, stats: newStats }, today, newMonth, newDay);
+    const added = applyFestivalForecasts({ year: newYear, month: newMonth, day: newDay, forecasts, notifications: newNotifications }, fest.forecasts);
+    const festNotes = fest.notifications.map((n, i) => ({ ...n, id: `festival-${today}-${i}`, timestamp: Date.now() }));
+    forecasts = added.forecasts;
+    newNotifications = pushNotifications(added.notifications, festNotes);
+    if (fest.festival !== state.festival) festivalFields = { festival: fest.festival };
+  }
 
   // Update history quarterly
   const history = [...state.history];
@@ -3610,6 +3631,7 @@ export function simulateTick(
     ...weatherFields,
     ...floodFields,
     ...crisisFields,
+    ...festivalFields,
   };
 }
 

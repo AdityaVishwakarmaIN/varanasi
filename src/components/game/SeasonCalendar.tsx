@@ -62,6 +62,8 @@ interface SeasonStripProps {
   /** `compact` is the thin desktop bar; `full` adds month and season labels (mobile details panel). */
   variant?: 'compact' | 'full';
   className?: string;
+  /** Clicking an event icon (e.g. a festival: opens the Event panel, S5-T4). */
+  onEventClick?: (id: string) => void;
 }
 
 export const SeasonStrip = React.memo(function SeasonStrip({
@@ -71,6 +73,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
   events = [],
   variant = 'compact',
   className = '',
+  onEventClick,
 }: SeasonStripProps) {
   const m = useMessages();
   const months = getUpcomingMonths(month, year, CALENDAR_STRIP_MONTHS);
@@ -113,9 +116,10 @@ export const SeasonStrip = React.memo(function SeasonStrip({
           {visibleEvents.map((e) => (
             <span
               key={e.id}
-              className={`absolute -translate-x-1/2 leading-none ${full ? 'text-sm' : 'text-[10px]'}`}
+              className={`absolute -translate-x-1/2 leading-none ${full ? 'text-sm' : 'text-[10px]'} ${onEventClick ? 'cursor-pointer' : ''}`}
               style={{ left: `${((e.day - first) / span) * 100}%` }}
               title={e.title}
+              onClick={onEventClick ? () => onEventClick(e.id) : undefined}
             >
               {e.icon}
             </span>

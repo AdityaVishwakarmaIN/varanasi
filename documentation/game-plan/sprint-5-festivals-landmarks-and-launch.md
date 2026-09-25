@@ -49,8 +49,8 @@ By the end of this sprint the game is **ready for real players**:
 
 - [ ] S5-T1: Landmark framework and unlocks
 - [ ] S5-T2: The five landmarks
-- [ ] S5-T3: Festival calendar and visual festivals
-- [ ] S5-T4: Management events: Dev Deepawali and Maha Shivratri
+- [x] S5-T3: Festival calendar and visual festivals
+- [x] S5-T4: Management events: Dev Deepawali and Maha Shivratri
 - [ ] S5-T5: Problem icons (feedback layer 1)
 - [ ] S5-T6: Named advisors (feedback layer 2)
 - [ ] S5-T7: Citizen feed (feedback layer 3)
@@ -121,6 +121,8 @@ religious imagery, no text.
 
 **Acceptance criteria:** each festival appears on the right date and looks right. On the benchmark, festival nights stay within the frame budget (add perf-log rows for Dev Deepawali night).
 
+**Done:** `src/lib/festivals.ts` (config, active/upcoming queries, crowd and tourism helpers) plus `src/lib/festivalSim.ts` (daily step, wired into `simulateTick` behind `setFestivalsEnabled`, which is off in the golden tests). Every festival goes on the season strip 30 days ahead (announced once per occurrence, Varanasi map only). Visuals live in `src/components/game/festivalDraw.ts` and are drawn on the existing air layer (CPU and Pixi): Dev Deepawali diyas on every riverfront tile and ghat in one batched path (plus one glow pass when zoomed in), Aarti lamps at Dashashwamedh or the largest ghat cluster, Holi puffs over homes (batched by colour), Diwali warm lights on lived-in buildings (batched, capped) plus the firework system forced on, with ghats as launch sites. Nothing is drawn on Low quality (`particleFraction` 0). Crowds go through the pedestrian/pilgrim multipliers. The top bar shows a festival chip. Deviations and deferrals: Diwali lights are a new batched draw, not the night-lighting worker. Chhath has no drawing of its own, only a denser crowd. Because a visual day is 450 ticks, a festival day is only about 1.6 visual hours, so lamps also show by day at reduced alpha. **Deferred:** the Dev Deepawali night perf-log rows need a browser benchmark run, which could not be done here.
+
 ---
 
 ### S5-T4: Management events: Dev Deepawali and Maha Shivratri
@@ -154,6 +156,8 @@ religious imagery, no text.
 - Unit tests: checklist evaluation for pass and fail inputs, and outcome selection.
 
 **Acceptance criteria:** the player is told 30 days ahead, can see and fix each requirement, and the result matches the checklist.
+
+**Done:** event areas, the live checklist and outcomes are in `festivals.ts` and `festivalSim.ts`, with unit tests in `festivals.test.ts` and `festivalSim.test.ts`. A notification with a location is sent 30 days ahead. On the day, the outcome is resolved and a notification is sent (crisis severity when overwhelmed, naming the failed requirements). Tourism × 3/× 2 applies for the event days and the happiness modifier lasts for its duration. Without Kashi Vishwanath, Shivratri runs at half scale around the largest ghat cluster. With no ghats, the event passes quietly. `FestivalPanel.tsx` provides a banner while an event is coming and an Event panel (opened from the banner, the calendar-strip icon or the notification). Each failing row jumps to the area with its overlay. Deviations: tiles carry no live traffic value, so road traffic is estimated from people per road tile (a rail station counts as 6 road tiles). There is no traffic overlay, so the Access row jumps without one. Pedestrians × 3 and cars × 1.5 are applied to the in-view spawn caps (still within the quality caps), not only inside the event area. "Success" happiness +2 lasts 30 days (not specified in the plan).
 
 ---
 
