@@ -56,6 +56,8 @@ import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERF
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
+import { advanceFailureState, applyLoanRepayment, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
+import { POPULATION_DISPLAY_SCALE } from '@/lib/format';
 import {
   applyFloodToServices,
   getCityFloodMask,
@@ -2917,6 +2919,13 @@ export function setFloodsEnabled(enabled: boolean): void {
   floodsEnabled = enabled;
 }
 
+let failureStatesEnabled = true;
+
+/** Turn debt, the emergency loan, bankruptcy and exodus (S4-T11) on or off. Tests use this for the pre-S4 golden fingerprints. */
+export function setFailureStatesEnabled(enabled: boolean): void {
+  failureStatesEnabled = enabled;
+}
+
 /** Turn informal settlements (S3-T9) on or off. Tests use this for the pre-S3 golden fingerprints. */
 export function setInformalSettlementsEnabled(enabled: boolean): void {
   informalSettlementsEnabled = enabled;
@@ -3413,6 +3422,63 @@ export function simulateTick(
     newYear++;
   }
 
+  // Failure states (S4-T11): once per in-game month, debt → emergency loan → bankruptcy, and exodus.
+  // Not switched off by the Crises (disastersEnabled) setting. Notifications ride on informalNotifications.
+  let failureFields: Pick<GameState, 'failure' | 'gameOver'> & { speed?: 0 } = {};
+  if (failureStatesEnabled && newMonth !== state.month && !state.gameOver) {
+    const repayment = applyLoanRepayment(newStats.income, state.failure?.loan);
+    newStats.money -= Math.round(repayment.payment);
+    const prevFailure = state.failure?.loan ? { ...state.failure, loan: repayment.loan } : state.failure;
+    const { next, events } = advanceFailureState(prevFailure, {
+      money: newStats.money,
+      happiness: newStats.happiness,
+      displayedPopulation: newStats.population * POPULATION_DISPLAY_SCALE,
+      monthlyExpenses: newStats.expenses,
+      gangaHealth: newStats.gangaHealth,
+    });
+    failureFields = { failure: next };
+    const note = (key: string, title: string, description: string, icon: string, severity: 'warning' | 'crisis') =>
+      informalNotifications.push({ id: `failure-${key}-${newYear}-${newMonth}`, title, description, icon, severity, timestamp: Date.now() });
+    for (const e of events) {
+      if (e.type === 'debt' && e.monthsInDebt === 1) note('debt', 'The city treasury is empty', 'Raise taxes or cut services before the debt grows.', 'alert', 'warning');
+      else if (e.type === 'loanOffered') note('loan', 'Emergency loan offered', 'The State Government offers an emergency loan.', 'alert', 'crisis');
+      else if (e.type === 'exodusStarted') note('exodus', 'People are leaving the city', 'Happiness has been critical for a year. Homes are being abandoned.', 'home', 'crisis');
+      else if (e.type === 'exodusAbandonment') {
+        const homes: Tile[] = [];
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const t = newGrid[y][x];
+            if (t.zone === 'residential' && !t.building.abandoned && t.building.type !== 'grass' && t.building.type !== 'empty') homes.push(t);
+          }
+        }
+        // Deterministic, spread over the map: every k-th home, offset by the month
+        const count = Math.min(homes.length, Math.ceil(homes.length * e.share));
+        const step = count > 0 ? homes.length / count : 0;
+        for (let i = 0; i < count; i++) {
+          const home = homes[Math.floor(i * step + (newMonth % Math.max(1, Math.floor(step))))];
+          const b = writableTile(home.x, home.y).building;
+          b.abandoned = true;
+          b.population = 0;
+          b.jobs = 0;
+          didStructureChange = true;
+        }
+      } else if (e.type === 'gameOver') {
+        const top = getTopFailingStat(newStats);
+        failureFields.speed = 0;
+        failureFields.gameOver = {
+          reason: e.reason,
+          year: newYear,
+          month: newMonth,
+          yearsSurvived: Math.max(0, Math.floor((newYear - 2024) + (newMonth - 1) / 12)),
+          peakPopulation: next.peakDisplayedPopulation,
+          ...(next.peakGangaHealth !== undefined ? { peakGangaHealth: next.peakGangaHealth } : {}),
+          failingStat: e.reason === 'bankruptcy' ? 'money' : top.stat,
+        };
+        note('gameover', e.reason === 'bankruptcy' ? 'The city is bankrupt' : 'The city has emptied', FAILING_STAT_LINES[failureFields.gameOver.failingStat], 'alert', 'crisis');
+      }
+    }
+  }
+
   // Weather (S4-T2): checked once per in-game day, and right away for old saves without it
   let weatherFields: Pick<GameState, 'weather' | 'weatherUntilDay'> = {};
   if (!forcedWeather && (newTick === 0 || state.weather === undefined)) {
@@ -3499,6 +3565,7 @@ export function simulateTick(
     ...(newInformal ? { informal: newInformal } : {}),
     ...weatherFields,
     ...floodFields,
+    ...failureFields,
   };
 }
 

@@ -55,7 +55,7 @@ By the end of this sprint:
 - [ ] S4-T8: Winter fog
 - [ ] S4-T9: Disease outbreaks
 - [ ] S4-T10: Old-building collapse
-- [ ] S4-T11: Bankruptcy, emergency loan and exodus (failure states)
+- [x] S4-T11: Bankruptcy, emergency loan and exodus (failure states)
 - [ ] S4-T12: Balance pass and sign-off
 
 ---
@@ -308,6 +308,12 @@ is not redrawn per frame. Cars don't spawn on flooded roads and vanish when they
 7. The existing `disastersEnabled` setting is relabelled **"Crises"** (on by default). Turning it off also disables floods, heatwaves, disease and collapse, but **not** bankruptcy or exodus.
 
 **Acceptance criteria:** both failures can be triggered in a test city, all warnings and countdowns appear first, the loan works once, and the game-over buttons work.
+
+**Done:** model in `failure.ts`; `simulateTick` runs `advanceFailureState` once per month change (toggle `setFailureStatesEnabled`), takes the loan
+repayment (15% of income) from money, abandons 2% of homes per exodus month, sets `gameOver` and speed 0. State in `failure` / `gameOver` (optional, old saves load).
+GameContext: `acceptEmergencyLoan`, `declineEmergencyLoan`, a monthly extra autosave copy (`isocity-game-state-last-month`) and `loadLastAutosave`.
+UI in `FailureOverlays.tsx`: debt and exodus banners with countdowns (desktop and mobile), loan dialog, game-over screen. Setting relabelled "Crises".
+Tests in `failureSim.test.ts` (4).
 
 ---
 
