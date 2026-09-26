@@ -57,7 +57,7 @@ By the end of this sprint the game is **ready for real players**:
 - [x] S5-T8: Contextual tips for every system
 - [x] S5-T9: Music and sound
 - [x] S5-T10: Mobile polish
-- [ ] S5-T11: Undo last action (stretch)
+- [x] S5-T11: Undo last action (stretch) — skipped: owner declined
 - [ ] S5-T12: Launch checklist
 
 ---
@@ -288,6 +288,8 @@ game-over screen yet.
 **Acceptance criteria:** undoing a road line within a few seconds restores the tiles and the money.
 
 ---
+**Skipped:** the owner declined undo; not implemented.
+
 
 ### S5-T12: Launch checklist
 
