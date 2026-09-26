@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRng } from '@/lib/rng';
+import { setMixedUseEnabled } from '@/lib/mixedUse';
 import {
   bulldozeTile,
   generateRandomAdvancedCity,
@@ -238,6 +239,7 @@ beforeEach(() => {
   setFailureStatesEnabled(false);
   setFestivalsEnabled(false);
   setLandmarkUnlocksEnabled(false);
+  setMixedUseEnabled(false);
 });
 
 afterEach(() => {
@@ -250,6 +252,7 @@ afterEach(() => {
   setFailureStatesEnabled(true);
   setFestivalsEnabled(true);
   setLandmarkUnlocksEnabled(true);
+  setMixedUseEnabled(true);
 });
 
 describe('simulateTick equivalence', () => {

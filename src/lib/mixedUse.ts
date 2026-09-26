@@ -21,6 +21,18 @@ export const MIXED_USE_CONFIG = {
   fillFactor: 0.8,
 } as const;
 
+let mixedUseEnabled = true;
+
+/** Turn homes-above-shops on or off. Tests use this for the golden fingerprints. */
+export function setMixedUseEnabled(enabled: boolean): void {
+  mixedUseEnabled = enabled;
+}
+
+/** Whether `evolveBuilding` gives mixed-use buildings residents. */
+export function isMixedUseEnabled(): boolean {
+  return mixedUseEnabled;
+}
+
 /** True when a building of this type and level has homes above. */
 export function isMixedUse(buildingType: BuildingType, level: number): boolean {
   return MIXED_USE_CONFIG.types.includes(buildingType) && level >= MIXED_USE_CONFIG.minLevel;

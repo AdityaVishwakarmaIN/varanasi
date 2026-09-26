@@ -52,7 +52,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 - [ ] S3-T3: Ghat, STP and new-building art
 - [x] S3-T4: Mixed traffic (vehicle kinds)
 - [x] S3-T5: Cows
-- [ ] S3-T6: Mixed-use commercial
+- [x] S3-T6: Mixed-use commercial
 - [x] S3-T7: Power capacity and rolling power cuts
 - [x] S3-T8: Water capacity, the Jal Sansthan water works and shortages
 - [x] S3-T9: Informal settlements
@@ -235,6 +235,16 @@ Adjacent ghats must join visually into one continuous stepped bank.
 - Tile info shows "Shops: N jobs · Homes above: M residents".
 
 **Acceptance criteria:** a dense bazaar street raises population. Tile info shows both numbers. A unit test covers the resident calculation.
+
+**Done (notes):**
+- `mixedUse.ts` holds `MIXED_USE_CONFIG` and `getMixedUseResidents` (same formula as jobs: `floor(maxJobs × 0.4 × level × efficiency × 0.8)`).
+- `evolveBuilding` sets `building.population` from it for types with `maxPop = 0`. Stats, taxes, power/water demand, happiness shares and crises all sum
+  `building.population` over every tile, so these residents count like any others. Abandonment and disasters still zero them.
+- Tile info adds "Shops: N jobs · Homes above: M residents" (via `msg()`) for level ≥ 2 shops and low offices that have residents.
+- `setMixedUseEnabled` toggle (default on); the golden fingerprint test switches it off. `mixedUse.test.ts` checks that a bazaar street of level-3
+  shops raises population in a simulated tick.
+- The random-city generator also gives its level 3–5 shops their homes-above residents, so the power/water top-up (`ensureUtilityCapacity`) counts
+  them and a new city does not start with cuts.
 
 ---
 

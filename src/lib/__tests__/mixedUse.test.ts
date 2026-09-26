@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BUILDING_STATS } from '@/games/isocity/types/buildings';
-import { MIXED_USE_CONFIG, formatMixedUseInfo, getMixedUseResidents, isMixedUse } from '@/lib/mixedUse';
+import { MIXED_USE_CONFIG, formatMixedUseInfo, getMixedUseResidents, isMixedUse, setMixedUseEnabled } from '@/lib/mixedUse';
+import { createRng } from '@/lib/rng';
+import { generateRandomAdvancedCity, simulateTick } from '@/lib/simulation';
+import type { GameState } from '@/types/game';
 
 describe('mixed-use commercial', () => {
   it('only small shops, medium shops and low offices at level 2+', () => {
@@ -30,5 +33,48 @@ describe('mixed-use commercial', () => {
 
   it('formats the tile-info line', () => {
     expect(formatMixedUseInfo(45, 18)).toBe('Shops: 45 jobs · Homes above: 18 residents');
+  });
+});
+
+describe('mixed-use in simulateTick (S3-T6)', () => {
+  /** A seeded city with a dense bazaar street: a row of level-3 medium shops on commercial land. */
+  function bazaarCity(): GameState {
+    const state = generateRandomAdvancedCity(40, 'Test', createRng(77));
+    for (let x = 5; x < 25; x++) {
+      const tile = state.grid[20][x];
+      tile.zone = 'commercial';
+      tile.building = { ...tile.building, type: 'shop_medium', level: 3, population: 0, jobs: 0, abandoned: false, onFire: false, fireProgress: 0, constructionProgress: 100 };
+    }
+    return state;
+  }
+
+  function tick(state: GameState): GameState {
+    const spy = vi.spyOn(Math, 'random').mockImplementation(createRng(5));
+    try {
+      return simulateTick(state, 'clear');
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  afterEach(() => setMixedUseEnabled(true));
+
+  it('a dense bazaar street of level-2+ shops raises population', () => {
+    setMixedUseEnabled(false);
+    const off = tick(bazaarCity());
+    setMixedUseEnabled(true);
+    const on = tick(bazaarCity());
+
+    let residents = 0;
+    for (let x = 5; x < 25; x++) {
+      const b = on.grid[20][x].building;
+      if (!isMixedUse(b.type, b.level)) continue;
+      const eff = (b.powered ? 0.5 : 0) + (b.watered ? 0.5 : 0);
+      expect(b.population).toBe(getMixedUseResidents(b.type, b.level, BUILDING_STATS[b.type].maxJobs, eff));
+      expect(off.grid[20][x].building.population).toBe(0);
+      residents += b.population;
+    }
+    expect(residents).toBeGreaterThan(0);
+    expect(on.stats.population).toBeGreaterThan(off.stats.population);
   });
 });
