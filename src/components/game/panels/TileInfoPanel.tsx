@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { useMessages } from 'gt-next';
+import { msg, useMessages } from 'gt-next';
 import { Tile, BuildingType, TOOL_INFO, Tool } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
 import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 import { INFORMAL_CONFIG } from '@/lib/informal';
+import { isMixedUse } from '@/lib/mixedUse';
 import { getMonsoonsThatFlood } from '@/lib/floods';
 import { getCityFloodMask, getCityFloodRisk, getEffectiveLandValue } from '@/lib/floodSim';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
@@ -161,6 +162,14 @@ export function TileInfoPanel({
           <span className="text-muted-foreground">Jobs</span>
           <span>{formatPopulation(tile.building.jobs)}</span>
         </div>
+        {isMixedUse(tile.building.type, tile.building.level) && tile.building.population > 0 && (
+          <div className="text-xs text-muted-foreground">
+            {m(msg('Shops: {jobs} jobs · Homes above: {residents} residents', {
+              jobs: formatPopulation(tile.building.jobs),
+              residents: formatPopulation(tile.building.population),
+            }))}
+          </div>
+        )}
         
         <Separator />
         

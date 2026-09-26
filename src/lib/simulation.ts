@@ -92,6 +92,7 @@ import {
 import { getFeederBounds, getFeederIndex } from '@/lib/feederZones';
 import { applyFeederCuts } from '@/lib/utilityCuts';
 import { INFORMAL_CONFIG } from '@/lib/informal';
+import { getMixedUseResidents, isMixedUseEnabled } from '@/lib/mixedUse';
 import { getAbsoluteDay, getInformalHappinessModifier, recordBulldoze, runInformalDay } from '@/lib/informalSim';
 import type { UtilitySupplyStats } from '@/games/isocity/types/economy';
 import type { CloudWeatherMode } from '@/components/game/types';
@@ -2096,7 +2097,8 @@ function evolveBuilding(
 
   anchorBuilding.population = buildingStats?.maxPop > 0
     ? Math.floor(buildingStats.maxPop * Math.max(1, anchorBuilding.level) * efficiency * 0.8)
-    : 0;
+    // S3-T6: level ≥ 2 bazaar shops and low offices also house residents ("homes above")
+    : (isMixedUseEnabled() ? getMixedUseResidents(anchorBuilding.type, anchorBuilding.level, buildingStats?.maxJobs ?? 0, efficiency) : 0);
   anchorBuilding.jobs = buildingStats?.maxJobs > 0
     ? Math.floor(buildingStats.maxJobs * Math.max(1, anchorBuilding.level) * efficiency * 0.8)
     : 0;
@@ -4663,7 +4665,9 @@ export function generateRandomAdvancedCity(size: number = DEFAULT_GRID_SIZE, cit
       tile.building.level = Math.floor(rng() * 3) + 3;
       const stats = BUILDING_STATS[buildingType];
       if (stats) {
-        tile.building.population = Math.floor(stats.maxPop * tile.building.level * 0.7);
+        tile.building.population = Math.floor(stats.maxPop * tile.building.level * 0.7)
+          // S3-T6: homes above shops, as the first tick will give them (so utility top-ups count them)
+          + (isMixedUseEnabled() ? getMixedUseResidents(buildingType, tile.building.level, stats.maxJobs) : 0);
         tile.building.jobs = Math.floor(stats.maxJobs * tile.building.level * 0.7);
       }
     }
