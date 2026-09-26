@@ -287,9 +287,9 @@ game-over screen yet.
 
 **Acceptance criteria:** undoing a road line within a few seconds restores the tiles and the money.
 
----
 **Skipped:** the owner declined undo; not implemented.
 
+---
 
 ### S5-T12: Launch checklist
 
