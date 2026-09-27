@@ -1734,6 +1734,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.restore();
     }
     
+    // Whether the code-drawn tree for this tile is painted (or fits this frame's paint budget)
+    const hasProceduralTreeArt = (tx: number, ty: number) =>
+      !!getProceduralSprite('tree', pickProceduralVariant('tree', tx, ty), false, pickArtTilePx(TILE_WIDTH * zoom * getRenderDpr()), { budgeted: true });
+
     // Draw building sprite
     function drawBuilding(ctx: IsoRenderer, x: number, y: number, tile: Tile) {
       const buildingType = tile.building.type;
@@ -1767,7 +1771,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
       
       // Buildings drawn in code: the Indian building art + Varanasi ghats/landmarks (procedural/buildingArt)
-      if (isVaranasiProceduralSprite(buildingType)) {
+      // (trees whose art is not painted yet fall through to the sprite sheet instead of a foundation)
+      if (isVaranasiProceduralSprite(buildingType) && (buildingType !== 'tree' || hasProceduralTreeArt(tile.x, tile.y))) {
         const progress = tile.building.constructionProgress ?? 100;
         const footprint = getBuildingSize(buildingType);
         if (progress < 40) {
@@ -2458,6 +2463,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
         const nextVisibleWindTrees = visibleWindTreesRef.current;
         nextVisibleWindTrees.length = 0;
+        // Code-drawn Indian trees: one cached canvas per (variant, resolution tier)
+        const treeArtTilePx = pickArtTilePx(TILE_WIDTH * zoom * getRenderDpr());
         
         // Draw buildings on the buildings canvas
         // PERF: Use for loop instead of forEach
@@ -2476,6 +2483,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 {
                   hasAdjacentRoad: tileMetadata?.hasAdjacentRoad,
                   shouldFlipForRoad: tileMetadata?.shouldFlipForRoad,
+                  artTilePx: treeArtTilePx,
                 },
                 activePack
               );
