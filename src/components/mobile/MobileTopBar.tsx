@@ -179,36 +179,37 @@ export function MobileTopBar({
   return (
     <>
       {/* Main Top Bar */}
-      <Card className="fixed top-0 left-0 right-0 z-40 rounded-none border-x-0 border-t-0 bg-card/95 backdrop-blur-sm safe-area-top safe-area-left safe-area-right">
+      <Card className="hud-panel fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-2xl border-x-0 border-t-0 border-gold/25 safe-area-top safe-area-left safe-area-right">
         <div className="flex items-center justify-between px-3 py-0">
           {/* Left: City name, date, Pop/Funds stats */}
           <button
-            className="flex items-center gap-3 min-w-0 min-h-11 active:opacity-70 p-0 m-0 mr-auto"
+            className="flex items-center gap-2 min-w-0 min-h-11 active:opacity-70 p-0 m-0 mr-auto"
             onClick={() => setShowDetails(!showDetails)}
           >
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1">
-                <span className="text-foreground font-semibold text-xs truncate max-w-[80px]">
+                <span className="ornament text-marigold !w-2.5 !h-2.5" aria-hidden />
+                <span className="font-display text-[15px] leading-none text-saffron-gradient truncate max-w-[88px] pt-0.5">
                   {cityName}
                 </span>
               </div>
-              <span className="text-muted-foreground text-[10px] font-mono">
+              <span className="text-sandstone/70 text-[10px] font-mono">
                 <SeasonDateLabel month={month} year={year} />
                 <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
                 <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="ml-1" />
               </span>
             </div>
-            <div className="flex flex-col items-start">
-              <span className="text-xs font-mono font-semibold text-foreground">
+            <div className="flex shrink-0 flex-col items-start border-l border-gold/15 pl-2">
+              <span className="whitespace-nowrap text-[13px] font-mono font-semibold text-foreground">
                 {formatPopulation(stats.population)}
               </span>
-              <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.pop)}</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-gold/80">{m(UI_LABELS.pop)}</span>
             </div>
-            <div className="flex flex-col items-start">
-              <span className={`text-xs font-mono font-semibold ${stats.money < 0 ? 'text-red-500' : stats.money < 1000 ? 'text-amber-500' : 'text-green-500'}`}>
+            <div className="flex shrink-0 flex-col items-start border-l border-gold/15 pl-2">
+              <span className={`whitespace-nowrap text-[13px] font-mono font-semibold ${stats.money < 0 ? 'text-red-400' : stats.money < 1000 ? 'text-amber-300' : 'text-marigold'}`}>
                 {formatINR(stats.money)}
               </span>
-              <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.funds)}</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-gold/80">{m(UI_LABELS.funds)}</span>
             </div>
           </button>
 
@@ -221,8 +222,8 @@ export function MobileTopBar({
               title={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
               aria-label={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
             >
-              <span className={`h-7 w-7 flex items-center justify-center rounded-sm ${
-                speed === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              <span className={`h-8 w-8 flex items-center justify-center rounded-lg transition-transform active:scale-95 ${
+                speed === 0 ? 'hud-selected' : 'hud-well text-sandstone/80'
               }`}>
                 {speed === 0 ? <PlayIcon size={12} /> : <PauseIcon size={12} />}
               </span>
@@ -233,8 +234,8 @@ export function MobileTopBar({
               title={m(UI_LABELS.speed)}
               aria-label={m(UI_LABELS.speed)}
             >
-              <span className={`h-7 w-8 flex items-center justify-center rounded-sm ${
-                speed !== 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              <span className={`h-8 w-9 flex items-center justify-center rounded-lg transition-transform active:scale-95 ${
+                speed !== 0 ? 'hud-selected' : 'hud-well text-sandstone/80'
               }`}>
                 <span className={`flex items-center ${shownSpeed === 3 ? '-space-x-[7px]' : '-space-x-[5px]'}`}>
                   {Array.from({ length: shownSpeed }, (_, i) => <PlayIcon key={i} size={12} />)}
@@ -250,6 +251,7 @@ export function MobileTopBar({
                 onClick={onShare}
                 className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
                 title="Invite Players"
+                aria-label="Invite Players"
               >
                 <Users className="w-3.5 h-3.5" />
               </button>
@@ -260,6 +262,7 @@ export function MobileTopBar({
                 onClick={() => setShowExitDialog(true)}
                 className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
                 title="Exit to Main Menu"
+                aria-label="Exit to Main Menu"
               >
                 <svg 
                   className="w-3.5 h-3.5 -scale-x-100" 
@@ -276,7 +279,7 @@ export function MobileTopBar({
         </div>
 
         {/* Demand indicators row */}
-        <div className="flex items-center justify-between px-3 py-1 border-t border-sidebar-border/50 bg-secondary/30">
+        <div className="flex items-center justify-between px-3 py-1 border-t border-gold/10 bg-black/15">
           <div className="flex items-center gap-3">
             <DemandBar label="R" demand={stats.demand.residential} color="text-green-500" />
             <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-500" />
@@ -331,7 +334,7 @@ export function MobileTopBar({
 
         {/* Tax Slider Row */}
         {showTaxSlider && !selectedTile && (
-          <div className="border-t border-sidebar-border/50 bg-secondary/30 px-3 py-0.5 flex items-center gap-2 text-[10px]">
+          <div className="border-t border-gold/10 bg-black/15 px-3 py-0.5 flex items-center gap-2 text-[10px]">
             <span className="text-muted-foreground whitespace-nowrap">{m(UI_LABELS.taxRate)}</span>
             <Slider
               value={[taxRate]}
@@ -353,7 +356,7 @@ export function MobileTopBar({
 
         {/* Tile Info Row - Mobile Only */}
         {selectedTile && (
-          <div className="border-t border-sidebar-border/50 bg-gradient-to-b from-secondary/60 to-secondary/20 px-3 py-0.5 flex items-center gap-2 text-[10px]">
+          <div className="border-t border-gold/10 bg-black/20 px-3 py-0.5 flex items-center gap-2 text-[10px]">
             {/* Name */}
             <div className="flex items-center gap-1.5 shrink-0">
               <div className={`w-2 h-2 rounded-full ${
@@ -422,7 +425,7 @@ export function MobileTopBar({
 
         {/* Effect on Ganga (Varanasi catchment tiles only) */}
         {selectedTile && gangaEffectLines && (
-          <div className="border-t border-sidebar-border/50 bg-secondary/20 px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
+          <div className="border-t border-gold/10 bg-black/10 px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
             <span className="text-muted-foreground shrink-0">Effect on Ganga:</span>
             <span className="truncate">
               {gangaEffectLines.map((line, i) => (
@@ -441,11 +444,11 @@ export function MobileTopBar({
       {/* Expanded Details Panel */}
       {showDetails && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm pt-[72px]"
+          className="fixed inset-0 z-30 bg-[hsl(234_50%_4%/0.62)] animate-fadeIn pt-[72px]"
           onClick={() => setShowDetails(false)}
         >
           <Card
-            className="mx-2 mt-2 rounded-xl overflow-hidden"
+            className="hud-panel gold-hairline animate-rise-in mx-2 mt-2 rounded-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Season calendar (S4-T1) */}

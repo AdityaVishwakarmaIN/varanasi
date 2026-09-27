@@ -20,7 +20,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-[hsl(234_50%_4%/0.72)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -45,13 +45,13 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-4 right-4 top-[50%] z-50 grid max-w-lg mx-auto translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] rounded-lg",
+        "gold-hairline fixed left-4 right-4 top-[50%] z-50 grid max-w-lg mx-auto translate-y-[-50%] gap-4 border border-gold/25 bg-gradient-to-b from-[hsl(var(--hud-top))] to-[hsl(var(--hud-bottom))] p-6 shadow-[inset_0_1px_0_hsl(var(--hud-highlight)/0.08),0_24px_64px_-16px_rgb(0_0_0/0.8)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] rounded-2xl",
         BOTTOM_SHEET_CLASSES,
         className
       )}
       {...props}
     >
-      <div aria-hidden className="sm:hidden mx-auto -mt-3 h-1.5 w-10 rounded-full bg-muted-foreground/30" />
+      <div aria-hidden className="sm:hidden mx-auto -mt-3 h-1.5 w-10 rounded-full bg-gold/35" />
       {children}
     </DialogPrimitive.Content>
   </DialogPortal>
@@ -93,7 +93,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "font-display text-[1.6rem] font-normal leading-tight tracking-wide text-saffron-gradient",
       className
     )}
     {...props}

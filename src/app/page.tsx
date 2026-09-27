@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,7 +23,7 @@ import { formatINR, formatPopulation } from '@/lib/format';
 import { CoopModal } from '@/components/multiplayer/CoopModal';
 import { FEATURES } from '@/lib/features';
 import { useMobile } from '@/hooks/useMobile';
-import { getSpritePack, getSpriteCoords, DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
+import { TitleBackdrop } from '@/components/TitleBackdrop';
 import { SavedCityMeta, GameState } from '@/types/game';
 import { compressToUTF16 } from 'lz-string';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
@@ -44,53 +44,6 @@ import { Input } from '@/components/ui/input';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { DEFAULT_CITY_NAMES } from '@/lib/mapConfig';
 import type { NewGameOptions } from '@/lib/newGame';
-
-// Background color to filter from sprite sheets (red)
-const BACKGROUND_COLOR = { r: 255, g: 0, b: 0 };
-const COLOR_THRESHOLD = 155;
-
-// Filter red background from sprite sheet
-function filterBackgroundColor(img: HTMLImageElement): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth || img.width;
-  canvas.height = img.naturalHeight || img.height;
-  
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
-  
-  ctx.drawImage(img, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    
-    const distance = Math.sqrt(
-      Math.pow(r - BACKGROUND_COLOR.r, 2) +
-      Math.pow(g - BACKGROUND_COLOR.g, 2) +
-      Math.pow(b - BACKGROUND_COLOR.b, 2)
-    );
-    
-    if (distance <= COLOR_THRESHOLD) {
-      data[i + 3] = 0; // Make transparent
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
-}
-
-// Shuffle array using Fisher-Yates algorithm
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
 
 // Save a city to the saved cities index (for multiplayer cities)
 async function saveCityToIndex(state: GameState, roomCode?: string): Promise<void> {
@@ -132,149 +85,28 @@ async function saveCityToIndex(state: GameState, roomCode?: string): Promise<voi
   }
 }
 
-// Sprite Gallery component that renders sprites using canvas (like SpriteTestPanel)
-function SpriteGallery({ count = 16, cols = 4, cellSize = 120 }: { count?: number; cols?: number; cellSize?: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [filteredSheet, setFilteredSheet] = useState<HTMLCanvasElement | null>(null);
-  const spritePack = useMemo(() => getSpritePack(DEFAULT_SPRITE_PACK_ID), []);
-  
-  // Get random sprite keys from the sprite order, pre-validated to have valid coords
-  const randomSpriteKeys = useMemo(() => {
-    // Filter to only sprites that have valid building type mappings
-    const validSpriteKeys = spritePack.spriteOrder.filter(spriteKey => {
-      // Check if this sprite key has a building type mapping
-      const hasBuildingMapping = Object.values(spritePack.buildingToSprite).includes(spriteKey);
-      return hasBuildingMapping;
-    });
-    const shuffled = shuffleArray([...validSpriteKeys]);
-    return shuffled.slice(0, count);
-  }, [spritePack.spriteOrder, spritePack.buildingToSprite, count]);
-  
-  // Load and filter sprite sheet
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      const filtered = filterBackgroundColor(img);
-      setFilteredSheet(filtered);
-    };
-    img.src = spritePack.src;
-  }, [spritePack.src]);
-  
-  // Pre-compute sprite data with valid coords
-  const spriteData = useMemo(() => {
-    if (!filteredSheet) return [];
-    
-    const sheetWidth = filteredSheet.width;
-    const sheetHeight = filteredSheet.height;
-    
-    return randomSpriteKeys.map(spriteKey => {
-      const buildingType = Object.entries(spritePack.buildingToSprite).find(
-        ([, value]) => value === spriteKey
-      )?.[0] || spriteKey;
-      
-      const coords = getSpriteCoords(buildingType, sheetWidth, sheetHeight, spritePack);
-      return coords ? { spriteKey, coords } : null;
-    }).filter((item): item is { spriteKey: string; coords: { sx: number; sy: number; sw: number; sh: number } } => item !== null);
-  }, [filteredSheet, randomSpriteKeys, spritePack]);
-  
-  // Draw sprites to canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !filteredSheet || spriteData.length === 0) return;
-    
-    const ctx = canvas.getContext('2d', { alpha: true });
-    if (!ctx) return;
-    
-    const dpr = window.devicePixelRatio || 1;
-    const rows = Math.ceil(spriteData.length / cols);
-    const padding = 10;
-    
-    const canvasWidth = cols * cellSize;
-    const canvasHeight = rows * cellSize;
-    
-    canvas.width = canvasWidth * dpr;
-    canvas.height = canvasHeight * dpr;
-    canvas.style.width = `${canvasWidth}px`;
-    canvas.style.height = `${canvasHeight}px`;
-    
-    ctx.scale(dpr, dpr);
-    ctx.imageSmoothingEnabled = false;
-    
-    // Clear canvas (transparent)
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Draw each sprite
-    spriteData.forEach(({ coords }, index) => {
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      const cellX = col * cellSize;
-      const cellY = row * cellSize;
-      
-      // Draw cell background
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(cellX + 2, cellY + 2, cellSize - 4, cellSize - 4, 4);
-      ctx.fill();
-      ctx.stroke();
-      
-      // Calculate destination size preserving aspect ratio
-      const maxSize = cellSize - padding * 2;
-      const aspectRatio = coords.sh / coords.sw;
-      let destWidth = maxSize;
-      let destHeight = destWidth * aspectRatio;
-      
-      if (destHeight > maxSize) {
-        destHeight = maxSize;
-        destWidth = destHeight / aspectRatio;
-      }
-      
-      // Center sprite in cell
-      const drawX = cellX + (cellSize - destWidth) / 2;
-      const drawY = cellY + (cellSize - destHeight) / 2 + destHeight * 0.1; // Slight offset down
-      
-      // Draw sprite
-      ctx.drawImage(
-        filteredSheet,
-        coords.sx, coords.sy, coords.sw, coords.sh,
-        Math.round(drawX), Math.round(drawY),
-        Math.round(destWidth), Math.round(destHeight)
-      );
-    });
-  }, [filteredSheet, spriteData, cols, cellSize]);
-  
-  return (
-    <canvas
-      ref={canvasRef}
-      className="opacity-80 hover:opacity-100 transition-opacity"
-      style={{ imageRendering: 'pixelated' }}
-    />
-  );
-}
-
 // Saved City Card Component
 function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad: () => void; onDelete?: () => void }) {
   return (
     <div className="relative group">
       <button
         onClick={onLoad}
-        className="w-full text-left p-3 pr-8 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-none transition-all duration-200"
+        className="press hud-well w-full text-left p-3 pr-11 rounded-xl hover:!border-gold/40 hover:bg-[hsl(233_40%_14%/0.8)]"
       >
         <div className="flex items-center gap-2">
-          <h3 className="text-white font-medium truncate group-hover:text-white/90 text-sm flex-1">
+          <h3 className="text-foreground font-semibold truncate text-sm flex-1">
             {city.cityName}
           </h3>
           {FEATURES.coop && city.roomCode && (
-            <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded shrink-0">
+            <span className="text-xs px-1.5 py-0.5 bg-ganga/15 text-ganga ring-1 ring-ganga/30 rounded-full shrink-0">
               Co-op
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
+        <div className="flex items-center gap-3 mt-1 text-xs font-mono text-sandstone/60">
           <span>Pop: {formatPopulation(city.population)}</span>
-          <span>{formatINR(city.money)}</span>
-          {FEATURES.coop && city.roomCode && <span className="text-blue-400/60">{city.roomCode}</span>}
+          <span className="text-marigold/80">{formatINR(city.money)}</span>
+          {FEATURES.coop && city.roomCode && <span className="text-ganga/70">{city.roomCode}</span>}
         </div>
       </button>
       {onDelete && (
@@ -283,8 +115,9 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
             e.stopPropagation();
             onDelete();
           }}
-          className="absolute top-1/2 -translate-y-1/2 right-1.5 p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-red-500/20 text-white/40 hover:text-red-400 rounded transition-all duration-200"
+          className="absolute top-1/2 -translate-y-1/2 right-0.5 h-11 w-11 flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 hover:bg-red-500/15 text-sandstone/50 hover:text-red-400 rounded-lg transition-[opacity,color,background-color] duration-200"
           title="Delete city"
+          aria-label="Delete city"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -297,7 +130,7 @@ function NewGameResetButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
+      className="min-h-11 py-2 text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
     >
       <T>New Game</T>
     </button>
@@ -540,8 +373,11 @@ export default function HomePage() {
 
   if (isChecking) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
-        <div className="text-white/60"><T>Loading...</T></div>
+      <main className="min-h-screen bg-background jaali-bg flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sandstone/70">
+          <span className="ornament text-marigold animate-diya" aria-hidden />
+          <T>Loading...</T>
+        </div>
       </main>
     );
   }
@@ -569,135 +405,144 @@ export default function HomePage() {
     );
   }
 
+  const handlePrimary = () => {
+    if (!hasSaved) {
+      setShowResetDialog(true);
+      return;
+    }
+    setStartFreshGame(false);
+    setShowGame(true);
+  };
+
+  const handleLoadExample = async () => {
+    // Clear any room code from URL to prevent multiplayer conflicts
+    if (window.location.search.includes('room=')) {
+      window.history.replaceState({}, '', '/');
+      setPendingRoomCode(null);
+    }
+    const response = await fetch('/example-states/example_state_9.json');
+    const exampleState = await response.json();
+    try {
+      const compressed = compressToUTF16(JSON.stringify(exampleState));
+      await writeIsoCityAutosaveRaw(compressed);
+    } catch (e) {
+      console.error('Failed to save example state:', e);
+    }
+    setStartFreshGame(false);
+    setShowGame(true);
+  };
+
+  const menu = (
+    <div className="flex w-full flex-col gap-3">
+      <Button
+        onClick={handlePrimary}
+        className="press h-14 w-full rounded-xl text-lg font-semibold tracking-wide shadow-[inset_0_1px_0_hsl(48_100%_85%/0.6),0_14px_34px_-12px_hsl(var(--saffron)/0.9)]"
+      >
+        {hasSaved ? <T>Continue</T> : <T>New Game</T>}
+      </Button>
+
+      {FEATURES.coop && (
+        <Button
+          onClick={() => setShowCoopModal(true)}
+          variant="outline"
+          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_11%/0.78)] border-gold/35 text-sandstone hover:bg-[hsl(233_40%_15%/0.9)] hover:text-foreground"
+        >
+          <Users className="w-4 h-4" aria-hidden />
+          <T>Co-op</T>
+        </Button>
+      )}
+
+      <Button
+        onClick={handleLoadExample}
+        variant="outline"
+        className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_9%/0.6)] border-sandstone/15 text-sandstone/80 hover:bg-[hsl(233_40%_13%/0.85)] hover:text-sandstone"
+      >
+        <T>Load Example</T>
+      </Button>
+
+      <div className="mt-1 grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
+        <div className="flex flex-col">
+          <a
+            href="https://github.com/amilich/isometric-city"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-11 items-center text-left text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
+          >
+            <T>Built on IsoCity (MIT licence)</T>
+          </a>
+          <CreditsButton variant="ghost" className="justify-start h-auto min-h-11 px-0 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
+        </div>
+        <div className="flex h-full min-h-[88px] flex-col items-end justify-between">
+          <LanguageSelector variant="ghost" className="text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
+          {hasResettableProgress && (
+            <NewGameResetButton onClick={() => setShowResetDialog(true)} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const savedList = visibleSavedCities.length > 0 && (
+    <>
+      <h2 className="hud-label mb-2.5 flex items-center gap-1.5 flex-shrink-0">
+        <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
+        <T>Saved Cities</T>
+      </h2>
+      <div
+        className="flex flex-col gap-2 min-h-0 overflow-y-auto overscroll-y-contain"
+        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+      >
+        {visibleSavedCities.slice(0, 5).map((city) => (
+          <SavedCityCard
+            key={city.id}
+            city={city}
+            onLoad={() => loadSavedCity(city)}
+            onDelete={() => deleteSavedCity(city)}
+          />
+        ))}
+      </div>
+    </>
+  );
+
+  const dialogs = (
+    <>
+      {FEATURES.coop && (
+        <CoopModal
+          open={showCoopModal}
+          onOpenChange={setShowCoopModal}
+          onStartGame={handleCoopStart}
+          pendingRoomCode={pendingRoomCode}
+        />
+      )}
+      <NewGameDialog
+        open={showResetDialog}
+        onOpenChange={setShowResetDialog}
+        hasSaved={hasSaved}
+        onConfirm={handleStartFreshGame}
+      />
+    </>
+  );
+
   // Mobile landing page
   if (isMobile) {
     return (
       <MultiplayerContextProvider>
-        <main className="h-[100dvh] max-h-[100dvh] bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto">
-          {/* Spacer to push content down slightly from top */}
-          <div className="flex-shrink-0 h-4 sm:h-8" />
-          
-          {/* Title - smaller on very small screens */}
-          <h1 className="text-4xl sm:text-5xl font-light tracking-wider text-white/90 mb-1 flex-shrink-0">
-            Varanasi
-          </h1>
-          <p className="text-sm text-amber-200/70 tracking-wide mb-4 sm:mb-6 flex-shrink-0"><T>A city on the Ganga</T></p>
-          
-          {/* Sprite Gallery - smaller on mobile, contained */}
-          <div className="mb-4 sm:mb-6 flex-shrink-0">
-            <SpriteGallery count={9} cols={3} cellSize={56} />
-          </div>
-          
-          {/* Buttons - more compact */}
-          <div className="flex flex-col gap-2 sm:gap-3 w-full max-w-xs flex-shrink-0">
-            <Button 
-              onClick={() => {
-                if (!hasSaved) {
-                  setShowResetDialog(true);
-                  return;
-                }
-                setStartFreshGame(false);
-                setShowGame(true);
-              }}
-              className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none transition-all duration-300"
-            >
-              {hasSaved ? <T>Continue</T> : <T>New Game</T>}
-            </Button>
-
-            {FEATURES.coop && (
-              <Button
-                onClick={() => setShowCoopModal(true)}
-                variant="outline"
-                className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
-              >
-                <T>Co-op</T>
-              </Button>
+        <main className="relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
+          <TitleBackdrop compact />
+          <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto">
+            <div className="flex-shrink-0 h-2 sm:h-6" />
+            <TitleMark compact />
+            <div className="mt-6 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
+              {menu}
+            </div>
+            {visibleSavedCities.length > 0 && (
+              <div className="hud-panel gold-hairline w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] flex flex-col animate-rise-in [animation-delay:200ms]">
+                {savedList}
+              </div>
             )}
-
-            <Button
-              onClick={async () => {
-                // Clear any room code from URL to prevent multiplayer conflicts
-                if (window.location.search.includes('room=')) {
-                  window.history.replaceState({}, '', '/');
-                  setPendingRoomCode(null);
-                }
-                const response = await fetch('/example-states/example_state_9.json');
-                const exampleState = await response.json();
-                try {
-                  const compressed = compressToUTF16(JSON.stringify(exampleState));
-                  await writeIsoCityAutosaveRaw(compressed);
-                } catch (e) {
-                  console.error('Failed to save example state:', e);
-                }
-                setStartFreshGame(false);
-                setShowGame(true);
-              }}
-              variant="outline"
-              className="w-full py-4 sm:py-6 text-lg sm:text-xl font-light tracking-wide bg-transparent hover:bg-white/10 text-white/40 hover:text-white/60 border border-white/10 rounded-none transition-all duration-300"
-            >
-              <T>Load Example</T>
-            </Button>
-            <div className="grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
-              <div className="flex flex-col">
-                <a
-                  href="https://github.com/amilich/isometric-city"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
-                >
-                  <T>Built on IsoCity (MIT licence)</T>
-                </a>
-                <CreditsButton variant="ghost" className="justify-start h-auto min-h-[44px] px-0 text-sm font-light tracking-wide text-white/40 hover:text-white/70 hover:bg-transparent" />
-              </div>
-              <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
-                <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
-                {hasResettableProgress && (
-                  <NewGameResetButton onClick={() => setShowResetDialog(true)} />
-                )}
-              </div>
-            </div>
+            <div className="flex-shrink-0 h-2" />
           </div>
-          
-          {/* Saved Cities - scrollable area takes remaining space */}
-          {visibleSavedCities.length > 0 && (
-            <div className="w-full max-w-xs mt-3 sm:mt-4 flex-1 min-h-0 flex flex-col">
-              <h2 className="text-xs font-medium text-white/40 uppercase tracking-wider mb-2 flex-shrink-0">
-                <T>Saved Cities</T>
-              </h2>
-              <div 
-                className="flex flex-col gap-2 flex-1 overflow-y-auto overscroll-y-contain"
-                style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
-              >
-                {visibleSavedCities.slice(0, 5).map((city) => (
-                  <SavedCityCard
-                    key={city.id}
-                    city={city}
-                    onLoad={() => loadSavedCity(city)}
-                    onDelete={() => deleteSavedCity(city)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* Bottom spacer */}
-          <div className="flex-shrink-0 h-2" />
-          
-          {/* Co-op Modal */}
-          {FEATURES.coop && (
-            <CoopModal
-              open={showCoopModal}
-              onOpenChange={setShowCoopModal}
-              onStartGame={handleCoopStart}
-              pendingRoomCode={pendingRoomCode}
-            />
-          )}
-          <NewGameDialog
-            open={showResetDialog}
-            onOpenChange={setShowResetDialog}
-            hasSaved={hasSaved}
-            onConfirm={handleStartFreshGame}
-          />
+          {dialogs}
         </main>
       </MultiplayerContextProvider>
     );
@@ -706,129 +551,51 @@ export default function HomePage() {
   // Desktop landing page
   return (
     <MultiplayerContextProvider>
-      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-8">
-        <div className="max-w-7xl w-full grid lg:grid-cols-2 gap-16 items-center">
-          
-          {/* Left - Title and Start Button */}
-          <div className="flex flex-col items-center lg:items-start justify-center space-y-12">
-            <div>
-              <h1 className="text-8xl font-light tracking-wider text-white/90">
-                Varanasi
-              </h1>
-              <p className="mt-3 text-xl font-light tracking-wide text-amber-200/70"><T>A city on the Ganga</T></p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <Button 
-                onClick={() => {
-                  if (!hasSaved) {
-                    setShowResetDialog(true);
-                    return;
-                  }
-                  setStartFreshGame(false);
-                  setShowGame(true);
-                }}
-                className="w-64 py-8 text-2xl font-light tracking-wide bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none transition-all duration-300"
-              >
-                {hasSaved ? <T>Continue</T> : <T>New Game</T>}
-              </Button>
-              {FEATURES.coop && (
-                <Button
-                  onClick={() => setShowCoopModal(true)}
-                  variant="outline"
-                  className="w-64 py-8 text-2xl font-light tracking-wide bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/15 rounded-none transition-all duration-300"
-                >
-                  <T>Co-op</T>
-                </Button>
-              )}
-              <Button
-                onClick={async () => {
-                  // Clear any room code from URL to prevent multiplayer conflicts
-                  if (window.location.search.includes('room=')) {
-                    window.history.replaceState({}, '', '/');
-                    setPendingRoomCode(null);
-                  }
-                  const response = await fetch('/example-states/example_state_9.json');
-                  const exampleState = await response.json();
-                  try {
-                    const compressed = compressToUTF16(JSON.stringify(exampleState));
-                    await writeIsoCityAutosaveRaw(compressed);
-                  } catch (e) {
-                    console.error('Failed to save example state:', e);
-                  }
-                  setStartFreshGame(false);
-                  setShowGame(true);
-                }}
-                variant="outline"
-                className="w-64 py-8 text-2xl font-light tracking-wide bg-transparent hover:bg-white/10 text-white/40 hover:text-white/60 border border-white/10 rounded-none transition-all duration-300"
-              >
-                <T>Load Example</T>
-              </Button>
-              <div className="grid w-64 grid-cols-[1fr_auto] items-start gap-x-4">
-                <div className="flex flex-col">
-                  <a
-                    href="https://github.com/amilich/isometric-city"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-left py-2 text-sm font-light tracking-wide text-white/40 hover:text-white/70 transition-colors duration-200"
-                  >
-                    <T>Built on IsoCity (MIT licence)</T>
-                  </a>
-                  <CreditsButton variant="ghost" className="justify-start h-auto py-2 px-0 text-sm font-light tracking-wide text-white/40 hover:text-white/70 hover:bg-transparent" />
-                </div>
-                <div className="flex h-full min-h-[72px] flex-col items-end justify-between">
-                  <LanguageSelector variant="ghost" className="text-white/40 hover:text-white/70 hover:bg-white/10" />
-                  {hasResettableProgress && (
-                    <NewGameResetButton onClick={() => setShowResetDialog(true)} />
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {/* Saved Cities */}
-            {visibleSavedCities.length > 0 && (
-              <div className="w-64">
-                <h2 className="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">
-                  <T>Saved Cities</T>
-                </h2>
-                <div 
-                  className="flex flex-col gap-2 max-h-64 overflow-y-auto overscroll-y-contain"
-                  style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
-                >
-                  {visibleSavedCities.slice(0, 5).map((city) => (
-                    <SavedCityCard
-                      key={city.id}
-                      city={city}
-                      onLoad={() => loadSavedCity(city)}
-                      onDelete={() => deleteSavedCity(city)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right - Sprite Gallery */}
-          <div className="flex justify-center lg:justify-end">
-            <SpriteGallery count={16} />
+      <main className="relative min-h-screen bg-background overflow-hidden">
+        <TitleBackdrop />
+        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-8">
+          <TitleMark />
+          <div className="mt-8 w-72 animate-rise-in [animation-delay:120ms]">
+            {menu}
           </div>
         </div>
-        
-        {/* Co-op Modal */}
-        {FEATURES.coop && (
-          <CoopModal
-            open={showCoopModal}
-            onOpenChange={setShowCoopModal}
-            onStartGame={handleCoopStart}
-            pendingRoomCode={pendingRoomCode}
-          />
+
+        {visibleSavedCities.length > 0 && (
+          <aside className="hud-panel gold-hairline absolute z-10 top-8 right-8 w-72 max-h-[min(24rem,45vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
+            {savedList}
+          </aside>
         )}
-        <NewGameDialog
-          open={showResetDialog}
-          onOpenChange={setShowResetDialog}
-          hasSaved={hasSaved}
-          onConfirm={handleStartFreshGame}
-        />
+
+        {dialogs}
       </main>
     </MultiplayerContextProvider>
+  );
+}
+
+/** The wordmark: Devanagari kicker, display-face title, lotus divider and tagline. */
+function TitleMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="flex flex-col items-center text-center animate-rise-in">
+      <span
+        lang="hi"
+        aria-hidden
+        className={`font-display text-gold/85 tracking-[0.2em] ${compact ? 'text-base' : 'text-xl'}`}
+      >
+        वाराणसी
+      </span>
+      <h1
+        className={`font-display text-saffron-gradient leading-[0.95] tracking-wide drop-shadow-[0_4px_24px_hsl(var(--saffron)/0.35)] ${compact ? 'text-6xl mt-1' : 'text-[7.5rem] mt-1'}`}
+      >
+        Varanasi
+      </h1>
+      <div className={`flex items-center gap-3 ${compact ? 'mt-2 w-56' : 'mt-3 w-80'}`} aria-hidden>
+        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-gold/70" />
+        <span className="ornament text-marigold animate-diya !w-4 !h-4" />
+        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-gold/70" />
+      </div>
+      <p className={`mt-2 tracking-[0.18em] uppercase text-sandstone/85 ${compact ? 'text-xs' : 'text-sm'}`}>
+        <T>A city on the Ganga</T>
+      </p>
+    </div>
   );
 }

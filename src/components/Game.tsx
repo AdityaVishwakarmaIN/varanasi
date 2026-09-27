@@ -390,11 +390,20 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               controlsRef={controlsRef}
               touchDrawMode={touchDrawMode}
             />
-            <NotificationToasts
-              notifications={state.notifications}
-              onLocate={locateNotification}
-              className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30"
-            />
+            {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
+            <div className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none">
+              <TipToast
+                message={currentTip || ''}
+                isVisible={isTipVisible}
+                onContinue={onTipContinue}
+                onSkipAll={onTipSkipAll}
+                className="w-full"
+              />
+              <NotificationToasts
+                notifications={state.notifications}
+                onLocate={locateNotification}
+              />
+            </div>
             <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
@@ -407,7 +416,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
               <div className="absolute top-2 right-2 z-20">
-                <div className="bg-slate-900/90 border border-slate-700 rounded-lg px-2 py-1.5 shadow-lg">
+                <div className="hud-glass rounded-xl px-2 py-1.5 shadow-lg">
                   <div className="flex items-center gap-1.5 text-xs text-white">
                     {roomCode && (
                       <>
@@ -459,13 +468,6 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           
           <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
           
-          {/* Tip Toast for helping new players */}
-          <TipToast
-            message={currentTip || ''}
-            isVisible={isTipVisible}
-            onContinue={onTipContinue}
-            onSkipAll={onTipSkipAll}
-          />
         </div>
       </TooltipProvider>
     );
@@ -505,10 +507,11 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <NotificationToasts
               notifications={state.notifications}
               onLocate={locateNotification}
-              className="absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]"
+              className="absolute top-3 left-4 xl:left-1/2 xl:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
             />
-            <FailureOverlays bannerClassName="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20" />
+            {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
+            <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
+            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed
               onLocate={locateTile}
@@ -521,10 +524,11 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} onViewportSubscribe={subscribeMiniMapViewport} />
             )}
             
-            {/* Multiplayer Players Indicator */}
+            {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
+            <div className="absolute top-3 right-4 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none">
             {isMultiplayer && (
-              <div className="absolute top-4 right-4 z-20">
-                <div className="bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 shadow-lg min-w-[120px]">
+              <div className="pointer-events-auto">
+                <div className="hud-glass rounded-xl px-3 py-2 shadow-lg min-w-[120px]">
                   <div className="flex items-center gap-2 text-sm text-white">
                     {roomCode && (
                       <>
@@ -556,6 +560,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 </div>
               </div>
             )}
+              <TipToast
+                message={currentTip || ''}
+                isVisible={isTipVisible}
+                onContinue={onTipContinue}
+                onSkipAll={onTipSkipAll}
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
         
@@ -569,13 +581,6 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
         <CommandMenu />
         
-        {/* Tip Toast for helping new players */}
-        <TipToast
-          message={currentTip || ''}
-          isVisible={isTipVisible}
-          onContinue={onTipContinue}
-          onSkipAll={onTipSkipAll}
-        />
       </div>
     </TooltipProvider>
   );

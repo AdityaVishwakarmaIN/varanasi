@@ -122,8 +122,8 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
         </DialogHeader>
 
         <div className="space-y-4 min-h-0">
-          <Card className="flex items-center gap-4 p-4 bg-primary/10 border-primary/30">
-            <div className={`w-16 h-16 flex items-center justify-center text-3xl font-black rounded-md ${gradeColor} bg-primary/20`}>
+          <Card className="jaali-bg flex items-center gap-4 p-4 bg-transparent hud-well">
+            <div className={`w-16 h-16 flex items-center justify-center text-3xl font-black rounded-2xl ${gradeColor} font-display font-normal bg-gradient-to-b from-marigold/20 to-saffron/5 ring-1 ring-marigold/40`}>
               {grade}
             </div>
             <div>
@@ -135,7 +135,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
           <ScrollArea className="h-[min(420px,55vh)]">
             <div className="space-y-3 pr-2">
               {notes.length === 0 ? (
-                <Card className="text-center py-8 text-muted-foreground bg-primary/10 border-primary/30">
+                <Card className="text-center py-8 text-muted-foreground hud-well bg-transparent">
                   <AdvisorIcon size={32} className="mx-auto mb-3 opacity-50" />
                   <div className="text-sm">{m(UI_LABELS.noUrgentIssues)}</div>
                   <div className="text-xs mt-1">{m(UI_LABELS.cityRunningSmoothly)}</div>
@@ -145,7 +145,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                   const labels = ADVISOR_LABELS[note.advisor];
                   const canShow = (note.x !== undefined && note.y !== undefined) || !!note.overlay;
                   return (
-                    <Card key={note.id} className={`p-3 bg-primary/10 border-primary/30 ${PRIORITY_BORDER[note.priority]}`}>
+                    <Card key={note.id} className={`p-3 hud-well bg-transparent ${PRIORITY_BORDER[note.priority]}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <AdvisorAvatar advisor={note.advisor} size={28} />
                         <span className="text-foreground font-medium text-sm">{m(labels.title)}</span>
@@ -161,7 +161,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                         <span className="font-medium">{m(UI_LABELS.fix)}</span> {note.fix}
                       </div>
                       {canShow && onShowMe && (
-                        <Button variant="ghost" size="sm" className="mt-1 h-8 px-2 text-xs text-primary" onClick={() => showMe(note)}>
+                        <Button variant="ghost" size="sm" className="mt-1 h-9 px-2 text-xs text-marigold hover:text-marigold" onClick={() => showMe(note)}>
                           <MapPin className="w-3.5 h-3.5 mr-1" />
                           {m(UI_LABELS.showMe)}
                         </Button>

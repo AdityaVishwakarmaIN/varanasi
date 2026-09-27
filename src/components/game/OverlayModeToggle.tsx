@@ -4,7 +4,6 @@ import React from 'react';
 import { msg } from 'gt-next';
 import { useMessages } from 'gt-next';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
   CloseIcon,
   PowerIcon,
@@ -38,16 +37,16 @@ export interface OverlayModeToggleProps {
 
 /** Map overlay modes to their icons */
 const OVERLAY_ICONS: Record<OverlayMode, React.ReactNode> = {
-  none: <CloseIcon size={14} />,
-  power: <PowerIcon size={14} />,
-  water: <WaterIcon size={14} />,
-  fire: <FireIcon size={14} />,
-  police: <SafetyIcon size={14} />,
-  health: <HealthIcon size={14} />,
-  education: <EducationIcon size={14} />,
-  subway: <SubwayIcon size={14} />,
-  ganga: <RiverIcon size={14} />,
-  flood: <FloodIcon size={14} />,
+  none: <CloseIcon size={16} />,
+  power: <PowerIcon size={16} />,
+  water: <WaterIcon size={16} />,
+  fire: <FireIcon size={16} />,
+  police: <SafetyIcon size={16} />,
+  health: <HealthIcon size={16} />,
+  education: <EducationIcon size={16} />,
+  subway: <SubwayIcon size={16} />,
+  ganga: <RiverIcon size={16} />,
+  flood: <FloodIcon size={16} />,
 };
 
 // ============================================================================
@@ -73,11 +72,13 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   const m = useMessages();
   
   return (
-    <Card className="fixed bottom-4 left-[240px] p-2 shadow-lg bg-card/90 border-border/70 z-50">
-      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-semibold mb-2">
-        {m(VIEW_OVERLAY_LABEL)}
-      </div>
-      <div className="flex gap-1">
+    <div
+      className="hud-glass gold-hairline fixed bottom-4 left-[240px] z-50 flex items-center gap-2 rounded-2xl py-1.5 pl-3 pr-1.5"
+      role="toolbar"
+      aria-label={String(m(VIEW_OVERLAY_LABEL))}
+    >
+      <span className="hud-label max-w-[4.5rem] leading-tight whitespace-normal">{m(VIEW_OVERLAY_LABEL)}</span>
+      <div className="flex gap-1 hud-well rounded-xl p-1">
         {getOverlayModesForMap(mapId).map((mode) => {
           const config = OVERLAY_CONFIG[mode];
           const isActive = overlayMode === mode;
@@ -85,10 +86,16 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
           return (
             <Button
               key={mode}
-              variant={isActive ? 'default' : 'ghost'}
+              variant="ghost"
               size="sm"
               onClick={() => setOverlayMode(mode)}
-              className={`h-8 px-3 ${getOverlayButtonClass(mode, isActive)}`}
+              aria-pressed={isActive}
+              aria-label={config.title}
+              className={`press h-9 w-9 p-0 rounded-lg ${
+                isActive
+                  ? mode === 'none' ? 'hud-selected hover:text-primary-foreground' : `${getOverlayButtonClass(mode, isActive)} text-white ring-1 ring-white/30 shadow-[0_0_12px_-2px_currentColor]`
+                  : 'text-sandstone/75 hover:text-marigold hover:bg-sandstone/[0.08]'
+              }`}
               title={config.title}
             >
               {OVERLAY_ICONS[mode]}
@@ -96,6 +103,6 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
           );
         })}
       </div>
-    </Card>
+    </div>
   );
 });

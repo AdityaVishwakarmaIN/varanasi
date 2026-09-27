@@ -26,10 +26,10 @@ import {
   EducationIcon,
   SafetyIcon,
   EnvironmentIcon,
-  ShareIcon,
-  CheckIcon,
+  PopulationIcon,
+  JobsIcon,
 } from '@/components/ui/Icons';
-import { copyShareUrl } from '@/lib/shareState';
+import { HudStat } from '@/components/game/HudStat';
 import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
@@ -110,7 +110,7 @@ export function StatBadge({ value, label, variant = 'default' }: StatBadgeProps)
   return (
     <div className="flex flex-col items-start min-w-[70px]">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-0.5">{label}</div>
-      <div className={`text-sm font-mono tabular-nums font-semibold ${colorClass}`}>{value}</div>
+      <div className={`whitespace-nowrap text-sm font-mono tabular-nums font-semibold ${colorClass}`}>{value}</div>
     </div>
   );
 }
@@ -131,11 +131,11 @@ export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) 
   
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className={`text-[10px] font-bold ${color}`}>{label}</span>
-      <div className="w-3 h-8 bg-secondary relative rounded-sm overflow-hidden">
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-border" />
+      <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
+      <div className="w-2.5 h-7 bg-black/40 ring-1 ring-gold/15 relative rounded-full overflow-hidden">
+        <div className="absolute left-0 right-0 top-1/2 h-px bg-gold/30" />
         <div
-          className={`absolute left-0 right-0 ${color.replace('text-', 'bg-')}`}
+          className={`absolute left-0 right-0 rounded-full ${color.replace('text-', 'bg-')}`}
           style={{
             height: `${height}%`,
             top: isPositive ? `${50 - height}%` : '50%',
@@ -157,12 +157,17 @@ interface MiniStatProps {
 }
 
 export function MiniStat({ icon, label, value }: MiniStatProps) {
-  const color = value >= 70 ? 'text-green-500' : value >= 40 ? 'text-amber-500' : 'text-red-500';
+  const pct = Math.max(0, Math.min(100, Math.round(value)));
+  const color = value >= 70 ? 'text-emerald-300' : value >= 40 ? 'text-amber-300' : 'text-red-400';
+  const bar = value >= 70 ? 'bg-emerald-400' : value >= 40 ? 'bg-amber-400' : 'bg-red-400';
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">{icon}</span>
+    <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`}>
+      <span className="text-gold/80">{icon}</span>
       <span className="text-muted-foreground">{label}</span>
-      <span className={`font-mono ${color}`}>{Math.round(value)}%</span>
+      <span className="relative h-1 w-12 overflow-hidden rounded-full bg-white/10" aria-hidden>
+        <span className={`absolute inset-y-0 left-0 rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+      </span>
+      <span className={`font-mono font-semibold w-8 ${color}`}>{pct}%</span>
     </div>
   );
 }
@@ -177,7 +182,7 @@ export const StatsPanel = React.memo(function StatsPanel() {
   const m = useMessages();
   
   return (
-    <div className="h-8 bg-secondary/50 border-b border-border flex items-center justify-center gap-8 text-xs">
+    <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-gold/15 bg-gradient-to-b from-[hsl(234_40%_10%)] to-[hsl(234_42%_8%)]">
       <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} />
       <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} />
       <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} />
@@ -228,14 +233,20 @@ export const TopBar = React.memo(function TopBar({
   
   const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
   
+  const monthly = stats.income - stats.expenses;
+  const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
+
   return (
-    <div className="h-14 bg-card border-b border-border flex items-center justify-between px-4">
-      <div className="flex items-center gap-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-foreground font-semibold text-sm">{cityName}</h1>
+    <div className="relative z-20 h-16 flex items-center justify-between gap-3 px-4 border-b border-gold/25 bg-gradient-to-b from-[hsl(var(--hud-top))] to-[hsl(var(--hud-bottom))] shadow-[inset_0_1px_0_hsl(var(--hud-highlight)/0.06),0_6px_20px_-8px_rgb(0_0_0/0.7)]">
+      {/* Gold hairline along the bottom edge */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="min-w-0 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="ornament text-marigold" aria-hidden />
+            <h1 className="font-display text-[19px] leading-none text-sandstone truncate max-w-[180px]">{cityName}</h1>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-mono tabular-nums">
+          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-[11px] font-mono">
             <Tooltip>
               <TooltipTrigger asChild>
                 <span><SeasonDateLabel month={month} year={year} /></span>
@@ -248,18 +259,21 @@ export const TopBar = React.memo(function TopBar({
             <FogChip weather={state.weather} hour={visualHour} />
             <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
           </div>
-          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-0.5 max-w-[150px]" />
+          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-[160px]" />
         </div>
         
-        <div className="flex items-center gap-0 bg-secondary rounded-md p-0">
+        <div className="hud-well flex items-center gap-0.5 rounded-xl p-1" role="group" aria-label="Game speed">
           {[0, 1, 2, 3].map(s => (
-            <Button
+            <button
               key={s}
+              type="button"
               onClick={() => setSpeed(s as 0 | 1 | 2 | 3)}
-              variant={speed === s ? 'default' : 'ghost'}
-              size="icon-sm"
-              className="h-7 w-7 p-0 m-0"
-              title={s === 0 ? 'Pause' : s === 1 ? 'Normal' : s === 2 ? 'Fast' : 'Very Fast'}
+              className={`press h-8 w-8 rounded-lg flex items-center justify-center ${
+                speed === s ? 'hud-selected' : 'text-muted-foreground hover:text-foreground hover:bg-sandstone/10'
+              }`}
+              title={speedLabels[s]}
+              aria-label={speedLabels[s]}
+              aria-pressed={speed === s}
             >
               {s === 0 ? <PauseIcon size={12} /> : 
                s === 1 ? <PlayIcon size={12} /> : 
@@ -274,18 +288,37 @@ export const TopBar = React.memo(function TopBar({
                  <PlayIcon size={12} />
                  <PlayIcon size={12} />
                </div>}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
       
-      <div className="flex items-center gap-3">
-        <StatBadge value={formatPopulation(stats.population)} label={String(m(UI_LABELS.population))} />
-        <StatBadge value={formatPopulation(stats.jobs)} label={String(m(UI_LABELS.jobs))} />
-        <StatBadge 
-          value={formatINR(stats.money)} 
+      <div className="flex items-center gap-1.5 min-w-0">
+        <HudStat
+          icon={<PopulationIcon size={16} />}
+          tint="sandstone"
+          value={formatPopulation(stats.population)}
+          label={String(m(UI_LABELS.population))}
+        />
+        <HudStat
+          icon={<JobsIcon size={16} />}
+          tint="sandstone"
+          value={formatPopulation(stats.jobs)}
+          label={String(m(UI_LABELS.jobs))}
+        />
+        <HudStat
+          icon={<span className="text-[15px] font-bold leading-none">₹</span>}
+          tint="marigold"
+          value={formatINR(stats.money)}
           label={String(m(UI_LABELS.funds))}
-          variant={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'success'}
+          tone={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'default'}
+        />
+        <HudStat
+          icon={<span className="text-sm font-bold leading-none">{monthly >= 0 ? '▲' : '▼'}</span>}
+          tint={monthly >= 0 ? 'good' : 'bad'}
+          value={`${monthly >= 0 ? '+' : ''}${formatINR(monthly)}`}
+          label={String(m(UI_LABELS.monthly))}
+          tone={monthly >= 0 ? 'success' : 'destructive'}
         />
         {gangaHealth !== undefined && onToggleGangaOverlay && (
           <GangaHealthChip
@@ -313,25 +346,15 @@ export const TopBar = React.memo(function TopBar({
         })}
       </div>
       
-      <div className="flex items-center gap-2">
-        <StatBadge 
-          value={formatINR(stats.income - stats.expenses)} 
-          label={String(m(UI_LABELS.monthly))}
-          variant={stats.income - stats.expenses >= 0 ? 'success' : 'destructive'}
-        />
-        
-        <Separator orientation="vertical" className="h-8" />
-        
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5" role="group" aria-label="Zone demand">
           <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-500" />
           <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-500" />
           <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" />
         </div>
         
-        <Separator orientation="vertical" className="h-8" />
-        
-        <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground text-xs">{m(UI_LABELS.tax)}</span>
+        <div className="hud-well flex items-center gap-2 rounded-xl h-11 px-3">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{m(UI_LABELS.tax)}</span>
           <Slider
             value={[taxRate]}
             onValueChange={(value) => setTaxRate(value[0])}
@@ -339,17 +362,16 @@ export const TopBar = React.memo(function TopBar({
             max={100}
             step={1}
             className="w-14"
+            aria-label={String(m(UI_LABELS.tax))}
           />
-          <span className="text-foreground text-xs font-mono tabular-nums w-7">{taxRate}%</span>
+          <span className="text-foreground text-xs font-mono font-semibold w-7">{taxRate}%</span>
         </div>
-        
-        <Separator orientation="vertical" className="h-8" />
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1 h-7 px-2">
-              <span className="text-xs text-muted-foreground">Options</span>
-              <span className="text-xs text-muted-foreground/75">▾</span>
+            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-3 rounded-xl border border-gold/15 hover:border-gold/40">
+              <span className="text-xs">Options</span>
+              <span className="text-xs text-gold/80" aria-hidden>▾</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 p-2">
@@ -377,7 +399,7 @@ export const TopBar = React.memo(function TopBar({
               >
                 <span className="text-xs">{language.name}</span>
                 {language.code === locale ? (
-                  <span className="text-xs text-foreground">✓</span>
+                  <span className="text-xs text-marigold">✓</span>
                 ) : (
                   <span className="w-3 h-3" />
                 )}

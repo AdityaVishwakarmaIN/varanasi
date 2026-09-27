@@ -215,15 +215,16 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
   }, [isDragging]);
   
   return (
-    <Card className="fixed bottom-6 right-8 p-3 shadow-lg bg-card/90 border-border/70 z-50">
-      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-semibold mb-2">
+    <Card className="hud-panel gold-hairline fixed bottom-4 right-4 p-2.5 rounded-2xl z-50">
+      <div className="hud-label mb-2 flex items-center gap-1.5">
+        <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
         {m(MINIMAP_LABEL)}
       </div>
       <canvas
         ref={canvasRef}
         width={140}
         height={140}
-        className="block rounded-md border border-border/60 cursor-pointer select-none"
+        className="block rounded-lg ring-1 ring-gold/25 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.4)] cursor-pointer select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

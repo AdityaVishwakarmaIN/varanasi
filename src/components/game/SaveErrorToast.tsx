@@ -25,20 +25,20 @@ export function SaveErrorToast({
   return (
     <div
       role="alert"
-      className="fixed z-[9999] top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3 md:top-auto md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2"
+      className="fixed z-[9999] bottom-[calc(132px+env(safe-area-inset-bottom))] left-3 right-3 animate-rise-in md:bottom-24 md:left-[calc(50%+112px)] md:right-auto md:-translate-x-1/2 md:w-[min(26rem,calc(100vw-40rem))]"
     >
-      <div className="flex items-start gap-3 bg-card border border-destructive/60 rounded-sm shadow-lg p-3 md:max-w-md">
-        <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+      <div className="hud-panel flex items-start gap-3 rounded-2xl !border-red-400/60 p-3.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/15 ring-1 ring-red-400/40" aria-hidden><AlertTriangle className="w-5 h-5 text-red-400" /></span>
         <div className="flex-1 text-sm">
           <p><T>Couldn&apos;t save your city. Export it from Settings to keep a copy.</T></p>
-          <Button size="sm" variant="outline" className="mt-2 h-8" onClick={onOpenSettings}>
+          <Button size="sm" variant="outline" className="mt-2 h-11 md:h-9" onClick={onOpenSettings}>
             <T>Open Settings</T>
           </Button>
         </div>
         <button
           type="button"
           onClick={onDismiss}
-          className="text-muted-foreground hover:text-foreground p-1"
+          className="-mt-1 -mr-1 h-11 w-11 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-sandstone/[0.07]"
           aria-label="Dismiss"
         >
           <X className="w-4 h-4" />

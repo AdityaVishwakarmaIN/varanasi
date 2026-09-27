@@ -1,15 +1,16 @@
 import type { Metadata, Viewport } from 'next';
-import { Playfair_Display, DM_Sans } from 'next/font/google';
+import { Rozha_One, DM_Sans } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import { getLocale } from "gt-next/server";
 import { GTProvider } from "gt-next";
 
-const playfair = Playfair_Display({
-  subsets: ['latin'],
+// Display face: Rozha One, a high-contrast Devanagari/Latin display type (titles and headings only)
+const rozha = Rozha_One({
+  subsets: ['latin', 'devanagari'],
   variable: '--font-display',
   display: 'swap',
-  weight: ['400', '500', '600', '700', '800', '900']
+  weight: '400'
 });
 
 const dmSans = DM_Sans({
@@ -65,12 +66,12 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0f1219'
+  themeColor: '#0d1024'
 };
 
 export default async function RootLayout({ children }: {children: React.ReactNode;}) {
   return (
-  <html className={`dark ${playfair.variable} ${dmSans.variable}`} lang={await getLocale()} suppressHydrationWarning>
+  <html className={`dark ${rozha.variable} ${dmSans.variable}`} lang={await getLocale()} suppressHydrationWarning>
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/assets/buildings/residential.png" />

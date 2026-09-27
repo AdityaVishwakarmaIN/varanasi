@@ -50,7 +50,7 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} className={cn('inline-flex items-center rounded bg-amber-500/20 px-1 text-[10px] leading-4 text-amber-200', className)}>
+        <span key={f.id} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-marigold', className)}>
           {f.chip}
         </span>
       ))}
@@ -71,11 +71,12 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
       type="button"
       onClick={() => onOpen(upcoming.id)}
       className={cn(
-        'pointer-events-auto rounded-md border border-amber-500/60 bg-card/95 px-3 py-1.5 text-xs shadow-lg hover:bg-accent',
+        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-full !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold shadow-[0_0_20px_-8px_hsl(var(--marigold)/0.7)]',
         className
       )}
     >
-      <span className="font-medium">{f.chip}</span>
+      <span className="ornament text-marigold animate-diya" aria-hidden />
+      <span className="font-semibold text-marigold">{f.chip}</span>
       <span className="text-muted-foreground">
         {' · '}
         {upcoming.daysUntil === 0 ? m(TEXT.today) : `${upcoming.daysUntil}d`}
@@ -113,18 +114,18 @@ export function FestivalEventPanel({
               </DialogTitle>
               <DialogDescription>{m(center ? TEXT.intro : TEXT.noArea)}</DialogDescription>
             </DialogHeader>
-            {readiness.area.scale < 1 && <p className="text-xs text-amber-500">{m(TEXT.halfScale)}</p>}
+            {readiness.area.scale < 1 && <p className="text-xs text-amber-300">{m(TEXT.halfScale)}</p>}
             <ul className="flex flex-col gap-1.5">
               {readiness.checklist.map((r) => {
                 const Icon = r.passed ? CheckCircle2 : XCircle;
                 const content = (
                   <>
-                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-green-500' : 'text-destructive')} aria-hidden />
+                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-emerald-300' : 'text-red-400')} aria-hidden />
                     <span className="flex-1 text-left">
                       <span className="font-medium">{r.label}</span>
                       {!r.passed && <span className="block text-xs text-muted-foreground">{r.hint}</span>}
                     </span>
-                    {!r.passed && center && <span className="text-xs text-primary">{m(TEXT.showMe)}</span>}
+                    {!r.passed && center && <span className="text-xs text-marigold">{m(TEXT.showMe)}</span>}
                   </>
                 );
                 return (
@@ -134,7 +135,7 @@ export function FestivalEventPanel({
                     ) : (
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-sm hover:bg-sandstone/[0.07]"
                         onClick={() => {
                           onLocate(center.x, center.y, readinessOverlay(r));
                           onClose();
