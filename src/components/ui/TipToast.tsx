@@ -12,13 +12,20 @@ export interface TipToastProps {
   isVisible: boolean;
   onContinue: () => void;
   onSkipAll: () => void;
+  /**
+   * When set, the tip renders in place (no portal, no fixed position) and this class
+   * places it. The game uses this to stack the tip inside a HUD column so it never
+   * covers the overlay bar, the citizen feed or the notifications.
+   */
+  className?: string;
 }
 
-function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToastProps) {
+function TipToastContent({ message, isVisible, onContinue, onSkipAll, className }: TipToastProps) {
   const gt = useGT();
   const m = useMessages();
   const [isAnimating, setIsAnimating] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
+  const inline = className !== undefined;
 
   useEffect(() => {
     if (isVisible) {
@@ -44,54 +51,51 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cn(
-        'fixed z-[9999] pointer-events-auto',
-        'transition-all duration-300 ease-out',
-        // Mobile: top position below toolbar, full width with margins
-        'top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3',
-        // Desktop: bottom center position
-        'md:top-auto md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2',
-        isAnimating 
-          ? 'opacity-100 translate-y-0' 
-          : cn('opacity-0', 'max-md:-translate-y-4', 'md:translate-y-4')
+        'pointer-events-auto transition-[opacity,transform] duration-300 ease-out',
+        inline
+          ? className
+          : cn(
+              'fixed z-[9999]',
+              // Mobile: below the top bar, full width with margins
+              'top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3',
+              // Desktop: top right, under the top bar and stats row
+              'md:top-[108px] md:left-auto md:right-4 md:w-[22rem]'
+            ),
+        isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'
       )}
-      style={{ position: 'fixed' }}
     >
-      <div className="relative bg-card border border-sidebar-border rounded-sm shadow-lg overflow-hidden w-full md:w-auto md:max-w-md">
-        {/* Top accent border */}
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent" />
-        
+      <div className="hud-glass gold-hairline relative rounded-2xl overflow-hidden w-full">
         {/* Content */}
-        <div className="p-4 flex items-start gap-3">
-          {/* Icon */}
-          <div className="flex-shrink-0 w-10 h-10 rounded-sm bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Lightbulb className="w-5 h-5 text-primary" />
+        <div className="p-3.5 flex items-start gap-3">
+          <div className="relative flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-b from-marigold/25 to-saffron/10 ring-1 ring-marigold/40 flex items-center justify-center">
+            <Lightbulb className="w-5 h-5 text-marigold animate-diya" aria-hidden />
           </div>
-          
-          {/* Message */}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground leading-relaxed">
+
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="hud-label mb-1">{gt('Tip')}</p>
+            <p className="text-sm text-foreground leading-relaxed">
               {m(message)}
             </p>
           </div>
-          
-          {/* Close button */}
+
           <button
             onClick={onContinue}
-            className="flex-shrink-0 -m-2.5 p-2.5 max-md:p-3.5 max-md:-m-3.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-sandstone/[0.07] transition-colors"
             aria-label={gt('Dismiss tip')}
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
-        
-        {/* Action buttons */}
-        <div className="px-4 pb-4 flex items-center gap-2 justify-end">
+
+        <div className="px-3.5 pb-3.5 flex items-center gap-2 justify-end">
           <Button
             variant="ghost"
             size="sm"
             onClick={onSkipAll}
-            className="text-xs text-muted-foreground hover:text-foreground gap-1 max-md:h-11"
+            className="text-xs text-muted-foreground hover:text-foreground gap-1 h-11 md:h-9"
           >
             <T>
               <SkipForward className="w-3.5 h-3.5" />
@@ -102,7 +106,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
             variant="default"
             size="sm"
             onClick={onContinue}
-            className="text-xs gap-1 max-md:h-11"
+            className="text-xs gap-1 h-11 md:h-9 px-4"
           >
             <T>
               Continue
@@ -110,10 +114,6 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll }: TipToast
             </T>
           </Button>
         </div>
-        
-        {/* Bottom decorative corners */}
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-primary/30" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-primary/30" />
       </div>
     </div>
   );
@@ -125,6 +125,10 @@ export function TipToast(props: TipToastProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  if (props.className !== undefined) {
+    return <TipToastContent {...props} />;
+  }
 
   // Use portal to render at document body level to avoid z-index/overflow issues
   if (!mounted || typeof document === 'undefined') {

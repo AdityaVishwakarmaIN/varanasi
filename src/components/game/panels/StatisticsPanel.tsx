@@ -134,20 +134,20 @@ export function StatisticsPanel() {
         
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            <Card className="p-2 sm:p-3">
-              <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.population)}</div>
-              <div className="font-mono tabular-nums font-semibold text-green-400 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
+            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+              <div className="hud-label mb-1.5">{m(UI_LABELS.population)}</div>
+              <div className="font-mono tabular-nums font-semibold text-emerald-300 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
             </Card>
-            <Card className="p-2 sm:p-3">
-              <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.jobs)}</div>
-              <div className="font-mono tabular-nums font-semibold text-blue-400 text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
+            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+              <div className="hud-label mb-1.5">{m(UI_LABELS.jobs)}</div>
+              <div className="font-mono tabular-nums font-semibold text-ganga text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
             </Card>
-            <Card className="p-2 sm:p-3">
-              <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.treasury)}</div>
-              <div className="font-mono tabular-nums font-semibold text-amber-400 text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
+            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+              <div className="hud-label mb-1.5">{m(UI_LABELS.treasury)}</div>
+              <div className="font-mono tabular-nums font-semibold text-marigold text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
             </Card>
-            <Card className="p-2 sm:p-3">
-              <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{m(UI_LABELS.weekly)}</div>
+            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+              <div className="hud-label mb-1.5">{m(UI_LABELS.weekly)}</div>
               <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
               </div>
@@ -214,10 +214,10 @@ function GangaHealthCard({
   const trend = getGangaTrend(gangaHealth, target);
   const colorClass = GANGA_LEVEL_CLASS[getGangaHealthLevel(gangaHealth)];
   return (
-    <Card className="p-2 sm:p-3 flex items-center gap-3">
+    <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3 flex items-center gap-3">
       <RiverIcon size={20} className="text-cyan-400 shrink-0" />
       <div className="min-w-0">
-        <div className="text-muted-foreground text-[10px] sm:text-xs mb-1">{label}</div>
+        <div className="hud-label mb-1.5">{label}</div>
         <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base ${colorClass}`}>
           {Math.round(gangaHealth)} {GANGA_TREND_ARROW[trend]}
           <span className="ml-2 text-xs font-normal text-muted-foreground">

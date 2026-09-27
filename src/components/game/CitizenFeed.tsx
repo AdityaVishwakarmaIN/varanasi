@@ -96,32 +96,32 @@ export function CitizenFeed({
 
   return (
     <div className={cn('pointer-events-auto', className)}>
-      <div className="rounded-lg border border-border/70 bg-card/90 shadow-lg backdrop-blur-sm overflow-hidden">
+      <div className="hud-glass gold-hairline rounded-2xl overflow-hidden">
         <button
           type="button"
           onClick={toggle}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-foreground min-h-[36px]"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left min-h-11 hover:bg-sandstone/[0.05] transition-colors"
           aria-expanded={open}
           aria-label={m(open ? LABELS.collapse : LABELS.expand)}
         >
-          <MessageCircle className="h-3.5 w-3.5 text-primary" />
-          <span className="flex-1">{m(LABELS.title)}</span>
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-marigold/15 ring-1 ring-marigold/30" aria-hidden><MessageCircle className="h-3.5 w-3.5 text-marigold" /></span>
+          <span className="flex-1 hud-label">{m(LABELS.title)}</span>
           {!open && unread > 0 && (
-            <span className="min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] leading-4 text-center">
+            <span className="min-w-[16px] h-4 px-1 rounded-full hud-selected text-[10px] leading-4 text-center font-semibold">
               {unread}
             </span>
           )}
-          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+          {open ? <ChevronDown className="h-3.5 w-3.5 text-sandstone/70" /> : <ChevronUp className="h-3.5 w-3.5 text-sandstone/70" />}
         </button>
         {open && (
-          <ul className={cn('border-t border-border/50 overflow-y-auto', compact ? 'max-h-[32vh]' : 'max-h-56')}>
+          <ul className={cn('border-t border-gold/15 overflow-y-auto', compact ? 'max-h-[32vh]' : 'max-h-56')}>
             {entries.length === 0 ? (
               <li className="px-3 py-2 text-xs text-muted-foreground">{m(LABELS.empty)}</li>
             ) : (
               entries.map((e) => {
                 const canLocate = e.x !== undefined && e.y !== undefined;
                 return (
-                  <li key={e.id} className="border-b border-border/30 last:border-b-0">
+                  <li key={e.id} className="border-b border-gold/[0.08] last:border-b-0">
                     <button
                       type="button"
                       disabled={!canLocate}
@@ -129,11 +129,11 @@ export function CitizenFeed({
                       title={canLocate ? m(LABELS.locate) : undefined}
                       className={cn(
                         'flex w-full items-start gap-2 px-3 py-2 text-left text-xs leading-snug',
-                        canLocate ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default',
+                        canLocate ? 'hover:bg-sandstone/[0.06] cursor-pointer' : 'cursor-default',
                       )}
                     >
-                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.positive ? 'bg-green-400' : 'bg-amber-400')} />
-                      <span className="flex-1 text-foreground/90">{e.text}</span>
+                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.positive ? 'bg-emerald-300 shadow-[0_0_6px_rgb(110_231_183/0.7)]' : 'bg-saffron shadow-[0_0_6px_hsl(var(--saffron)/0.7)]')} />
+                      <span className="flex-1 text-sandstone/90">{e.text}</span>
                       {canLocate && <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />}
                     </button>
                   </li>
