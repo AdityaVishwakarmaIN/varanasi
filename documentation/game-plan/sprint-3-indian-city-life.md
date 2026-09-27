@@ -48,7 +48,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 ## 4. Tasks
 
 - [x] S3-T1: Build-menu curation and Indian names
-- [ ] S3-T2: Varanasi sprite pack
+- [x] S3-T2: Varanasi sprite pack — done as code-drawn art for every building and tree (see S3-T3 note)
 - [x] S3-T3: Ghat, STP and new-building art — done as code-drawn art (`src/components/game/procedural/`), not AI sprite sheets
 - [x] S3-T4: Mixed traffic (vehicle kinds)
 - [x] S3-T5: Cows
