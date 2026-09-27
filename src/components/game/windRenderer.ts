@@ -10,6 +10,14 @@ import { getSpriteRenderInfo, selectSpriteSource, type SpriteCoords } from './bu
 import type { CloudWeatherMode, WorldRenderState } from './types';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
+import {
+  getProceduralSprite,
+  getProceduralSpriteDrawRect,
+  isVaranasiProceduralSprite,
+  pickProceduralVariant,
+  type SpriteCanvas,
+} from './procedural/buildingArt';
+import { TILE_WIDTH } from './types';
 
 const WIND_DIRECTION_ANGLE = -0.28;
 const WIND_DIRECTION_X = Math.cos(WIND_DIRECTION_ANGLE);
@@ -40,7 +48,7 @@ export interface WindDustParticle {
 }
 
 export interface WindTreeRenderItem {
-  image: CachedCanvasImage;
+  image: CachedCanvasImage | SpriteCanvas;
   coords: SpriteCoords;
   drawX: number;
   drawY: number;
@@ -98,9 +106,38 @@ export function buildWindTreeRenderItem(
   options: {
     hasAdjacentRoad?: boolean;
     shouldFlipForRoad?: boolean;
+    /**
+     * Cache resolution (px per tile, from `pickArtTilePx`) for the code-drawn Indian trees.
+     * When set, the procedural tree art is used; if this frame's paint budget is spent (and no
+     * other resolution is cached yet) the old sprite-sheet tree stands in so frames never stall.
+     */
+    artTilePx?: number;
   } = {},
   activePack: SpritePack = getActiveSpritePack()
 ): WindTreeRenderItem | null {
+  if (options.artTilePx && isVaranasiProceduralSprite('tree')) {
+    const sprite = getProceduralSprite('tree', pickProceduralVariant('tree', tileX, tileY), false, options.artTilePx, {
+      budgeted: true,
+    });
+    if (sprite) {
+      const rect = getProceduralSpriteDrawRect(sprite, screenX, screenY, TILE_WIDTH);
+      const s = TILE_WIDTH / sprite.tilePx;
+      // Stable per-tile mirror (trees don't face roads) doubles the visible variety for free
+      const flip = building.flipped === true ? true : ((tileX * 73 + tileY * 151) & 7) < 4;
+      return {
+        image: sprite.canvas,
+        coords: { sx: 0, sy: 0, sw: sprite.width, sh: sprite.height },
+        drawX: rect.dx,
+        drawY: rect.dy,
+        destWidth: rect.dw,
+        destHeight: rect.dh,
+        shouldFlip: flip,
+        // sway about the trunk foot (centre of the base diamond)
+        pivotX: rect.dx + rect.dw * 0.5,
+        pivotY: rect.dy + (sprite.baseTopY + sprite.baseHeight * 0.5) * s,
+      };
+    }
+  }
   const source = selectSpriteSource('tree', building, tileX, tileY, activePack);
   const spriteSheet =
     getCachedImage(source.source, true) ||

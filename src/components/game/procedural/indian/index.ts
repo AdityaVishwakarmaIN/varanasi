@@ -20,6 +20,7 @@ import { SPORTS_SPRITES } from './sports';
 import { PARKS_SPRITES } from './parks';
 import { SPECIAL_SPRITES } from './special';
 import { MIXED_USE_SPRITES } from './mixedUse';
+import { TREE_SPRITES } from './trees';
 
 export const INDIAN_PROCEDURAL_SPRITES: Record<string, ProceduralSpriteDef> = {
   ...RESIDENTIAL_SPRITES,
@@ -30,4 +31,5 @@ export const INDIAN_PROCEDURAL_SPRITES: Record<string, ProceduralSpriteDef> = {
   ...PARKS_SPRITES,
   ...SPECIAL_SPRITES,
   ...MIXED_USE_SPRITES,
+  ...TREE_SPRITES,
 };
