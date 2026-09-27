@@ -186,14 +186,14 @@ export function MobileTopBar({
             className="flex items-center gap-2 min-w-0 min-h-11 active:opacity-70 p-0 m-0 mr-auto"
             onClick={() => setShowDetails(!showDetails)}
           >
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1">
+            <div className="flex min-w-0 shrink flex-col items-start overflow-hidden">
+              <div className="flex min-w-0 max-w-full items-center gap-1">
                 <span className="ornament text-marigold !w-2.5 !h-2.5" aria-hidden />
-                <span className="font-display text-[15px] leading-none text-saffron-gradient truncate max-w-[88px] pt-0.5">
+                <span className="font-display text-[15px] leading-none text-saffron-gradient min-w-0 truncate max-w-[88px] pt-0.5">
                   {cityName}
                 </span>
               </div>
-              <span className="text-sandstone/70 text-[10px] font-mono">
+              <span className="block max-w-full truncate whitespace-nowrap text-sandstone/70 text-[10px] font-mono">
                 <SeasonDateLabel month={month} year={year} />
                 <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
                 <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="ml-1" />
