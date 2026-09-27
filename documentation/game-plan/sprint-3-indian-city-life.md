@@ -49,7 +49,7 @@ By the end of this sprint, the city **looks, moves and struggles like an Indian 
 
 - [x] S3-T1: Build-menu curation and Indian names
 - [ ] S3-T2: Varanasi sprite pack
-- [ ] S3-T3: Ghat, STP and new-building art
+- [x] S3-T3: Ghat, STP and new-building art — done as code-drawn art (`src/components/game/procedural/`), not AI sprite sheets
 - [x] S3-T4: Mixed traffic (vehicle kinds)
 - [x] S3-T5: Cows
 - [x] S3-T6: Mixed-use commercial
@@ -160,6 +160,10 @@ shrine on some variants, **2–3 variants** chosen by tile position so a row doe
 Adjacent ghats must join visually into one continuous stepped bank.
 
 **Acceptance criteria:** a row of 10 ghats reads as one long riverfront. There are no visible seams at zoom 2×.
+
+**Done:** all of these (and every other building type, per the owner's request) are drawn in code instead of the AI-image pipeline. See
+`src/components/game/procedural/varanasiSprites.ts` (ghat, STP, informal housing, Jal Sansthan) and `procedural/indian/` (every other category).
+Art is painted once per resolution tier and cached, with a per-frame paint budget so it never stalls a frame.
 
 ---
 
