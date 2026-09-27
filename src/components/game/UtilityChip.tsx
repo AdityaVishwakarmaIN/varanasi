@@ -6,11 +6,12 @@ import { PowerIcon, WaterIcon } from '@/components/ui/Icons';
 import { POWER_CONFIG, WATER_CONFIG, getSupplyStatus, type SupplyStatus } from '@/lib/utilities';
 import { formatIndianNumber } from '@/lib/format';
 import type { UtilitySupplyStats } from '@/types/game';
+import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const STATUS_TEXT_CLASS: Record<SupplyStatus, string> = {
-  ok: 'text-green-500',
-  amber: 'text-amber-500',
-  red: 'text-red-500',
+  ok: 'text-emerald-300',
+  amber: 'text-amber-300',
+  red: 'text-red-400',
 };
 
 const KIND = {
@@ -65,8 +66,8 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
         aria-pressed={active}
       >
         <span
-          className={`flex items-center gap-0.5 rounded-sm px-1 py-0.5 ${
-            active ? 'bg-amber-500/20 ring-1 ring-amber-500/60' : 'bg-secondary/60'
+          className={`flex items-center gap-1 rounded-full pl-1 pr-1.5 py-0.5 ring-1 ${
+            active ? 'bg-marigold/25 ring-marigold/70' : 'bg-sandstone/10 ring-sandstone/20'
           }`}
         >
           <Icon size={11} className={iconClass} />
@@ -82,16 +83,16 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
         <button
           type="button"
           onClick={onClick}
-          className={`flex items-center gap-1.5 rounded-md px-2 h-9 border transition-colors ${
-            active ? 'border-amber-500/60 bg-amber-500/15' : 'border-transparent hover:bg-secondary'
+          className={`${HUD_CHIP_CLASS} press ${
+            active ? '!border-marigold/70 !bg-marigold/10 shadow-[0_0_16px_-4px_hsl(var(--marigold)/0.55)]' : 'hover:!border-gold/40'
           }`}
           aria-label={ariaLabel}
           aria-pressed={active}
         >
-          <Icon size={16} className={iconClass} />
+          <HudIconBadge tint={kind}><Icon size={16} /></HudIconBadge>
           <span className="flex flex-col items-start leading-none">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-0.5">{label}</span>
-            <span className={`text-sm font-mono tabular-nums font-semibold ${colorClass}`}>{percent}%</span>
+            <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>{percent}%</span>
+            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
           </span>
         </button>
       </TooltipTrigger>

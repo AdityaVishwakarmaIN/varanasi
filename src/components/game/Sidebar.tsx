@@ -57,6 +57,13 @@ import { formatIndianNumber, formatINR } from '@/lib/format';
 import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
 import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS, type LandmarkMenuStatus } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
+
+/** Shared look for a sidebar category row. */
+const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg';
+const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold';
+const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-xl overflow-hidden animate-submenu-in';
+const FLYOUT_SHADOW = '0 18px 44px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 hsl(40 90% 88% / 0.07)';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -71,7 +78,9 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   toolStatus,
   glow = false,
   onOpen,
+  icon,
 }: {
+  icon?: React.ReactNode;
   label: unknown; // Message object from msg() for translation
   tools: Tool[];
   selectedTool: Tool;
@@ -96,7 +105,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   
   const hasSelectedTool = tools.includes(selectedTool);
   const SUBMENU_GAP = 12; // Gap between sidebar and submenu
-  const SUBMENU_MAX_HEIGHT = 220; // Approximate max height of submenu
+  const SUBMENU_MAX_HEIGHT = 380; // Approximate max height of submenu
   
   const clearCloseTimeout = useCallback(() => {
     if (timeoutRef.current) {
@@ -193,14 +202,19 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
       {/* Category Header Button */}
       <Button
         ref={buttonRef}
-        variant={hasSelectedTool ? 'default' : 'ghost'}
-        className={`w-full justify-between gap-2 px-3 py-2.5 h-auto text-sm group transition-all duration-200 ${
-          hasSelectedTool ? 'bg-primary text-primary-foreground' : ''
-        } ${isOpen ? 'bg-muted/80' : ''} ${glow ? 'ring-2 ring-amber-400/80 animate-pulse' : ''}`}
+        variant="ghost"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className={`${CATEGORY_ROW} group ${
+          hasSelectedTool ? 'hud-selected hover:text-primary-foreground' : isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'
+        } ${glow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
       >
-        <span className="font-medium">{m(label as Parameters<typeof m>[0])}</span>
+        <span className="flex items-center gap-2.5 min-w-0">
+          {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-black/10 text-primary-foreground ring-black/10' : ''}`} aria-hidden>{icon}</span>}
+          <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
+        </span>
         <svg 
-          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+          className={`w-4 h-4 shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
           fill="none" 
           viewBox="0 0 24 24" 
           stroke="currentColor"
@@ -229,9 +243,9 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
       {isOpen && (
         <div 
           ref={submenuRef}
-          className="fixed w-52 bg-sidebar backdrop-blur-sm border border-sidebar-border rounded-md shadow-xl overflow-hidden animate-submenu-in"
+          className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(96, 165, 250, 0.1)',
+            boxShadow: FLYOUT_SHADOW,
             zIndex: 9999,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
@@ -241,10 +255,11 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="px-3 py-2 border-b border-sidebar-border/50 bg-muted/30">
-            <span className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">{m(label as Parameters<typeof m>[0])}</span>
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
+            <span className="ornament text-gold/80" aria-hidden />
+            <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
-          <div className="p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+          <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(340px,60vh)] overflow-y-auto" role="menu">
             {tools.map(tool => {
               if (!TOOL_INFO[tool]) return null;
               const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
@@ -260,15 +275,22 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   key={tool}
                   onClick={() => onSelectTool(tool)}
                   disabled={(!canAfford && info.cost > 0) || !!status?.locked || !!status?.built}
-                  variant={isSelected ? 'default' : 'ghost'}
-                  className={`w-full justify-start gap-2 px-3 py-2 h-auto text-sm transition-all duration-150 ${
-                    isSelected ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted/60'
+                  variant="ghost"
+                  role="menuitem"
+                  aria-current={isSelected || undefined}
+                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-lg ${
+                    isSelected ? 'hud-selected hover:text-primary-foreground' : 'hover:bg-sandstone/[0.07]'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
                 >
-                  {status?.locked && <span aria-hidden className="text-xs">🔒</span>}
-                  <span className="flex-1 text-left truncate">{m(info.name)}</span>
-                  <span className={`text-xs ${isSelected ? 'opacity-80' : 'opacity-50'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                  <ToolGlyph tool={tool} size={40} className={isSelected ? 'ring-black/20' : ''} />
+                  <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
+                    <span className="w-full truncate text-left font-medium">
+                      {status?.locked && <span aria-hidden className="mr-1 text-xs">🔒</span>}
+                      {m(info.name)}
+                    </span>
+                    <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : status?.locked || status?.built ? 'text-muted-foreground' : canAfford ? 'text-marigold/85' : 'text-red-400/90'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                  </span>
                 </Button>
               );
             })}
@@ -283,7 +305,9 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
 const ActionSubmenu = React.memo(function ActionSubmenu({
   label,
   actions,
+  icon,
 }: {
+  icon?: React.ReactNode;
   label: unknown;
   actions: { key: string; name: unknown; description: string; onClick: () => void }[];
 }) {
@@ -381,11 +405,16 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
       <Button
         ref={buttonRef}
         variant="ghost"
-        className={`w-full justify-between gap-2 px-3 py-2.5 h-auto text-sm group transition-all duration-200 ${isOpen ? 'bg-muted/80' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className={`${CATEGORY_ROW} group ${isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'}`}
       >
-        <span className="font-medium">{m(label as Parameters<typeof m>[0])}</span>
+        <span className="flex items-center gap-2.5 min-w-0">
+          {icon && <span className={CATEGORY_ICON} aria-hidden>{icon}</span>}
+          <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
+        </span>
         <svg 
-          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+          className={`w-4 h-4 shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
           fill="none" 
           viewBox="0 0 24 24" 
           stroke="currentColor"
@@ -412,9 +441,9 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
       {isOpen && (
         <div 
           ref={submenuRef}
-          className="fixed w-52 bg-sidebar backdrop-blur-sm border border-sidebar-border rounded-md shadow-xl overflow-hidden animate-submenu-in"
+          className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(96, 165, 250, 0.1)',
+            boxShadow: FLYOUT_SHADOW,
             zIndex: 9999,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
@@ -424,8 +453,9 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="px-3 py-2 border-b border-sidebar-border/50 bg-muted/30">
-            <span className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">{m(label as Parameters<typeof m>[0])}</span>
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
+            <span className="ornament text-gold/80" aria-hidden />
+            <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
           <div className="p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
             {actions.map(action => (
@@ -433,7 +463,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
                 key={action.key}
                 onClick={action.onClick}
                 variant="ghost"
-                className="w-full justify-start gap-2 px-3 py-2 h-auto text-sm transition-all duration-150 hover:bg-muted/60"
+                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-lg hover:bg-sandstone/[0.07]"
                 title={action.description}
               >
                 <span className="flex-1 text-left truncate">{m(action.name as Parameters<typeof m>[0])}</span>
@@ -609,20 +639,28 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   const landmarksGlow = hasUnseenLandmarks({ peakPopulation, landmarksSeen, mapId, stats });
   
   return (
-    <div className="w-56 bg-sidebar border-r border-sidebar-border flex flex-col h-screen fixed left-0 top-0 z-40">
-      <div className="px-4 py-4 border-b border-sidebar-border">
-        <div className="flex items-center justify-between">
-          <span className="text-sidebar-foreground font-bold tracking-tight">VARANASI</span>
+    <div
+      className="w-56 border-r border-gold/20 flex flex-col h-screen fixed left-0 top-0 z-40"
+      style={{ background: 'linear-gradient(180deg, hsl(233 40% 12%) 0%, hsl(234 42% 8%) 60%, hsl(236 44% 7%) 100%)', boxShadow: 'inset -1px 0 0 hsl(40 90% 88% / 0.04), 8px 0 24px -12px rgb(0 0 0 / 0.6)' }}
+    >
+      <div className="relative px-3 pt-3 pb-2.5 border-b border-gold/15 jaali-bg">
+        <div className="flex items-center justify-between gap-1">
+          <span className="flex items-center gap-1.5 pl-1 min-w-0">
+            <span className="ornament text-marigold animate-diya" aria-hidden />
+            <span className="font-display text-[22px] leading-none tracking-wide text-saffron-gradient">Varanasi</span>
+          </span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={openCommandMenu}
               title="Search (⌘K)"
-              className="h-7 w-7 text-muted-foreground hover:text-sidebar-foreground"
+              aria-label="Search (⌘K)"
+              className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
             >
               <svg 
                 className="w-4 h-4" 
+                aria-hidden
                 fill="none" 
                 viewBox="0 0 24 24" 
                 stroke="currentColor"
@@ -637,7 +675,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 size="icon-sm"
                 onClick={() => setShowShareModal(true)}
                 title="Invite Players"
-                className="h-7 w-7 text-muted-foreground hover:text-sidebar-foreground"
+                aria-label="Invite Players"
+                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
               >
                 <Users className="w-4 h-4" />
               </Button>
@@ -648,7 +687,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 size="icon-sm"
                 onClick={() => setShowExitDialog(true)}
                 title="Exit to Main Menu"
-                className="h-7 w-7 text-muted-foreground hover:text-sidebar-foreground"
+                aria-label="Exit to Main Menu"
+                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
               >
                 <svg 
                   className="w-4 h-4 -scale-x-100" 
@@ -670,9 +710,9 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
           <div key={category} className="mb-1">
             {/* Separator above ZONES */}
             {category === 'ZONES' && (
-              <div className="mx-4 my-2 h-px bg-sidebar-border/50" />
+              <div className="ornament-divider mx-5 my-2" aria-hidden />
             )}
-            <div className="px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">
+            <div className="px-4 pt-2 pb-1.5 hud-label">
               {m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}
             </div>
             <div className="px-2 flex flex-col gap-0.5">
@@ -687,15 +727,17 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     key={tool}
                     onClick={() => setTool(tool)}
                     disabled={!canAfford && info.cost > 0}
-                    variant={isSelected ? 'default' : 'ghost'}
-                    className={`w-full justify-start gap-3 px-3 py-2 h-auto text-sm ${
-                      isSelected ? 'bg-primary text-primary-foreground' : ''
+                    variant="ghost"
+                    aria-pressed={isSelected}
+                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg ${
+                      isSelected ? 'hud-selected hover:text-primary-foreground' : 'text-sidebar-foreground/90 hover:bg-sandstone/[0.07]'
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
                   >
-                    <span className="flex-1 text-left truncate">{m(info.name)}</span>
+                    <ToolGlyph tool={tool} size={28} className={isSelected ? 'bg-black/10 text-primary-foreground ring-black/10' : 'text-gold'} />
+                    <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>
                     {info.cost > 0 && (
-                      <span className="text-xs opacity-60">{formatINR(info.cost)}</span>
+                      <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{formatINR(info.cost)}</span>
                     )}
                   </Button>
                 );
@@ -705,6 +747,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 <ActionSubmenu
                   key="expandCity"
                   label={CATEGORY_LABELS.expandCity}
+                  icon={CATEGORY_ICONS.expandCity}
                   actions={expandCityActions}
                 />
               )}
@@ -713,6 +756,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 <HoverSubmenu
                   key={zoningSubmenu.key}
                   label={zoningSubmenu.label}
+                  icon={CATEGORY_ICONS.zoning}
                   tools={zoningSubmenu.tools}
                   selectedTool={selectedTool}
                   money={stats.money}
@@ -725,10 +769,10 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         ))}
         
         {/* Separator */}
-        <div className="mx-4 my-2 h-px bg-sidebar-border/50" />
+        <div className="ornament-divider mx-5 my-2" aria-hidden />
         
         {/* Buildings header */}
-        <div className="px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">
+        <div className="px-4 pt-2 pb-1.5 hud-label">
           BUILDINGS
         </div>
         
@@ -738,6 +782,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
             <HoverSubmenu
               key={key}
               label={label}
+              icon={CATEGORY_ICONS[key]}
               tools={tools}
               selectedTool={selectedTool}
               money={stats.money}
@@ -752,8 +797,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         </div>
       </ScrollArea>
       
-      <div className="border-t border-sidebar-border p-2">
-        <div className="grid grid-cols-4 gap-1">
+      <div className="border-t border-gold/15 p-2 gold-hairline">
+        <div className="grid grid-cols-4 gap-1 hud-well rounded-xl p-1">
           {[
             { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
             { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
@@ -763,15 +808,17 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
             <Button
               key={panel}
               onClick={() => setActivePanel(activePanel === panel ? 'none' : panel)}
-              variant={activePanel === panel ? 'default' : 'ghost'}
+              variant="ghost"
               size="icon-sm"
-              className="w-full relative"
+              aria-pressed={activePanel === panel}
+              aria-label={String(m(UI_LABELS[labelKey]))}
+              className={`press w-full h-11 relative rounded-lg ${activePanel === panel ? 'hud-selected hover:text-primary-foreground' : 'text-sandstone/75 hover:text-marigold hover:bg-sandstone/[0.07]'}`}
               title={String(m(UI_LABELS[labelKey]))}
             >
               {icon}
               {panel === 'advisors' && urgentAdvisorCount > 0 && (
                 <span
-                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
+                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full ring-2 ring-[hsl(234_42%_8%)] bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
                   aria-label={`${urgentAdvisorCount}`}
                 >
                   {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}

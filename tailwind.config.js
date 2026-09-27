@@ -42,6 +42,11 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        saffron: "hsl(var(--saffron))",
+        marigold: "hsl(var(--marigold))",
+        ganga: "hsl(var(--ganga))",
+        gold: "hsl(var(--gold))",
+        sandstone: "hsl(var(--sandstone))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -54,8 +59,10 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-geist-mono)', 'monospace'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+        // Numbers in the HUD use the UI face with tabular figures (see .font-mono in globals.css)
+        mono: ['var(--font-sans)', 'ui-monospace', 'monospace'],
       },
       keyframes: {
         "accordion-down": {

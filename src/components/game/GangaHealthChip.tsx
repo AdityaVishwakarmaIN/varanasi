@@ -5,11 +5,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { RiverIcon } from '@/components/ui/Icons';
 import { getGangaTrend } from '@/lib/scoring';
 import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
+import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const LEVEL_TEXT_CLASS = {
-  good: 'text-green-500',
-  fair: 'text-amber-500',
-  poor: 'text-red-500',
+  good: 'text-emerald-300',
+  fair: 'text-amber-300',
+  poor: 'text-red-400',
 } as const;
 
 const TREND_LABEL = { up: 'improving', down: 'getting worse', flat: 'steady' } as const;
@@ -44,11 +45,11 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
         aria-pressed={active}
       >
         <span
-          className={`flex items-center gap-0.5 rounded-sm px-1 py-0.5 ${
-            active ? 'bg-cyan-500/20 ring-1 ring-cyan-500/60' : 'bg-secondary/60'
+          className={`flex items-center gap-1 rounded-full pl-1 pr-1.5 py-0.5 ring-1 ${
+            active ? 'bg-ganga/25 ring-ganga/70' : 'bg-ganga/10 ring-ganga/25'
           }`}
         >
-          <RiverIcon size={11} className="text-cyan-400" />
+          <RiverIcon size={12} className="text-ganga" />
           <span className={`text-[10px] font-mono font-semibold tabular-nums ${colorClass}`}>{health}</span>
           <span className={`text-[10px] leading-none ${colorClass}`} aria-hidden>{GANGA_TREND_ARROW[trend]}</span>
         </span>
@@ -62,18 +63,18 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
         <button
           type="button"
           onClick={onClick}
-          className={`flex items-center gap-1.5 rounded-md px-2 h-9 border transition-colors ${
-            active ? 'border-cyan-500/60 bg-cyan-500/15' : 'border-transparent hover:bg-secondary'
+          className={`${HUD_CHIP_CLASS} press ${
+            active ? '!border-ganga/70 !bg-ganga/15 shadow-[0_0_16px_-4px_hsl(var(--ganga)/0.6)]' : 'hover:!border-ganga/40'
           }`}
           aria-label={ariaLabel}
           aria-pressed={active}
         >
-          <RiverIcon size={16} className="text-cyan-400" />
+          <HudIconBadge tint="ganga"><RiverIcon size={16} /></HudIconBadge>
           <span className="flex flex-col items-start leading-none">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Ganga</span>
-            <span className={`text-sm font-mono tabular-nums font-semibold ${colorClass}`}>
-              {health} <span aria-hidden>{GANGA_TREND_ARROW[trend]}</span>
+            <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>
+              {health} <span aria-hidden className="text-xs">{GANGA_TREND_ARROW[trend]}</span>
             </span>
+            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ganga</span>
           </span>
         </button>
       </TooltipTrigger>
