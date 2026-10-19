@@ -179,7 +179,7 @@ export function MobileTopBar({
   return (
     <>
       {/* Main Top Bar */}
-      <Card className="hud-panel fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-md border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
+      <Card className="hud-panel bg-chrome-panel text-chrome-text fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-md border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
         <div className="flex items-center justify-between px-3 py-0">
           {/* Left: City name, date, Pop/Funds stats */}
           <button

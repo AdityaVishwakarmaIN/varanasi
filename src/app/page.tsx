@@ -568,7 +568,7 @@ export default function HomePage() {
               {savedList}
             </aside>
           )}
-          <div className="mt-auto w-72 pt-6">{footer}</div>
+          <div className="absolute bottom-5 left-1/2 z-10 w-72 -translate-x-1/2">{footer}</div>
         </div>
 
         {dialogs}

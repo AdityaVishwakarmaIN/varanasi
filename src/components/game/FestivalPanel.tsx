@@ -50,7 +50,7 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-marigold', className)}>
+        <span key={f.id} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
           {f.chip}
         </span>
       ))}
@@ -75,9 +75,9 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
         className
       )}
     >
-      <span className="ornament text-marigold animate-diya" aria-hidden />
-      <span className="font-semibold text-marigold">{f.chip}</span>
-      <span className="text-muted-foreground">
+      <span className="ornament text-chrome-accent animate-diya" aria-hidden />
+      <span className="font-semibold text-chrome-accent">{f.chip}</span>
+      <span className="text-chrome-muted">
         {' · '}
         {upcoming.daysUntil === 0 ? m(TEXT.today) : `${upcoming.daysUntil}d`}
         {' · '}
@@ -114,18 +114,18 @@ export function FestivalEventPanel({
               </DialogTitle>
               <DialogDescription>{m(center ? TEXT.intro : TEXT.noArea)}</DialogDescription>
             </DialogHeader>
-            {readiness.area.scale < 1 && <p className="text-xs text-amber-300">{m(TEXT.halfScale)}</p>}
+            {readiness.area.scale < 1 && <p className="text-xs text-amber-700">{m(TEXT.halfScale)}</p>}
             <ul className="flex flex-col gap-1.5">
               {readiness.checklist.map((r) => {
                 const Icon = r.passed ? CheckCircle2 : XCircle;
                 const content = (
                   <>
-                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-emerald-300' : 'text-red-400')} aria-hidden />
+                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-emerald-700' : 'text-red-700')} aria-hidden />
                     <span className="flex-1 text-left">
                       <span className="font-medium">{r.label}</span>
-                      {!r.passed && <span className="block text-xs text-muted-foreground">{r.hint}</span>}
+                      {!r.passed && <span className="block text-xs text-chrome-muted">{r.hint}</span>}
                     </span>
-                    {!r.passed && center && <span className="text-xs text-marigold">{m(TEXT.showMe)}</span>}
+                    {!r.passed && center && <span className="text-xs text-chrome-accent">{m(TEXT.showMe)}</span>}
                   </>
                 );
                 return (

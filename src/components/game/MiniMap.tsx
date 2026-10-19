@@ -215,7 +215,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
   }, [isDragging]);
   
   return (
-    <Card className="hud-panel fixed bottom-4 right-4 p-2.5 rounded-md z-50">
+    <Card className="hud-panel bg-chrome-panel text-chrome-text fixed bottom-4 right-4 p-2.5 rounded-md z-50">
       <div className="hud-label mb-2 flex items-center gap-1.5">
         {m(MINIMAP_LABEL)}
       </div>

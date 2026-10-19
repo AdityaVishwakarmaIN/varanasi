@@ -8,9 +8,9 @@ import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const LEVEL_TEXT_CLASS = {
-  good: 'text-emerald-300',
-  fair: 'text-amber-300',
-  poor: 'text-red-400',
+  good: 'text-emerald-700',
+  fair: 'text-amber-700',
+  poor: 'text-red-700',
 } as const;
 
 const TREND_LABEL = { up: 'improving', down: 'getting worse', flat: 'steady' } as const;
@@ -74,7 +74,7 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
             <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>
               {health} <span aria-hidden className="text-xs">{GANGA_TREND_ARROW[trend]}</span>
             </span>
-            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ganga</span>
+            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">Ganga</span>
           </span>
         </button>
       </TooltipTrigger>

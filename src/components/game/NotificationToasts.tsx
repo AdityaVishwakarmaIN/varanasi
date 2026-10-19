@@ -36,7 +36,7 @@ function NotificationIcon({ icon, className }: { icon: string; className?: strin
 }
 
 const SEVERITY_STYLES: Record<NonNullable<Notification['severity']>, string> = {
-  info: 'border-gold/20',
+  info: 'border-chrome-border',
   warning: '!border-amber-400/60',
   crisis: '!border-red-400/70 ring-1 ring-red-400/30',
 };
@@ -136,7 +136,7 @@ function NotificationToast({
       )}
     >
       <span className={cn('shrink-0 h-8 w-8 rounded-lg ring-1 flex items-center justify-center', isCrisis ? 'bg-red-500/15 ring-red-400/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-sandstone/[0.06] ring-gold/15')}>
-        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-400' : isCelebration ? 'text-marigold' : 'text-sandstone/80'} />
+        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
       </span>
       <button
         type="button"
@@ -144,10 +144,10 @@ function NotificationToast({
         disabled={!canLocate}
         className="flex-1 min-w-0 text-left disabled:cursor-default"
       >
-        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-300' : isCelebration ? 'text-marigold' : 'text-foreground')}>{n.title}</p>
-        <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-foreground')}>{n.title}</p>
+        <p className="text-xs text-chrome-muted line-clamp-2">{n.description}</p>
         {canLocate && (
-          <span className="mt-1 inline-flex items-center gap-1 text-xs text-marigold">
+          <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent">
             <MapPin className="w-3 h-3" />
             {locateLabel}
           </span>
@@ -156,7 +156,7 @@ function NotificationToast({
       <button
         type="button"
         onClick={() => onDismiss(n.id)}
-        className="text-muted-foreground hover:text-foreground -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
+        className="text-chrome-muted hover:text-foreground -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
         aria-label={dismissLabel}
       >
         <X className="w-4 h-4" />

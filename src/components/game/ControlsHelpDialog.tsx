@@ -41,26 +41,26 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
         </DialogHeader>
         <div className="space-y-4 text-sm">
           <section>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">{m(LABELS.mouse)}</div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-2">{m(LABELS.mouse)}</div>
             <table className="w-full">
               <tbody>
                 {MOUSE_BINDINGS.map((row) => (
                   <tr key={row.input} className="border-b border-border/40 last:border-0">
                     <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{m(row.input)}</KeyCap></td>
-                    <td className="py-1 text-muted-foreground">{m(row.label)}</td>
+                    <td className="py-1 text-chrome-muted">{m(row.label)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </section>
           <section>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">{m(LABELS.keyboard)}</div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-2">{m(LABELS.keyboard)}</div>
             <table className="w-full">
               <tbody>
                 {KEY_BINDINGS.filter((b) => b.action !== 'perfHud' || isDevMode()).map((binding) => (
                   <tr key={binding.action} className="border-b border-border/40 last:border-0">
                     <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{binding.keyLabel}</KeyCap></td>
-                    <td className="py-1 text-muted-foreground">{m(binding.label)}</td>
+                    <td className="py-1 text-chrome-muted">{m(binding.label)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -81,7 +81,7 @@ export function ControlsHelpButton() {
       <Button variant="outline" className="w-full" onClick={() => setOpen(true)}>
         {m(LABELS.openButton)}
       </Button>
-      <p className="text-muted-foreground text-xs mt-1 text-center">{m(LABELS.openButtonDesc)}</p>
+      <p className="text-chrome-muted text-xs mt-1 text-center">{m(LABELS.openButtonDesc)}</p>
       <ControlsHelpDialog open={open} onOpenChange={setOpen} />
     </div>
   );

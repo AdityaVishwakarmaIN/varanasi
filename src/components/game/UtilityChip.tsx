@@ -9,14 +9,14 @@ import type { UtilitySupplyStats } from '@/types/game';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const STATUS_TEXT_CLASS: Record<SupplyStatus, string> = {
-  ok: 'text-emerald-300',
-  amber: 'text-amber-300',
-  red: 'text-red-400',
+  ok: 'text-emerald-700',
+  amber: 'text-amber-700',
+  red: 'text-red-700',
 };
 
 const KIND = {
-  power: { label: 'Power', icon: PowerIcon, iconClass: 'text-yellow-400', config: POWER_CONFIG, cutText: 'without power' },
-  water: { label: 'Water', icon: WaterIcon, iconClass: 'text-sky-400', config: WATER_CONFIG, cutText: 'with dry taps' },
+  power: { label: 'Power', icon: PowerIcon, iconClass: 'text-yellow-700', config: POWER_CONFIG, cutText: 'without power' },
+  water: { label: 'Water', icon: WaterIcon, iconClass: 'text-sky-700', config: WATER_CONFIG, cutText: 'with dry taps' },
 } as const;
 
 /** Supply as a percentage of demand, capped so a huge surplus stays readable. */
@@ -66,8 +66,8 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
         aria-pressed={active}
       >
         <span
-          className={`flex items-center gap-1 rounded-full pl-1 pr-1.5 py-0.5 ring-1 ${
-            active ? 'bg-marigold/25 ring-marigold/70' : 'bg-sandstone/10 ring-sandstone/20'
+          className={`flex items-center gap-1 rounded-sm pl-1 pr-1.5 py-0.5 ring-1 ${
+            active ? 'bg-chrome-accent/20 ring-chrome-accent' : 'bg-chrome-well ring-chrome-border'
           }`}
         >
           <Icon size={11} className={iconClass} />
@@ -84,7 +84,7 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
           type="button"
           onClick={onClick}
           className={`${HUD_CHIP_CLASS} press ${
-            active ? '!border-marigold/70 !bg-marigold/10 shadow-[0_0_16px_-4px_hsl(var(--marigold)/0.55)]' : 'hover:!border-gold/40'
+            active ? '!border-chrome-accent !bg-chrome-accent/10' : 'hover:!border-chrome-accent/60'
           }`}
           aria-label={ariaLabel}
           aria-pressed={active}
@@ -92,7 +92,7 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
           <HudIconBadge tint={kind}><Icon size={16} /></HudIconBadge>
           <span className="flex flex-col items-start leading-none">
             <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>{percent}%</span>
-            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{label}</span>
           </span>
         </button>
       </TooltipTrigger>
