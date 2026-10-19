@@ -232,12 +232,12 @@ export function SettingsPanel() {
         
         <div className="space-y-6">
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
             
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
                 <Label>{m(UI_LABELS.disasters)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.disastersDesc)}</p>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.disastersDesc)}</p>
               </div>
               <Switch
                 checked={disastersEnabled}
@@ -248,7 +248,7 @@ export function SettingsPanel() {
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
                 <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
               </div>
               <Switch
                 checked={pauseOnCrisis !== false}
@@ -259,7 +259,7 @@ export function SettingsPanel() {
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
                 <Label>{m(UI_LABELS.showProblemIcons)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
               </div>
               <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
             </div>
@@ -267,7 +267,7 @@ export function SettingsPanel() {
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
                 <Label>{m(UI_LABELS.resetTips)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
               </div>
               <Button
                 variant="outline"
@@ -284,7 +284,7 @@ export function SettingsPanel() {
             
             <div className="py-2">
               <Label>{m(UI_LABELS.spritePack)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
               <div className="grid grid-cols-1 gap-2">
                 {availableSpritePacks.map((pack) => (
                   <button
@@ -292,11 +292,11 @@ export function SettingsPanel() {
                     onClick={() => setSpritePack(pack.id)}
                     className={`flex items-center gap-3 p-2 rounded-md border transition-colors text-left ${
                       currentSpritePack.id === pack.id
-                        ? 'border-primary bg-primary/10 text-foreground'
-                        : 'border-border hover:border-muted-foreground/50 text-muted-foreground hover:text-foreground'
+                        ? 'border-chrome-accent bg-chrome-well text-chrome-text'
+                        : 'border-chrome-border hover:border-chrome-text text-chrome-muted hover:text-chrome-text'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded overflow-hidden bg-muted flex-shrink-0 relative">
+                    <div className="w-10 h-10 rounded overflow-hidden bg-chrome-well flex-shrink-0 relative">
                       <Image 
                         src={pack.src} 
                         alt={pack.name}
@@ -308,10 +308,10 @@ export function SettingsPanel() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">{pack.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{pack.src}</div>
+                      <div className="text-xs text-chrome-muted truncate">{pack.src}</div>
                     </div>
                     {currentSpritePack.id === pack.id && (
-                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                      <div className="w-2 h-2 rounded-full bg-chrome-accent flex-shrink-0" />
                     )}
                   </button>
                 ))}
@@ -320,7 +320,7 @@ export function SettingsPanel() {
 
             <div className="py-2">
               <Label>{m(UI_LABELS.language)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
               <LocaleSelector />
             </div>
 
@@ -333,19 +333,19 @@ export function SettingsPanel() {
           </div>
 
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-muted-foreground">
+              <div className="flex justify-between text-chrome-muted">
                 <span>{m(UI_LABELS.cityName)}</span>
-                <span className="text-foreground">{cityName}</span>
+                <span className="text-chrome-text">{cityName}</span>
               </div>
-              <div className="flex justify-between text-muted-foreground">
+              <div className="flex justify-between text-chrome-muted">
                 <span>{m(UI_LABELS.gridSize)}</span>
-                <span className="text-foreground">{gridSize} x {gridSize}</span>
+                <span className="text-chrome-text">{gridSize} x {gridSize}</span>
               </div>
-              <div className="flex justify-between text-muted-foreground">
+              <div className="flex justify-between text-chrome-muted">
                 <span>{m(UI_LABELS.autoSave)}</span>
-                <span className="text-green-400">{m(UI_LABELS.enabled)}</span>
+                <span className="text-green-700">{m(UI_LABELS.enabled)}</span>
               </div>
             </div>
             
@@ -360,7 +360,7 @@ export function SettingsPanel() {
                 >
                   {m(UI_LABELS.expandCity)}
                 </Button>
-                <p className="text-muted-foreground text-xs mt-1 text-center">
+                <p className="text-chrome-muted text-xs mt-1 text-center">
                   {m(UI_LABELS.expandCityDesc)}
                 </p>
               </div>
@@ -378,7 +378,7 @@ export function SettingsPanel() {
                 >
                   {m(UI_LABELS.shrinkCity)}
                 </Button>
-                <p className="text-muted-foreground text-xs mt-1 text-center">
+                <p className="text-chrome-muted text-xs mt-1 text-center">
                   {m(UI_LABELS.shrinkCityDesc)}
                 </p>
               </div>
@@ -389,8 +389,8 @@ export function SettingsPanel() {
           
           {/* Saved Cities Section */}
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
-            <p className="text-muted-foreground text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)}</p>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
+            <p className="text-chrome-muted text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)}</p>
             
             {/* Save Current City Button */}
             <Button
@@ -416,8 +416,8 @@ export function SettingsPanel() {
                     key={city.id}
                     className={`p-3 rounded-md border transition-colors ${
                       city.id === currentCityId
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-muted-foreground/50'
+                        ? 'border-chrome-accent bg-chrome-well'
+                        : 'border-chrome-border hover:border-chrome-text'
                     }`}
                   >
                     {cityToRename?.id === city.id ? (
@@ -459,7 +459,7 @@ export function SettingsPanel() {
                       </div>
                     ) : cityToDelete?.id === city.id ? (
                       <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground text-center">{m(UI_LABELS.deleteThisCity)}</p>
+                        <p className="text-xs text-chrome-muted text-center">{m(UI_LABELS.deleteThisCity)}</p>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
@@ -488,16 +488,16 @@ export function SettingsPanel() {
                           <div className="font-medium text-sm truncate flex-1">
                             {city.cityName}
                             {city.id === currentCityId && (
-                              <span className="ml-2 text-[10px] text-primary">{m(UI_LABELS.current)}</span>
+                              <span className="ml-2 text-[10px] text-chrome-text font-semibold">{m(UI_LABELS.current)}</span>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+                        <div className="flex items-center gap-3 text-xs text-chrome-muted mb-2">
                           <span>{m(UI_LABELS.pop)}: {formatPopulation(city.population)}</span>
                           <span>{formatINR(city.money)}</span>
                           <span>{city.gridSize}×{city.gridSize}</span>
                         </div>
-                        <div className="text-[10px] text-muted-foreground mb-2">
+                        <div className="text-[10px] text-chrome-muted mb-2">
                           {m(UI_LABELS.saved)} {formatDate(city.savedAt)}
                         </div>
                         <div className="flex gap-2">
@@ -540,7 +540,7 @@ export function SettingsPanel() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted-foreground text-xs text-center py-3 border border-dashed rounded-md">
+              <p className="text-chrome-muted text-xs text-center py-3 border border-dashed rounded-md">
                 {m(UI_LABELS.noSavedCities)}
               </p>
             )}
@@ -560,7 +560,7 @@ export function SettingsPanel() {
               >
                 {m(UI_LABELS.restore)} {savedCityInfo.cityName}
               </Button>
-              <p className="text-muted-foreground text-xs text-center">
+              <p className="text-chrome-muted text-xs text-center">
                 {m(UI_LABELS.citySavedBeforeViewing)}
               </p>
               <Separator />
@@ -577,7 +577,7 @@ export function SettingsPanel() {
             </Button>
           ) : (
             <div className="space-y-3">
-              <p className="text-muted-foreground text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
+              <p className="text-chrome-muted text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
               <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
               <Input
                 value={newCityName}
@@ -609,8 +609,8 @@ export function SettingsPanel() {
           <Separator />
           
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
-            <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.exportGameDesc)}</p>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
+            <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.exportGameDesc)}</p>
             <Button
               variant="outline"
               className="w-full"
@@ -621,10 +621,10 @@ export function SettingsPanel() {
           </div>
           
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
-            <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
+            <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
             <textarea
-              className="w-full h-20 bg-background border border-border rounded-md p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-20 bg-chrome-panel border border-chrome-border rounded-md p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder={String(m(UI_LABELS.pasteGameState))}
               value={importValue}
               onChange={(e) => {
@@ -634,10 +634,10 @@ export function SettingsPanel() {
               }}
             />
             {importError && (
-              <p className="text-red-400 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
+              <p className="text-red-700 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
             )}
             {importSuccess && (
-              <p className="text-green-400 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
+              <p className="text-green-700 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
             )}
             <Button
               variant="outline"
@@ -652,7 +652,7 @@ export function SettingsPanel() {
           <div>
             {/* S5-T12: developer tools only with ?dev=1 */}
             {devMode && (<>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
             <Button
               variant="outline"
               className="w-full"
@@ -660,7 +660,7 @@ export function SettingsPanel() {
             >
               {m(UI_LABELS.openSpriteTestView)}
             </Button>
-            <p className="text-muted-foreground text-xs mt-3 mb-1">{m(UI_LABELS.benchmarkDesc)}</p>
+            <p className="text-chrome-muted text-xs mt-3 mb-1">{m(UI_LABELS.benchmarkDesc)}</p>
             <Button variant="outline" className="w-full mt-1" onClick={() => { if (loadBenchmarkCity(120, loadState)) setActivePanel('none'); }}>
               {m(UI_LABELS.benchmarkMedium)}
             </Button>
@@ -701,18 +701,18 @@ export function SettingsPanel() {
               Load Example State 11
             </Button>
             </>)}
-            <div className={devMode ? 'mt-4 pt-4 border-t border-border' : ''}>
+            <div className={devMode ? 'mt-4 pt-4 border-t border-chrome-border' : ''}>
               <Label>{m(UI_LABELS.dayNightMode)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
-              <div className="flex rounded-md border border-border overflow-hidden">
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
+              <div className="flex rounded-md border border-chrome-border overflow-hidden">
                 {(['auto', 'day', 'night'] as DayNightMode[]).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setDayNightMode(mode)}
                     className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
                       dayNightMode === mode
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+                        ? 'bg-chrome-accent text-chrome-accentText'
+                        : 'bg-chrome-panel hover:bg-chrome-well text-chrome-muted hover:text-chrome-text'
                     }`}
                   >
                     {mode === 'auto' && m(UI_LABELS.auto)}

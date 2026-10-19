@@ -92,9 +92,9 @@ export function AdvisorAvatar({ advisor, size = 32 }: { advisor: AdvisorId; size
 }
 
 const PRIORITY_BORDER: Record<AdvisorNote['priority'], string> = {
-  critical: 'border-l-2 border-l-red-500',
-  high: 'border-l-2 border-l-amber-500',
-  medium: 'border-l-2 border-l-yellow-500',
+  critical: 'border-l-2 border-l-red-700',
+  high: 'border-l-2 border-l-amber-700',
+  medium: 'border-l-2 border-l-yellow-700',
   low: '',
 };
 
@@ -106,7 +106,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   const avgRating = (stats.happiness + stats.health + stats.education + stats.safety + stats.environment) / 5;
   const grade = avgRating >= 90 ? 'A+' : avgRating >= 80 ? 'A' : avgRating >= 70 ? 'B' : avgRating >= 60 ? 'C' : avgRating >= 50 ? 'D' : 'F';
-  const gradeColor = avgRating >= 70 ? 'text-green-400' : avgRating >= 50 ? 'text-amber-400' : 'text-red-400';
+  const gradeColor = avgRating >= 70 ? 'text-green-700' : avgRating >= 50 ? 'text-amber-700' : 'text-red-700';
   const quiet = ADVISOR_IDS.filter((id) => !notes.some((n) => n.advisor === id));
 
   const showMe = (note: AdvisorNote) => {
@@ -122,20 +122,20 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
         </DialogHeader>
 
         <div className="space-y-4 min-h-0">
-          <Card className="jaali-bg flex items-center gap-4 p-4 bg-transparent hud-well">
-            <div className={`w-16 h-16 flex items-center justify-center text-3xl font-black rounded-2xl ${gradeColor} font-display font-normal bg-gradient-to-b from-marigold/20 to-saffron/5 ring-1 ring-marigold/40`}>
+          <Card className=" flex items-center gap-4 p-4 bg-transparent hud-well">
+            <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-md ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}
             </div>
             <div>
-              <div className="text-foreground font-semibold">{m(UI_LABELS.overallCityRating)}</div>
-              <div className="text-muted-foreground text-sm">{m(UI_LABELS.ratingDescription)}</div>
+              <div className="text-chrome-text font-semibold">{m(UI_LABELS.overallCityRating)}</div>
+              <div className="text-chrome-muted text-sm">{m(UI_LABELS.ratingDescription)}</div>
             </div>
           </Card>
 
           <ScrollArea className="h-[min(420px,55vh)]">
             <div className="space-y-3 pr-2">
               {notes.length === 0 ? (
-                <Card className="text-center py-8 text-muted-foreground hud-well bg-transparent">
+                <Card className="text-center py-8 text-chrome-muted hud-well bg-transparent">
                   <AdvisorIcon size={32} className="mx-auto mb-3 opacity-50" />
                   <div className="text-sm">{m(UI_LABELS.noUrgentIssues)}</div>
                   <div className="text-xs mt-1">{m(UI_LABELS.cityRunningSmoothly)}</div>
@@ -148,7 +148,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                     <Card key={note.id} className={`p-3 hud-well bg-transparent ${PRIORITY_BORDER[note.priority]}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <AdvisorAvatar advisor={note.advisor} size={28} />
-                        <span className="text-foreground font-medium text-sm">{m(labels.title)}</span>
+                        <span className="text-chrome-text font-medium text-sm">{m(labels.title)}</span>
                         <Badge
                           variant={note.priority === 'critical' || note.priority === 'high' ? 'destructive' : 'secondary'}
                           className="ml-auto text-[10px]"
@@ -156,12 +156,12 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                           {m(PRIORITY_LABELS[note.priority])}
                         </Badge>
                       </div>
-                      <div className="text-foreground text-sm leading-snug">{note.problem}</div>
-                      <div className="text-muted-foreground text-xs leading-snug mt-0.5">
+                      <div className="text-chrome-text text-sm leading-snug">{note.problem}</div>
+                      <div className="text-chrome-muted text-xs leading-snug mt-0.5">
                         <span className="font-medium">{m(UI_LABELS.fix)}</span> {note.fix}
                       </div>
                       {canShow && onShowMe && (
-                        <Button variant="ghost" size="sm" className="mt-1 h-9 px-2 text-xs text-marigold hover:text-marigold" onClick={() => showMe(note)}>
+                        <Button variant="ghost" size="sm" className="mt-1 h-9 px-2 text-xs text-chrome-text hover:text-chrome-text" onClick={() => showMe(note)}>
                           <MapPin className="w-3.5 h-3.5 mr-1" />
                           {m(UI_LABELS.showMe)}
                         </Button>
@@ -171,7 +171,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                 })
               )}
               {notes.length > 0 && quiet.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-chrome-muted">
                   <span>{m(UI_LABELS.allClear)}:</span>
                   {quiet.map((id) => (
                     <span key={id} className="inline-flex items-center gap-1" title={m(ADVISOR_LABELS[id].covers)}>

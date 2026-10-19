@@ -60,10 +60,9 @@ import type { MapId } from '@/games/isocity/maps/varanasi';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 
 /** Shared look for a sidebar category row. */
-const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg';
-const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold';
-const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-xl overflow-hidden animate-submenu-in';
-const FLYOUT_SHADOW = '0 18px 44px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 hsl(40 90% 88% / 0.07)';
+const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md';
+const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text';
+const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-md overflow-hidden animate-submenu-in';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -206,11 +205,11 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={`${CATEGORY_ROW} group ${
-          hasSelectedTool ? 'hud-selected hover:text-primary-foreground' : isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'
-        } ${glow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
+          hasSelectedTool ? 'hud-selected hover:text-chrome-accentText' : isOpen ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'
+        } ${glow ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
-          {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-black/10 text-primary-foreground ring-black/10' : ''}`} aria-hidden>{icon}</span>}
+          {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-transparent border-transparent text-chrome-accentText' : ''}`} aria-hidden>{icon}</span>}
           <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
         </span>
         <svg 
@@ -245,7 +244,6 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: FLYOUT_SHADOW,
             zIndex: 9999,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
@@ -255,8 +253,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
-            <span className="ornament text-gold/80" aria-hidden />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
           <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(340px,60vh)] overflow-y-auto" role="menu">
@@ -278,18 +275,18 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   variant="ghost"
                   role="menuitem"
                   aria-current={isSelected || undefined}
-                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-lg ${
-                    isSelected ? 'hud-selected hover:text-primary-foreground' : 'hover:bg-sandstone/[0.07]'
+                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-md ${
+                    isSelected ? 'hud-selected hover:text-chrome-accentText' : 'hover:bg-chrome-well'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
                 >
-                  <ToolGlyph tool={tool} size={40} className={isSelected ? 'ring-black/20' : ''} />
+                  <ToolGlyph tool={tool} size={40} selected={isSelected} />
                   <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
                     <span className="w-full truncate text-left font-medium">
                       {status?.locked && <span aria-hidden className="mr-1 text-xs">🔒</span>}
                       {m(info.name)}
                     </span>
-                    <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : status?.locked || status?.built ? 'text-muted-foreground' : canAfford ? 'text-marigold/85' : 'text-red-400/90'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                    <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : status?.locked || status?.built ? 'text-chrome-muted' : canAfford ? 'text-chrome-text' : 'text-red-700'}`}>{statusNote ?? formatINR(info.cost)}</span>
                   </span>
                 </Button>
               );
@@ -407,7 +404,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
         variant="ghost"
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        className={`${CATEGORY_ROW} group ${isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'}`}
+        className={`${CATEGORY_ROW} group ${isOpen ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'}`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
           {icon && <span className={CATEGORY_ICON} aria-hidden>{icon}</span>}
@@ -443,7 +440,6 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: FLYOUT_SHADOW,
             zIndex: 9999,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
@@ -453,8 +449,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
-            <span className="ornament text-gold/80" aria-hidden />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
           <div className="p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
@@ -463,7 +458,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
                 key={action.key}
                 onClick={action.onClick}
                 variant="ghost"
-                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-lg hover:bg-sandstone/[0.07]"
+                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-md hover:bg-chrome-well"
                 title={action.description}
               >
                 <span className="flex-1 text-left truncate">{m(action.name as Parameters<typeof m>[0])}</span>
@@ -640,14 +635,12 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   
   return (
     <div
-      className="w-56 border-r border-gold/20 flex flex-col h-screen fixed left-0 top-0 z-40"
-      style={{ background: 'linear-gradient(180deg, hsl(233 40% 12%) 0%, hsl(234 42% 8%) 60%, hsl(236 44% 7%) 100%)', boxShadow: 'inset -1px 0 0 hsl(40 90% 88% / 0.04), 8px 0 24px -12px rgb(0 0 0 / 0.6)' }}
+      className="w-56 bg-chrome-panel border-r border-chrome-border flex flex-col h-screen fixed left-0 top-0 z-40"
     >
-      <div className="relative px-3 pt-3 pb-2.5 border-b border-gold/15 jaali-bg">
+      <div className="relative px-3 pt-3 pb-2.5 border-b border-chrome-border">
         <div className="flex items-center justify-between gap-1">
           <span className="flex items-center gap-1.5 pl-1 min-w-0">
-            <span className="ornament text-marigold animate-diya" aria-hidden />
-            <span className="font-display text-[22px] leading-none tracking-wide text-saffron-gradient">Varanasi</span>
+            <span className="font-sans font-semibold text-[22px] leading-none text-chrome-text">Varanasi</span>
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -656,7 +649,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               onClick={openCommandMenu}
               title="Search (⌘K)"
               aria-label="Search (⌘K)"
-              className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+              className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
             >
               <svg 
                 className="w-4 h-4" 
@@ -676,7 +669,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowShareModal(true)}
                 title="Invite Players"
                 aria-label="Invite Players"
-                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+                className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
                 <Users className="w-4 h-4" />
               </Button>
@@ -688,7 +681,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowExitDialog(true)}
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
-                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+                className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
                 <svg 
                   className="w-4 h-4 -scale-x-100" 
@@ -708,10 +701,6 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         {/* Direct categories (TOOLS, ZONES) */}
         {Object.entries(directCategories).map(([category, tools]) => (
           <div key={category} className="mb-1">
-            {/* Separator above ZONES */}
-            {category === 'ZONES' && (
-              <div className="ornament-divider mx-5 my-2" aria-hidden />
-            )}
             <div className="px-4 pt-2 pb-1.5 hud-label">
               {m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}
             </div>
@@ -729,15 +718,15 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     disabled={!canAfford && info.cost > 0}
                     variant="ghost"
                     aria-pressed={isSelected}
-                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg ${
-                      isSelected ? 'hud-selected hover:text-primary-foreground' : 'text-sidebar-foreground/90 hover:bg-sandstone/[0.07]'
+                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md ${
+                      isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
                   >
-                    <ToolGlyph tool={tool} size={28} className={isSelected ? 'bg-black/10 text-primary-foreground ring-black/10' : 'text-gold'} />
+                    <ToolGlyph tool={tool} size={28} selected={isSelected} />
                     <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>
                     {info.cost > 0 && (
-                      <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{formatINR(info.cost)}</span>
+                      <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{formatINR(info.cost)}</span>
                     )}
                   </Button>
                 );
@@ -768,9 +757,6 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
           </div>
         ))}
         
-        {/* Separator */}
-        <div className="ornament-divider mx-5 my-2" aria-hidden />
-        
         {/* Buildings header */}
         <div className="px-4 pt-2 pb-1.5 hud-label">
           BUILDINGS
@@ -797,8 +783,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         </div>
       </ScrollArea>
       
-      <div className="border-t border-gold/15 p-2 gold-hairline">
-        <div className="grid grid-cols-4 gap-1 hud-well rounded-xl p-1">
+      <div className="border-t border-chrome-border p-2">
+        <div className="grid grid-cols-4 gap-1 hud-well rounded-md p-1">
           {[
             { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
             { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
@@ -812,13 +798,13 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               size="icon-sm"
               aria-pressed={activePanel === panel}
               aria-label={String(m(UI_LABELS[labelKey]))}
-              className={`press w-full h-11 relative rounded-lg ${activePanel === panel ? 'hud-selected hover:text-primary-foreground' : 'text-sandstone/75 hover:text-marigold hover:bg-sandstone/[0.07]'}`}
+              className={`press w-full h-11 relative rounded-md ${activePanel === panel ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'}`}
               title={String(m(UI_LABELS[labelKey]))}
             >
               {icon}
               {panel === 'advisors' && urgentAdvisorCount > 0 && (
                 <span
-                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full ring-2 ring-[hsl(234_42%_8%)] bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
+                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-sm bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
                   aria-label={`${urgentAdvisorCount}`}
                 >
                   {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}
