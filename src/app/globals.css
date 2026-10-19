@@ -16,23 +16,23 @@
        Night-Ganga indigo base, sandstone text, saffron + marigold accents,
        turquoise for water, thin gold hairlines. */
     --background: 233 42% 8%;
-    --foreground: 38 48% 91%;
+    --foreground: 25 35% 14%;
 
-    --card: 233 36% 12%;
-    --card-foreground: 38 48% 91%;
+    --card: 36 38% 86%;
+    --card-foreground: 25 35% 14%;
 
-    --popover: 233 38% 11%;
-    --popover-foreground: 38 48% 91%;
+    --popover: 36 42% 90%;
+    --popover-foreground: 25 35% 14%;
 
     /* Saffron primary */
     --primary: 29 96% 56%;
     --primary-foreground: 233 45% 9%;
 
-    --secondary: 233 28% 17%;
-    --secondary-foreground: 38 48% 91%;
+    --secondary: 34 30% 78%;
+    --secondary-foreground: 25 35% 14%;
 
-    --muted: 233 26% 16%;
-    --muted-foreground: 34 20% 68%;
+    --muted: 34 30% 80%;
+    --muted-foreground: 25 18% 36%;
 
     /* Turquoise (Ganga) accent */
     --accent: 178 62% 40%;
@@ -41,13 +41,13 @@
     --destructive: 2 76% 56%;
     --destructive-foreground: 38 48% 96%;
 
-    --border: 233 22% 22%;
-    --input: 233 26% 19%;
+    --border: 30 22% 62%;
+    --input: 30 22% 62%;
     --ring: 42 96% 58%;
 
-    --sidebar: 234 42% 9%;
-    --sidebar-foreground: 38 48% 91%;
-    --sidebar-border: 38 40% 32%;
+    --sidebar: 36 38% 86%;
+    --sidebar-foreground: 25 35% 14%;
+    --sidebar-border: 30 22% 60%;
 
     /* Named accents (tailwind: saffron, marigold, ganga, gold, sandstone) */
     --saffron: 27 96% 56%;
@@ -327,18 +327,39 @@
   background: linear-gradient(135deg, hsl(var(--saffron)) 0%, hsl(var(--marigold)) 100%);
 }
 
+
+/* Dark (legacy) palette for the title screen and other full-screen dark surfaces. */
+.theme-dark {
+  --foreground: 38 48% 91%;
+  --card: 233 36% 12%;
+  --card-foreground: 38 48% 91%;
+  --popover: 233 38% 11%;
+  --popover-foreground: 38 48% 91%;
+  --secondary: 233 28% 17%;
+  --secondary-foreground: 38 48% 91%;
+  --muted: 233 26% 16%;
+  --muted-foreground: 34 20% 68%;
+  --border: 233 22% 22%;
+  --input: 233 26% 19%;
+  --sidebar: 234 42% 9%;
+  --sidebar-foreground: 38 48% 91%;
+  --sidebar-border: 38 40% 32%;
+  color: hsl(var(--foreground));
+}
+
 /* Input styling */
 input[type="text"],
 input[type="number"] {
-  background: hsl(234 40% 8%);
-  border: 1px solid hsl(var(--gold) / 0.22);
+  background: hsl(36 45% 94%);
+  color: hsl(var(--chrome-text));
+  border: 1px solid hsl(var(--chrome-border));
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 input[type="text"]:focus,
 input[type="number"]:focus {
-  border-color: hsl(var(--marigold));
-  box-shadow: 0 0 0 3px hsl(var(--marigold) / 0.2);
+  border-color: hsl(var(--chrome-accent));
+  box-shadow: 0 0 0 3px hsl(var(--chrome-accent) / 0.2);
   outline: none;
 }
 

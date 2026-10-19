@@ -373,7 +373,7 @@ export default function HomePage() {
 
   if (isChecking) {
     return (
-      <main className="min-h-screen bg-background title-jaali flex items-center justify-center">
+      <main className="theme-dark min-h-screen bg-background title-jaali flex items-center justify-center">
         <div className="flex items-center gap-2 text-sandstone/70">
           <span className="title-lotus text-marigold animate-diya" aria-hidden />
           <T>Loading...</T>
@@ -532,7 +532,7 @@ export default function HomePage() {
   if (isMobile) {
     return (
       <MultiplayerContextProvider>
-        <main className="relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
+        <main className="theme-dark relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
           <TitleBackdrop compact />
           <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto">
             <div className="flex-shrink-0 h-2 sm:h-6" />
@@ -556,7 +556,7 @@ export default function HomePage() {
   // Desktop landing page
   return (
     <MultiplayerContextProvider>
-      <main className="relative min-h-screen bg-background overflow-hidden">
+      <main className="theme-dark relative min-h-screen bg-background overflow-hidden">
         <TitleBackdrop />
         <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-[calc(21vh+9rem)]">
           <TitleMark />
