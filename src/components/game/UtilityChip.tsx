@@ -9,14 +9,14 @@ import type { UtilitySupplyStats } from '@/types/game';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const STATUS_TEXT_CLASS: Record<SupplyStatus, string> = {
-  ok: 'text-emerald-700',
-  amber: 'text-amber-700',
-  red: 'text-red-700',
+  ok: 'text-emerald-800',
+  amber: 'text-amber-800',
+  red: 'text-red-800',
 };
 
 const KIND = {
-  power: { label: 'Power', icon: PowerIcon, iconClass: 'text-yellow-700', config: POWER_CONFIG, cutText: 'without power' },
-  water: { label: 'Water', icon: WaterIcon, iconClass: 'text-sky-700', config: WATER_CONFIG, cutText: 'with dry taps' },
+  power: { label: 'Power', icon: PowerIcon, iconClass: 'text-yellow-800', config: POWER_CONFIG, cutText: 'without power' },
+  water: { label: 'Water', icon: WaterIcon, iconClass: 'text-sky-800', config: WATER_CONFIG, cutText: 'with dry taps' },
 } as const;
 
 /** Supply as a percentage of demand, capped so a huge surplus stays readable. */

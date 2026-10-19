@@ -50,7 +50,7 @@ export function BudgetPanel() {
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.income)}</div>
-              <div className="text-green-700 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.income)}/mo</div>
+              <div className="text-green-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINR(stats.income)}/mo</div>
               <div className="mt-1 space-y-0.5 text-xs">
                 <div className="flex justify-between gap-2">
                   <span className="text-chrome-muted">{m(UI_LABELS.taxes)}</span>
@@ -59,18 +59,18 @@ export function BudgetPanel() {
                 {showTourism && (
                   <div className="flex justify-between gap-2" title={`${tourismShare}% of income`}>
                     <span className="text-chrome-muted">{m(UI_LABELS.tourism)}</span>
-                    <span className="font-mono text-cyan-700">{formatINR(tourismIncome)}</span>
+                    <span className="font-mono text-cyan-800">{formatINR(tourismIncome)}</span>
                   </div>
                 )}
               </div>
             </div>
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.expenses)}</div>
-              <div className="text-red-700 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.expenses)}/mo</div>
+              <div className="text-red-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINR(stats.expenses)}/mo</div>
             </div>
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.net)}</div>
-              <div className={`font-mono font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              <div className={`font-mono font-semibold text-xs sm:text-base leading-tight break-words ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
                 {formatINR(stats.income - stats.expenses)}/mo
               </div>
             </div>

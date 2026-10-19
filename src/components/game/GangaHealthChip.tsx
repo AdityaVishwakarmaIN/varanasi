@@ -8,9 +8,9 @@ import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const LEVEL_TEXT_CLASS = {
-  good: 'text-emerald-700',
-  fair: 'text-amber-700',
-  poor: 'text-red-700',
+  good: 'text-emerald-800',
+  fair: 'text-amber-800',
+  poor: 'text-red-800',
 } as const;
 
 const TREND_LABEL = { up: 'improving', down: 'getting worse', flat: 'steady' } as const;

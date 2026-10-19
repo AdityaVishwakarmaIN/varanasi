@@ -106,7 +106,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   const avgRating = (stats.happiness + stats.health + stats.education + stats.safety + stats.environment) / 5;
   const grade = avgRating >= 90 ? 'A+' : avgRating >= 80 ? 'A' : avgRating >= 70 ? 'B' : avgRating >= 60 ? 'C' : avgRating >= 50 ? 'D' : 'F';
-  const gradeColor = avgRating >= 70 ? 'text-green-700' : avgRating >= 50 ? 'text-amber-700' : 'text-red-700';
+  const gradeColor = avgRating >= 70 ? 'text-green-800' : avgRating >= 50 ? 'text-amber-800' : 'text-red-800';
   const quiet = ADVISOR_IDS.filter((id) => !notes.some((n) => n.advisor === id));
 
   const showMe = (note: AdvisorNote) => {

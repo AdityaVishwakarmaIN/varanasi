@@ -41,6 +41,14 @@ export interface CalendarEvent {
   title: string;
 }
 
+/** Label text colours with 4.5:1+ contrast on the sandstone chrome (SEASON_COLORS are swatch fills). */
+const SEASON_TEXT_CLASS: Record<Season, string> = {
+  summer: 'text-orange-800',
+  monsoon: 'text-slate-700',
+  postMonsoon: 'text-yellow-800',
+  winter: 'text-sky-800',
+};
+
 /** "Jul 2026 · Monsoon": the date with its season, for both top bars. */
 export function SeasonDateLabel({ month, year }: { month: number; year: number }) {
   const m = useMessages();
@@ -49,7 +57,7 @@ export function SeasonDateLabel({ month, year }: { month: number; year: number }
     <span className="inline-flex items-center gap-1">
       <span>{MONTH_ABBR[month - 1]} {year}</span>
       <span aria-hidden>·</span>
-      <span style={{ color: SEASON_COLORS[season] }}>{m(SEASON_NAMES[season])}</span>
+      <span className={SEASON_TEXT_CLASS[season]}>{m(SEASON_NAMES[season])}</span>
     </span>
   );
 }

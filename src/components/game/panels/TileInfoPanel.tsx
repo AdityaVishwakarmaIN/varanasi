@@ -118,7 +118,7 @@ export function TileInfoPanel({
   
   return (
     <Card 
-      className={`${isMobile ? 'fixed left-0 right-0 w-full rounded-none border-x-0 border-t border-b z-30' : 'absolute top-4 right-4 w-72 z-50'}`} 
+      className={`${isMobile ? 'fixed left-0 right-0 w-full rounded-none border-x-0 border-t border-b z-30' : 'absolute top-4 right-4 w-72 z-50 max-h-[calc(100%-15rem)] overflow-y-auto'}`} 
       style={isMobile ? { top: 'calc(72px + env(safe-area-inset-top, 0px))' } : undefined}
       onClick={handleCardClick}
     >
@@ -143,9 +143,9 @@ export function TileInfoPanel({
             tile.zone === 'commercial' ? 'secondary' :
             tile.zone === 'industrial' ? 'outline' : 'secondary'
           } className={
-            tile.zone === 'residential' ? 'bg-green-500/20 text-green-700' :
-            tile.zone === 'commercial' ? 'bg-blue-500/20 text-blue-700' :
-            tile.zone === 'industrial' ? 'bg-amber-500/20 text-amber-700' : ''
+            tile.zone === 'residential' ? 'bg-green-500/20 text-green-800' :
+            tile.zone === 'commercial' ? 'bg-blue-500/20 text-blue-800' :
+            tile.zone === 'industrial' ? 'bg-amber-500/20 text-amber-800' : ''
           }>
             {tile.zone === 'none' ? 'Unzoned' : tile.zone}
           </Badge>
@@ -181,7 +181,7 @@ export function TileInfoPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-chrome-muted">Water</span>
-          <Badge variant={tile.building.watered ? 'default' : 'destructive'} className={tile.building.watered ? 'bg-cyan-500/20 text-cyan-700' : ''}>
+          <Badge variant={tile.building.watered ? 'default' : 'destructive'} className={tile.building.watered ? 'bg-cyan-500/20 text-cyan-800' : ''}>
             {tile.building.watered ? 'Connected' : 'No Water'}
           </Badge>
         </div>
@@ -191,14 +191,14 @@ export function TileInfoPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-chrome-muted">Pollution</span>
-          <span className={tile.pollution > 50 ? 'text-red-700' : tile.pollution > 25 ? 'text-amber-700' : 'text-green-700'}>
+          <span className={tile.pollution > 50 ? 'text-red-800' : tile.pollution > 25 ? 'text-amber-800' : 'text-green-800'}>
             {Math.round(tile.pollution)}%
           </span>
         </div>
         {state.mapId === 'varanasi' && tile.building.type !== 'water' && (
           <div className="flex justify-between gap-2">
             <span className="text-chrome-muted">Floods in</span>
-            <span className={isFlooded ? 'text-red-700' : floodsIn.length > 0 ? 'text-amber-700' : 'text-green-700'}>
+            <span className={isFlooded ? 'text-red-800' : floodsIn.length > 0 ? 'text-amber-800' : 'text-green-800'}>
               {isFlooded ? 'Under water now' : floodsIn.length > 0 ? `${floodsIn.join(' / ')} monsoons` : 'Never'}
             </span>
           </div>
@@ -210,7 +210,7 @@ export function TileInfoPanel({
               {gangaEffectLines.map(line => (
                 <span
                   key={line.text}
-                  className={line.tone === 'hurts' ? 'text-red-700' : line.tone === 'cleans' ? 'text-green-700' : 'text-chrome-muted'}
+                  className={line.tone === 'hurts' ? 'text-red-800' : line.tone === 'cleans' ? 'text-green-800' : 'text-chrome-muted'}
                 >
                   {line.text}
                 </span>
@@ -221,7 +221,7 @@ export function TileInfoPanel({
         
         {isInformal && (
           <div className="flex flex-col gap-1 rounded-md bg-amber-500/10 p-2 text-xs">
-            <span className="text-amber-700">{INFORMAL_CONFIG.tileInfoHint}</span>
+            <span className="text-amber-800">{INFORMAL_CONFIG.tileInfoHint}</span>
             <span className="text-chrome-muted">
               {formaliseDays > 0
                 ? `Proper homes in ${INFORMAL_CONFIG.formaliseDays - formaliseDays} days (${formaliseDays}/${INFORMAL_CONFIG.formaliseDays})`
@@ -233,7 +233,7 @@ export function TileInfoPanel({
         {tile.building.onFire && (
           <>
             <Separator />
-            <div className="flex justify-between text-red-700">
+            <div className="flex justify-between text-red-800">
               <span>ON FIRE!</span>
               <span>{Math.round(tile.building.fireProgress)}% damage</span>
             </div>
@@ -275,7 +275,7 @@ export function TileInfoPanel({
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-chrome-muted">Upgrade Cost</span>
-                <span className={`font-mono ${upgradeInfo.canAfford ? 'text-chrome-text' : 'text-red-700'}`}>
+                <span className={`font-mono ${upgradeInfo.canAfford ? 'text-chrome-text' : 'text-red-800'}`}>
                   {formatINR(upgradeInfo.cost)}
                 </span>
               </div>

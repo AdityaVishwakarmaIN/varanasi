@@ -188,7 +188,7 @@ export function MobileTopBar({
           >
             <div className="flex min-w-0 shrink flex-col items-start overflow-hidden">
               <div className="flex min-w-0 max-w-full items-center gap-1">
-                <span className="font-sans font-semibold text-[15px] leading-none text-chrome-text min-w-0 truncate max-w-[88px] pt-0.5">
+                <span className="font-sans font-semibold text-[15px] leading-none text-chrome-text min-w-0 truncate pt-0.5">
                   {cityName}
                 </span>
               </div>
@@ -325,7 +325,7 @@ export function MobileTopBar({
           </button>
 
           <div className="flex items-center gap-1">
-            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
               {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
             </span>
           </div>
@@ -382,10 +382,10 @@ export function MobileTopBar({
             )}
             
             {/* Utilities */}
-            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-amber-700' : 'text-chrome-muted'}`}>
+            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-amber-800' : 'text-chrome-muted'}`}>
               {selectedTile.building.powered ? m(UI_LABELS.hasPower) : m(UI_LABELS.noPower)}
             </span>
-            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-700' : 'text-chrome-muted'}`}>
+            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-800' : 'text-chrome-muted'}`}>
               {selectedTile.building.watered ? m(UI_LABELS.hasWater) : m(UI_LABELS.noWater)}
             </span>
             
@@ -403,8 +403,8 @@ export function MobileTopBar({
                   selectedTile.pollution > 25 ? 'bg-amber-500' : 'bg-green-500'
                 }`} />
                 <span className={`font-mono ${
-                  selectedTile.pollution > 50 ? 'text-red-700' : 
-                  selectedTile.pollution > 25 ? 'text-amber-700' : 'text-green-700'
+                  selectedTile.pollution > 50 ? 'text-red-800' : 
+                  selectedTile.pollution > 25 ? 'text-amber-800' : 'text-green-800'
                 }`}>{Math.round(selectedTile.pollution)}%</span>
               </div>
             )}
@@ -430,7 +430,7 @@ export function MobileTopBar({
               {gangaEffectLines.map((line, i) => (
                 <span
                   key={line.text}
-                  className={line.tone === 'hurts' ? 'text-red-700' : line.tone === 'cleans' ? 'text-green-700' : 'text-chrome-muted'}
+                  className={line.tone === 'hurts' ? 'text-red-800' : line.tone === 'cleans' ? 'text-green-800' : 'text-chrome-muted'}
                 >
                   {i > 0 ? ' · ' : ''}{line.text}
                 </span>
@@ -461,31 +461,31 @@ export function MobileTopBar({
                 icon={<HappyIcon size={16} />}
                 label={String(m(UI_LABELS.happiness))}
                 value={stats.happiness}
-                color={stats.happiness >= 70 ? 'text-green-700' : stats.happiness >= 40 ? 'text-amber-700' : 'text-red-700'}
+                color={stats.happiness >= 70 ? 'text-green-800' : stats.happiness >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<HealthIcon size={16} />}
                 label={String(m(UI_LABELS.health))}
                 value={stats.health}
-                color={stats.health >= 70 ? 'text-green-700' : stats.health >= 40 ? 'text-amber-700' : 'text-red-700'}
+                color={stats.health >= 70 ? 'text-green-800' : stats.health >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<EducationIcon size={16} />}
                 label={String(m(UI_LABELS.education))}
                 value={stats.education}
-                color={stats.education >= 70 ? 'text-green-700' : stats.education >= 40 ? 'text-amber-700' : 'text-red-700'}
+                color={stats.education >= 70 ? 'text-green-800' : stats.education >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<SafetyIcon size={16} />}
                 label={String(m(UI_LABELS.safety))}
                 value={stats.safety}
-                color={stats.safety >= 70 ? 'text-green-700' : stats.safety >= 40 ? 'text-amber-700' : 'text-red-700'}
+                color={stats.safety >= 70 ? 'text-green-800' : stats.safety >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<EnvironmentIcon size={16} />}
                 label={String(m(UI_LABELS.environment))}
                 value={stats.environment}
-                color={stats.environment >= 70 ? 'text-green-700' : stats.environment >= 40 ? 'text-amber-700' : 'text-red-700'}
+                color={stats.environment >= 70 ? 'text-green-800' : stats.environment >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
             </div>
 

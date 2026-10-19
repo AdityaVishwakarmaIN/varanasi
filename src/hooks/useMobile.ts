@@ -8,6 +8,8 @@ interface UseMobileReturn {
   isTabletDevice: boolean;
   isMobileOnly: boolean;
   isSmallScreen: boolean;
+  /** Phone/tablet-sized viewport: narrower than 1024px, or a short touch landscape screen. */
+  isCompactScreen: boolean;
   isTouchDevice: boolean;
   screenWidth: number;
   screenHeight: number;
@@ -52,11 +54,15 @@ export function useMobile(): UseMobileReturn {
     };
   }, []);
 
+  const isCompactScreen =
+    screenWidth > 0 && (screenWidth < 1024 || (screenHeight < 600 && isTouchDevice));
+
   return {
     isMobileDevice: isMobile || isSmallScreen,
     isTabletDevice: isTablet,
     isMobileOnly: isMobileOnly,
     isSmallScreen,
+    isCompactScreen,
     isTouchDevice,
     screenWidth,
     screenHeight,

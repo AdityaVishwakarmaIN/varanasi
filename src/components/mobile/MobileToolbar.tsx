@@ -326,7 +326,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       {/* Bottom Toolbar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom safe-area-left safe-area-right">
         {/* S1-T11: Draw mode toggle, only for tools that are drawn by dragging (road, rail, zones) */}
-        {onDrawModeChange && isDrawModeTool(selectedTool) && (
+        {onDrawModeChange && isDrawModeTool(selectedTool) && !showMenu && expandedCategory === null && (
           <Button
             data-testid="draw-mode-toggle"
             variant="ghost"

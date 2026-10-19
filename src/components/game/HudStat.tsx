@@ -6,13 +6,13 @@ import { cn } from '@/lib/utils';
 /** Tints for the round icon badge of a HUD stat. */
 export const HUD_TINTS = {
   saffron: 'bg-chrome-panel border border-chrome-border text-chrome-text',
-  marigold: 'bg-chrome-panel border border-chrome-border text-amber-700',
-  ganga: 'bg-chrome-panel border border-chrome-border text-cyan-700',
+  marigold: 'bg-chrome-panel border border-chrome-border text-amber-800',
+  ganga: 'bg-chrome-panel border border-chrome-border text-cyan-800',
   sandstone: 'bg-chrome-panel border border-chrome-border text-chrome-text',
-  power: 'bg-chrome-panel border border-chrome-border text-amber-700',
-  water: 'bg-chrome-panel border border-chrome-border text-blue-700',
-  good: 'bg-chrome-panel border border-chrome-border text-green-700',
-  bad: 'bg-chrome-panel border border-chrome-border text-red-700',
+  power: 'bg-chrome-panel border border-chrome-border text-amber-800',
+  water: 'bg-chrome-panel border border-chrome-border text-blue-800',
+  good: 'bg-chrome-panel border border-chrome-border text-green-800',
+  bad: 'bg-chrome-panel border border-chrome-border text-red-800',
 } as const;
 
 export type HudTint = keyof typeof HUD_TINTS;
@@ -20,9 +20,9 @@ export type HudTint = keyof typeof HUD_TINTS;
 /** Value colours with enough contrast on the beige HUD. */
 export const HUD_VALUE_TONE = {
   default: 'text-chrome-text',
-  success: 'text-green-700',
-  warning: 'text-amber-700',
-  destructive: 'text-red-700',
+  success: 'text-green-800',
+  warning: 'text-amber-800',
+  destructive: 'text-red-800',
 } as const;
 
 /** Shared chip frame for desktop HUD stats and the clickable Ganga / utility chips. */

@@ -6,7 +6,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/context/GameContext';
-import { Tool } from '@/types/game';
+import { Tool, TOOL_INFO } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
 import { MobileToolbar } from '@/components/mobile/MobileToolbar';
 import { MobileTopBar } from '@/components/mobile/MobileTopBar';
@@ -123,8 +123,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const minimapViewportRef = useRef<ViewportState | null>(null);
   const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
   const isInitialMount = useRef(true);
-  const { isMobileDevice, isSmallScreen } = useMobile();
-  const isMobile = isMobileDevice || isSmallScreen;
+  const { isMobileDevice, isSmallScreen, isCompactScreen } = useMobile();
+  const isMobile = isMobileDevice || isSmallScreen || isCompactScreen;
   const [showShareModal, setShowShareModal] = useState(false);
   const skipInitialUiPrefsSave = useRef(true);
   const multiplayer = useMultiplayerOptional();
@@ -351,6 +351,9 @@ export default function Game({ onExit }: { onExit?: () => void }) {
 
   // Mobile layout
   if (isMobile) {
+    // Strips that grow the fixed bars: the tool-name strip above the toolbar, the tile-info strip under the top bar.
+    const toolStripOpen = !!TOOL_INFO[state.selectedTool];
+    const tileStripOpen = !!selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool);
     return (
       <TooltipProvider>
         <div className="w-full h-full overflow-hidden bg-background flex flex-col">
@@ -391,7 +394,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               touchDrawMode={touchDrawMode}
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
-            <div className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none">
+            <div className={`absolute ${tileStripOpen ? 'top-[calc(112px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none`}>
               <TipToast
                 message={currentTip || ''}
                 isVisible={isTipVisible}
@@ -404,13 +407,13 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 onLocate={locateNotification}
               />
             </div>
-            <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
+            <FailureOverlays bannerClassName={`absolute ${toolStripOpen ? 'bottom-[168px]' : 'bottom-[132px]'} left-3 right-3 z-30`} />
+            <FestivalEventBanner state={state} onOpen={setEventPanel} className={`absolute ${toolStripOpen ? 'bottom-[220px]' : 'bottom-[184px]'} left-3 z-20`} />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed
               compact
               onLocate={locateTile}
-              className="absolute bottom-[84px] left-3 z-20 w-[min(18rem,calc(100%-1.5rem))]"
+              className={`absolute ${toolStripOpen ? 'bottom-[120px]' : 'bottom-[84px]'} left-3 z-20 w-[min(18rem,calc(100%-1.5rem))]`}
             />
             
             {/* Multiplayer Players Indicator - Mobile */}
@@ -476,7 +479,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   // Desktop layout
   return (
     <TooltipProvider>
-      <div className="w-full h-full min-h-[720px] overflow-hidden bg-background flex">
+      <div className="w-full h-full min-h-[560px] overflow-hidden bg-background flex">
         <Sidebar onExit={onExit} />
         
         <div className="flex-1 flex flex-col ml-56">
