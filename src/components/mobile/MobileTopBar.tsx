@@ -80,19 +80,19 @@ function TimeOfDayIcon({ hour }: { hour: number }) {
 
   if (isNight) {
     return (
-      <svg className="w-3 h-3 text-blue-300" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-3 h-3 text-blue-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
       </svg>
     );
   } else if (isDawn || isDusk) {
     return (
-      <svg className="w-3 h-3 text-orange-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-3 h-3 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0z" />
       </svg>
     );
   } else {
     return (
-      <svg className="w-3 h-3 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-3 h-3 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0z" />
       </svg>
     );
@@ -106,7 +106,7 @@ function DemandBar({ label, demand, color }: { label: string; demand: number; co
   return (
     <div className="flex items-center gap-1">
       <span className={`text-[9px] font-bold ${color} w-2`}>{label}</span>
-      <div className="w-8 h-1.5 bg-secondary rounded-full overflow-hidden">
+      <div className="w-8 h-1.5 bg-chrome-border rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${isPositive ? color.replace('text-', 'bg-') : 'bg-red-500'}`}
           style={{ width: `${percentage}%` }}
@@ -179,7 +179,7 @@ export function MobileTopBar({
   return (
     <>
       {/* Main Top Bar */}
-      <Card className="hud-panel fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-2xl border-x-0 border-t-0 border-gold/25 safe-area-top safe-area-left safe-area-right">
+      <Card className="hud-panel fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-md border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
         <div className="flex items-center justify-between px-3 py-0">
           {/* Left: City name, date, Pop/Funds stats */}
           <button
@@ -188,28 +188,27 @@ export function MobileTopBar({
           >
             <div className="flex min-w-0 shrink flex-col items-start overflow-hidden">
               <div className="flex min-w-0 max-w-full items-center gap-1">
-                <span className="ornament text-marigold !w-2.5 !h-2.5" aria-hidden />
-                <span className="font-display text-[15px] leading-none text-saffron-gradient min-w-0 truncate max-w-[88px] pt-0.5">
+                <span className="font-sans font-semibold text-[15px] leading-none text-chrome-text min-w-0 truncate max-w-[88px] pt-0.5">
                   {cityName}
                 </span>
               </div>
-              <span className="block max-w-full truncate whitespace-nowrap text-sandstone/70 text-[10px] font-mono">
+              <span className="block max-w-full truncate whitespace-nowrap text-chrome-muted text-[10px] font-mono">
                 <SeasonDateLabel month={month} year={year} />
                 <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
                 <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="ml-1" />
               </span>
             </div>
-            <div className="flex shrink-0 flex-col items-start border-l border-gold/15 pl-2">
-              <span className="whitespace-nowrap text-[13px] font-mono font-semibold text-foreground">
+            <div className="flex shrink-0 flex-col items-start border-l border-chrome-border pl-2">
+              <span className="whitespace-nowrap text-[13px] font-mono font-semibold text-chrome-text">
                 {formatPopulation(stats.population)}
               </span>
-              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-gold/80">{m(UI_LABELS.pop)}</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.pop)}</span>
             </div>
-            <div className="flex shrink-0 flex-col items-start border-l border-gold/15 pl-2">
-              <span className={`whitespace-nowrap text-[13px] font-mono font-semibold ${stats.money < 0 ? 'text-red-400' : stats.money < 1000 ? 'text-amber-300' : 'text-marigold'}`}>
+            <div className="flex shrink-0 flex-col items-start border-l border-chrome-border pl-2">
+              <span className={`whitespace-nowrap text-[13px] font-mono font-semibold ${stats.money < 0 ? 'text-red-700' : stats.money < 1000 ? 'text-amber-700' : 'text-chrome-text'}`}>
                 {formatINR(stats.money)}
               </span>
-              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-gold/80">{m(UI_LABELS.funds)}</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.funds)}</span>
             </div>
           </button>
 
@@ -222,8 +221,8 @@ export function MobileTopBar({
               title={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
               aria-label={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
             >
-              <span className={`h-8 w-8 flex items-center justify-center rounded-lg transition-transform active:scale-95 ${
-                speed === 0 ? 'hud-selected' : 'hud-well text-sandstone/80'
+              <span className={`h-8 w-8 flex items-center justify-center rounded-md transition-transform active:scale-95 ${
+                speed === 0 ? 'hud-selected' : 'hud-well text-chrome-muted'
               }`}>
                 {speed === 0 ? <PlayIcon size={12} /> : <PauseIcon size={12} />}
               </span>
@@ -234,8 +233,8 @@ export function MobileTopBar({
               title={m(UI_LABELS.speed)}
               aria-label={m(UI_LABELS.speed)}
             >
-              <span className={`h-8 w-9 flex items-center justify-center rounded-lg transition-transform active:scale-95 ${
-                speed !== 0 ? 'hud-selected' : 'hud-well text-sandstone/80'
+              <span className={`h-8 w-9 flex items-center justify-center rounded-md transition-transform active:scale-95 ${
+                speed !== 0 ? 'hud-selected' : 'hud-well text-chrome-muted'
               }`}>
                 <span className={`flex items-center ${shownSpeed === 3 ? '-space-x-[7px]' : '-space-x-[5px]'}`}>
                   {Array.from({ length: shownSpeed }, (_, i) => <PlayIcon key={i} size={12} />)}
@@ -249,7 +248,7 @@ export function MobileTopBar({
             {onShare && (
               <button
                 onClick={onShare}
-                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-chrome-muted hover:text-chrome-text"
                 title="Invite Players"
                 aria-label="Invite Players"
               >
@@ -260,7 +259,7 @@ export function MobileTopBar({
             {onExit && (
               <button
                 onClick={() => setShowExitDialog(true)}
-                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-chrome-muted hover:text-chrome-text"
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
               >
@@ -279,7 +278,7 @@ export function MobileTopBar({
         </div>
 
         {/* Demand indicators row */}
-        <div className="flex items-center justify-between px-3 py-1 border-t border-gold/10 bg-black/15">
+        <div className="flex items-center justify-between px-3 py-1 border-t border-chrome-border bg-chrome-well">
           <div className="flex items-center gap-3">
             <DemandBar label="R" demand={stats.demand.residential} color="text-green-500" />
             <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-500" />
@@ -321,12 +320,12 @@ export function MobileTopBar({
               }
             }}
           >
-            <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.tax)}</span>
-            <span className="text-[10px] font-mono text-foreground">{taxRate}%</span>
+            <span className="text-[9px] text-chrome-muted">{m(UI_LABELS.tax)}</span>
+            <span className="text-[10px] font-mono text-chrome-text">{taxRate}%</span>
           </button>
 
           <div className="flex items-center gap-1">
-            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
               {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
             </span>
           </div>
@@ -334,8 +333,8 @@ export function MobileTopBar({
 
         {/* Tax Slider Row */}
         {showTaxSlider && !selectedTile && (
-          <div className="border-t border-gold/10 bg-black/15 px-3 py-0.5 flex items-center gap-2 text-[10px]">
-            <span className="text-muted-foreground whitespace-nowrap">{m(UI_LABELS.taxRate)}</span>
+          <div className="border-t border-chrome-border bg-chrome-well px-3 py-0.5 flex items-center gap-2 text-[10px]">
+            <span className="text-chrome-muted whitespace-nowrap">{m(UI_LABELS.taxRate)}</span>
             <Slider
               value={[taxRate]}
               onValueChange={(value) => setTaxRate(value[0])}
@@ -344,10 +343,10 @@ export function MobileTopBar({
               step={1}
               className="flex-1"
             />
-            <span className="font-mono text-foreground w-8 text-right shrink-0">{taxRate}%</span>
+            <span className="font-mono text-chrome-text w-8 text-right shrink-0">{taxRate}%</span>
             <button 
               onClick={() => setShowTaxSlider(false)} 
-              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
             >
               <CloseIcon size={12} />
             </button>
@@ -356,15 +355,15 @@ export function MobileTopBar({
 
         {/* Tile Info Row - Mobile Only */}
         {selectedTile && (
-          <div className="border-t border-gold/10 bg-black/20 px-3 py-0.5 flex items-center gap-2 text-[10px]">
+          <div className="border-t border-chrome-border bg-chrome-well px-3 py-0.5 flex items-center gap-2 text-[10px]">
             {/* Name */}
             <div className="flex items-center gap-1.5 shrink-0">
               <div className={`w-2 h-2 rounded-full ${
                 selectedTile.zone === 'residential' ? 'bg-green-500' :
                 selectedTile.zone === 'commercial' ? 'bg-blue-500' :
-                selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-muted-foreground/40'
+                selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-chrome-border'
               }`} />
-              <span className="text-xs font-medium text-foreground capitalize">
+              <span className="text-xs font-medium text-chrome-text capitalize">
                 {selectedTile.building.type === 'empty' 
                   ? (selectedTile.zone === 'none' ? m(UI_LABELS.emptyLot) : `${selectedTile.zone} ${m(UI_LABELS.zone)}`)
                   : selectedTile.building.type.replace(/_/g, ' ')}
@@ -374,26 +373,26 @@ export function MobileTopBar({
             {/* Population & Jobs */}
             {selectedTile.building.population > 0 && (
               <div className="flex items-center gap-1 shrink-0">
-                <PopulationIcon size={10} className="text-muted-foreground" />
-                <span className="text-foreground font-mono">{formatPopulation(selectedTile.building.population)}</span>
+                <PopulationIcon size={10} className="text-chrome-muted" />
+                <span className="text-chrome-text font-mono">{formatPopulation(selectedTile.building.population)}</span>
               </div>
             )}
             {selectedTile.building.jobs > 0 && (
-              <span className="text-foreground font-mono shrink-0">{formatPopulation(selectedTile.building.jobs)} {m(UI_LABELS.jobsLower)}</span>
+              <span className="text-chrome-text font-mono shrink-0">{formatPopulation(selectedTile.building.jobs)} {m(UI_LABELS.jobsLower)}</span>
             )}
             
             {/* Utilities */}
-            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-yellow-400' : 'text-muted-foreground/60'}`}>
+            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-amber-700' : 'text-chrome-muted'}`}>
               {selectedTile.building.powered ? m(UI_LABELS.hasPower) : m(UI_LABELS.noPower)}
             </span>
-            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-400' : 'text-muted-foreground/60'}`}>
+            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-700' : 'text-chrome-muted'}`}>
               {selectedTile.building.watered ? m(UI_LABELS.hasWater) : m(UI_LABELS.noWater)}
             </span>
             
             {/* Land value */}
-            <div className="flex items-center gap-1 text-muted-foreground shrink-0">
+            <div className="flex items-center gap-1 text-chrome-muted shrink-0">
               <MoneyIcon size={10} />
-              <span className="font-mono text-foreground">{selectedTile.landValue}</span>
+              <span className="font-mono text-chrome-text">{selectedTile.landValue}</span>
             </div>
             
             {/* Pollution */}
@@ -404,8 +403,8 @@ export function MobileTopBar({
                   selectedTile.pollution > 25 ? 'bg-amber-500' : 'bg-green-500'
                 }`} />
                 <span className={`font-mono ${
-                  selectedTile.pollution > 50 ? 'text-red-400' : 
-                  selectedTile.pollution > 25 ? 'text-amber-400' : 'text-green-400'
+                  selectedTile.pollution > 50 ? 'text-red-700' : 
+                  selectedTile.pollution > 25 ? 'text-amber-700' : 'text-green-700'
                 }`}>{Math.round(selectedTile.pollution)}%</span>
               </div>
             )}
@@ -416,7 +415,7 @@ export function MobileTopBar({
             {/* Close button */}
             <button 
               onClick={onCloseTile} 
-              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
             >
               <CloseIcon size={12} />
             </button>
@@ -425,13 +424,13 @@ export function MobileTopBar({
 
         {/* Effect on Ganga (Varanasi catchment tiles only) */}
         {selectedTile && gangaEffectLines && (
-          <div className="border-t border-gold/10 bg-black/10 px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
-            <span className="text-muted-foreground shrink-0">Effect on Ganga:</span>
+          <div className="border-t border-chrome-border bg-chrome-well px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
+            <span className="text-chrome-muted shrink-0">Effect on Ganga:</span>
             <span className="truncate">
               {gangaEffectLines.map((line, i) => (
                 <span
                   key={line.text}
-                  className={line.tone === 'hurts' ? 'text-red-400' : line.tone === 'cleans' ? 'text-green-400' : 'text-muted-foreground'}
+                  className={line.tone === 'hurts' ? 'text-red-700' : line.tone === 'cleans' ? 'text-green-700' : 'text-chrome-muted'}
                 >
                   {i > 0 ? ' · ' : ''}{line.text}
                 </span>
@@ -444,11 +443,11 @@ export function MobileTopBar({
       {/* Expanded Details Panel */}
       {showDetails && (
         <div
-          className="fixed inset-0 z-30 bg-[hsl(234_50%_4%/0.62)] animate-fadeIn pt-[72px]"
+          className="fixed inset-0 z-30 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn pt-[72px]"
           onClick={() => setShowDetails(false)}
         >
           <Card
-            className="hud-panel gold-hairline animate-rise-in mx-2 mt-2 rounded-2xl overflow-hidden"
+            className="hud-panel animate-rise-in mx-2 mt-2 rounded-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Season calendar (S4-T1) */}
@@ -495,24 +494,24 @@ export function MobileTopBar({
             {/* Detailed finances */}
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.population)}</span>
-                <span className="text-sm font-mono text-foreground">{formatPopulation(stats.population)}</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.population)}</span>
+                <span className="text-sm font-mono text-chrome-text">{formatPopulation(stats.population)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.jobs)}</span>
-                <span className="text-sm font-mono text-foreground">{formatPopulation(stats.jobs)}</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.jobs)}</span>
+                <span className="text-sm font-mono text-chrome-text">{formatPopulation(stats.jobs)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.monthlyIncome)}</span>
-                <span className="text-sm font-mono text-green-400">{formatINR(stats.income)}</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyIncome)}</span>
+                <span className="text-sm font-mono text-green-700">{formatINR(stats.income)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.monthlyExpenses)}</span>
-                <span className="text-sm font-mono text-red-400">{formatINR(stats.expenses)}</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyExpenses)}</span>
+                <span className="text-sm font-mono text-red-700">{formatINR(stats.expenses)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.weeklyNet)}</span>
-                <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.weeklyNet)}</span>
+                <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                   {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
                 </span>
               </div>
@@ -523,8 +522,8 @@ export function MobileTopBar({
             {/* Tax slider */}
             <div className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.taxRate)}</span>
-                <span className="text-sm font-mono text-foreground">{taxRate}%</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.taxRate)}</span>
+                <span className="text-sm font-mono text-chrome-text">{taxRate}%</span>
               </div>
               <Slider
                 value={[taxRate]}
@@ -534,7 +533,7 @@ export function MobileTopBar({
                 step={1}
                 className="w-full"
               />
-              <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+              <div className="flex justify-between mt-1 text-[10px] text-chrome-muted">
                 <span>0%</span>
                 <span>100%</span>
               </div>
@@ -586,9 +585,9 @@ function StatItem({
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-muted-foreground">{icon}</span>
+      <span className="text-chrome-muted">{icon}</span>
       <span className={`text-sm font-mono font-semibold ${color}`}>{Math.round(value)}%</span>
-      <span className="text-[9px] text-muted-foreground">{label}</span>
+      <span className="text-[9px] text-chrome-muted">{label}</span>
     </div>
   );
 }

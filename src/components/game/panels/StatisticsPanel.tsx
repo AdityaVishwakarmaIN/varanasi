@@ -15,7 +15,7 @@ import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
 
 type StatsTab = 'population' | 'money' | 'happiness' | 'ganga';
 
-const GANGA_LEVEL_CLASS = { good: 'text-green-400', fair: 'text-amber-400', poor: 'text-red-400' } as const;
+const GANGA_LEVEL_CLASS = { good: 'text-green-700', fair: 'text-amber-700', poor: 'text-red-700' } as const;
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -66,27 +66,27 @@ export function StatisticsPanel() {
     const height = canvas.height;
     const padding = 40;
     
-    ctx.fillStyle = '#1a1f2e';
+    ctx.fillStyle = '#ece0c8';
     ctx.fillRect(0, 0, width, height);
     
     const data = series;
-    let color = '#10b981';
+    let color = '#15803d';
     let formatValue = (v: number) => formatIndianNumber(v);
     
     switch (activeTab) {
       case 'population':
-        color = '#10b981';
+        color = '#15803d';
         formatValue = formatPopulation;
         break;
       case 'money':
-        color = '#f59e0b';
+        color = '#b45309';
         formatValue = formatINR;
         break;
       case 'happiness':
-        color = '#ec4899';
+        color = '#be185d';
         break;
       case 'ganga':
-        color = '#22d3ee';
+        color = '#0e7490';
         break;
     }
     
@@ -95,7 +95,7 @@ export function StatisticsPanel() {
     const maxVal = activeTab === 'ganga' ? 100 : Math.max(...data);
     const range = maxVal - minVal || 1;
     
-    ctx.strokeStyle = '#2d3748';
+    ctx.strokeStyle = '#d3c3a3';
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
       const y = padding + (height - padding * 2) * (i / 4);
@@ -136,19 +136,19 @@ export function StatisticsPanel() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.population)}</div>
-              <div className="font-mono tabular-nums font-semibold text-emerald-300 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
+              <div className="font-mono tabular-nums font-semibold text-green-700 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
             </Card>
             <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.jobs)}</div>
-              <div className="font-mono tabular-nums font-semibold text-ganga text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
+              <div className="font-mono tabular-nums font-semibold text-cyan-700 text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
             </Card>
             <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.treasury)}</div>
-              <div className="font-mono tabular-nums font-semibold text-marigold text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
+              <div className="font-mono tabular-nums font-semibold text-chrome-text text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
             </Card>
             <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.weekly)}</div>
-              <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                 {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
               </div>
             </Card>
@@ -164,7 +164,7 @@ export function StatisticsPanel() {
           )}
 
           {nextLandmark && (
-            <p className="text-xs sm:text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-chrome-muted">
               {gt('Next landmark: {name} at {target} (you: {current})', {
                 name: String(m(TOOL_INFO[nextLandmark.id].name)),
                 target: formatIndianNumber(nextLandmark.unlockPopulation),
@@ -186,7 +186,7 @@ export function StatisticsPanel() {
           
           <Card className="p-4">
             {series.length < 2 ? (
-              <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+              <div className="h-[200px] flex items-center justify-center text-chrome-muted text-sm">
                 {m(UI_LABELS.notEnoughData)}
               </div>
             ) : (
@@ -215,12 +215,12 @@ function GangaHealthCard({
   const colorClass = GANGA_LEVEL_CLASS[getGangaHealthLevel(gangaHealth)];
   return (
     <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3 flex items-center gap-3">
-      <RiverIcon size={20} className="text-cyan-400 shrink-0" />
+      <RiverIcon size={20} className="text-cyan-700 shrink-0" />
       <div className="min-w-0">
         <div className="hud-label mb-1.5">{label}</div>
         <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base ${colorClass}`}>
           {Math.round(gangaHealth)} {GANGA_TREND_ARROW[trend]}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
+          <span className="ml-2 text-xs font-normal text-chrome-muted">
             ({headingTo} {Math.round(target)})
           </span>
         </div>

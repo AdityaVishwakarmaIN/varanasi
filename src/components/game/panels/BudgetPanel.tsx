@@ -48,39 +48,38 @@ export function BudgetPanel() {
         
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <div className="hud-well rounded-xl p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.income)}</div>
-              <div className="text-emerald-300 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.income)}/mo</div>
+              <div className="text-green-700 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.income)}/mo</div>
               <div className="mt-1 space-y-0.5 text-xs">
                 <div className="flex justify-between gap-2">
-                  <span className="text-muted-foreground">{m(UI_LABELS.taxes)}</span>
+                  <span className="text-chrome-muted">{m(UI_LABELS.taxes)}</span>
                   <span className="font-mono">{formatINR(taxIncome)}</span>
                 </div>
                 {showTourism && (
                   <div className="flex justify-between gap-2" title={`${tourismShare}% of income`}>
-                    <span className="text-muted-foreground">{m(UI_LABELS.tourism)}</span>
-                    <span className="font-mono text-ganga">{formatINR(tourismIncome)}</span>
+                    <span className="text-chrome-muted">{m(UI_LABELS.tourism)}</span>
+                    <span className="font-mono text-cyan-700">{formatINR(tourismIncome)}</span>
                   </div>
                 )}
               </div>
             </div>
-            <div className="hud-well rounded-xl p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.expenses)}</div>
-              <div className="text-red-400 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.expenses)}/mo</div>
+              <div className="text-red-700 font-mono font-semibold text-sm sm:text-base truncate">{formatINR(stats.expenses)}/mo</div>
             </div>
-            <div className="hud-well rounded-xl p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.net)}</div>
-              <div className={`font-mono font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-emerald-300' : 'text-red-400'}`}>
+              <div className={`font-mono font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                 {formatINR(stats.income - stats.expenses)}/mo
               </div>
             </div>
           </div>
           
-          <div className="ornament-divider" aria-hidden />
           <div className="space-y-4">
             {categories.map(cat => (
               <div key={cat.key} className="flex items-center gap-4">
-                <Label className="w-28 text-sm text-sandstone">{cat.name}</Label>
+                <Label className="w-28 text-sm text-chrome-text">{cat.name}</Label>
                 <Slider
                   value={[cat.funding]}
                   onValueChange={(value) => setBudgetFunding(cat.key as keyof typeof budget, value[0])}
@@ -89,7 +88,7 @@ export function BudgetPanel() {
                   step={5}
                   className="flex-1"
                 />
-                <span className="w-12 text-right font-mono text-sm text-marigold">{cat.funding}%</span>
+                <span className="w-12 text-right font-mono text-sm text-chrome-text">{cat.funding}%</span>
               </div>
             ))}
           </div>

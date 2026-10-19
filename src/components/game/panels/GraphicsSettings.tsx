@@ -38,7 +38,7 @@ function Segmented<T extends string>({
   label: (v: T) => string;
 }) {
   return (
-    <div className="flex rounded-md border border-border overflow-hidden">
+    <div className="flex rounded-md border border-chrome-border overflow-hidden">
       {options.map((opt) => (
         <button
           key={opt}
@@ -47,8 +47,8 @@ function Segmented<T extends string>({
           onClick={() => onChange(opt)}
           className={`flex-1 px-2 py-2 text-sm font-medium transition-colors ${
             value === opt
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+              ? 'bg-chrome-accent text-chrome-accentText'
+              : 'bg-chrome-panel hover:bg-chrome-well text-chrome-muted hover:text-chrome-text'
           }`}
         >
           {label(opt)}
@@ -68,23 +68,23 @@ export function GraphicsSettings() {
     <>
       <div className="py-2">
         <Label>{m(LABELS.quality)}</Label>
-        <p className="text-muted-foreground text-xs mb-2">{m(LABELS.qualityDesc)}</p>
+        <p className="text-chrome-muted text-xs mb-2">{m(LABELS.qualityDesc)}</p>
         <Segmented options={QUALITY_OPTIONS} value={g.qualitySetting} onChange={setQualitySetting} label={name} />
         {g.qualitySetting === 'auto' && (
-          <p className="text-muted-foreground text-[11px] mt-1">
+          <p className="text-chrome-muted text-[11px] mt-1">
             {m(LABELS.active)} {name(g.qualityLevel)}
           </p>
         )}
       </div>
       <div className="py-2">
         <Label>{m(LABELS.renderer)}</Label>
-        <p className="text-muted-foreground text-xs mb-2">{m(LABELS.rendererDesc)}</p>
+        <p className="text-chrome-muted text-xs mb-2">{m(LABELS.rendererDesc)}</p>
         <Segmented options={RENDERER_OPTIONS} value={g.rendererSetting} onChange={setRendererSetting} label={name} />
         {g.gpuFailed ? (
           <p className="text-amber-500 text-[11px] mt-1">{m(LABELS.gpuFailed)}</p>
         ) : (
           g.rendererSetting === 'auto' && (
-            <p className="text-muted-foreground text-[11px] mt-1">
+            <p className="text-chrome-muted text-[11px] mt-1">
               {m(LABELS.active)} {name(g.renderer)}
             </p>
           )

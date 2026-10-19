@@ -34,7 +34,7 @@ import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 
 /** Bottom-bar quick tool: saffron when selected, sandstone otherwise. */
 function quickToolClass(selected: boolean, extra = '') {
-  return `press h-11 w-11 rounded-xl ${selected ? 'hud-selected hover:text-primary-foreground' : `text-sandstone/85 hover:bg-sandstone/[0.08] ${extra}`}`;
+  return `press h-11 w-11 rounded-md ${selected ? 'hud-selected hover:text-chrome-accentText' : `text-chrome-text hover:bg-chrome-well ${extra}`}`;
 }
 
 const SECTION_LABEL = 'hud-label mb-2 flex items-center gap-1.5';
@@ -112,22 +112,22 @@ const QuickToolIcons: Partial<Record<Tool, React.ReactNode>> = {
   subway: <SubwayIcon size={20} />,
   tree: <TreeIcon size={20} />,
   zone_residential: (
-    <div className="w-5 h-5 rounded-md bg-green-500 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">R</div>
+    <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center text-[10px] font-bold text-white">R</div>
   ),
   zone_commercial: (
-    <div className="w-5 h-5 rounded-md bg-blue-500 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">C</div>
+    <div className="w-5 h-5 rounded-md bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">C</div>
   ),
   zone_industrial: (
-    <div className="w-5 h-5 rounded-md bg-amber-500 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">I</div>
+    <div className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center text-[10px] font-bold text-white">I</div>
   ),
   zone_dezone: (
-    <div className="w-5 h-5 rounded-md bg-gray-500 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">X</div>
+    <div className="w-5 h-5 rounded-md bg-gray-500 flex items-center justify-center text-[10px] font-bold text-white">X</div>
   ),
   zone_water: (
-    <div className="w-5 h-5 rounded-md bg-cyan-500 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">~</div>
+    <div className="w-5 h-5 rounded-md bg-cyan-500 flex items-center justify-center text-[10px] font-bold text-white">~</div>
   ),
   zone_land: (
-    <div className="w-5 h-5 rounded-md bg-emerald-600 ring-1 ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center text-[10px] font-bold text-white">▲</div>
+    <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-[10px] font-bold text-white">▲</div>
   ),
   police_station: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -286,7 +286,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
   // S5-T6: badge with the count of high and critical advisor messages
   const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
   const advisorBadge = urgentAdvisorCount > 0 ? (
-    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full ring-2 ring-[hsl(234_42%_9%)] bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center">
+    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-sm bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center">
       {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}
     </span>
   ) : null;
@@ -331,23 +331,22 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             data-testid="draw-mode-toggle"
             variant="ghost"
             aria-pressed={drawMode}
-            className={`press absolute bottom-full right-2 mb-2 h-11 min-w-11 px-4 gap-2 rounded-full ${drawMode ? 'hud-selected hover:text-primary-foreground' : 'hud-panel text-sandstone'}`}
+            className={`press absolute bottom-full right-2 mb-2 h-11 min-w-11 px-4 gap-2 rounded-sm ${drawMode ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text'}`}
             onClick={() => onDrawModeChange(!drawMode)}
           >
             <Pencil className="w-4 h-4" />
             <span className="text-xs">{drawMode ? m(UI_LABELS.drawOn) : m(UI_LABELS.drawOff)}</span>
           </Button>
         )}
-        <div className="hud-panel gold-hairline rounded-t-2xl border-x-0 border-b-0">
+        <div className="hud-panel rounded-t-md border-x-0 border-b-0">
           {/* Selected tool info - now above the toolbar */}
           {selectedTool && TOOL_INFO[selectedTool] && (
-            <div className="flex items-center justify-between px-4 py-1.5 border-b border-gold/10 text-xs">
-              <span className="flex items-center gap-1.5 text-sandstone font-medium">
-                <span className="ornament text-marigold !w-2.5 !h-2.5" aria-hidden />
+            <div className="flex items-center justify-between px-4 py-1.5 border-b border-chrome-border text-xs">
+              <span className="flex items-center gap-1.5 text-chrome-text font-medium">
                 {m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name)}
               </span>
               {TOOL_INFO[selectedTool].cost > 0 && (
-                <span className={`font-mono ${stats.money >= TOOL_INFO[selectedTool].cost ? 'text-marigold' : 'text-red-400'}`}>
+                <span className={`font-mono ${stats.money >= TOOL_INFO[selectedTool].cost ? 'text-chrome-text' : 'text-red-700'}`}>
                   {formatINR(TOOL_INFO[selectedTool].cost)}
                 </span>
               )}
@@ -372,7 +371,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               size="icon"
               aria-label={String(m(TOOL_INFO['bulldoze'].name))}
               aria-pressed={selectedTool === 'bulldoze'}
-              className={quickToolClass(selectedTool === 'bulldoze', '!text-red-400')}
+              className={quickToolClass(selectedTool === 'bulldoze', '!text-red-700')}
               onClick={() => handleToolSelect('bulldoze')}
             >
               {QuickToolIcons.bulldoze}
@@ -441,7 +440,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               aria-label={showMenu ? gt('Close build menu') : gt('Open build menu')}
               aria-expanded={showMenu}
               data-testid="mobile-build-menu"
-              className={`press h-11 w-11 relative rounded-xl ${showMenu ? 'hud-selected hover:text-primary-foreground' : 'hud-well text-marigold'} ${landmarksGlow && !showMenu ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
+              className={`press h-11 w-11 relative rounded-md ${showMenu ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'} ${landmarksGlow && !showMenu ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
               onClick={() => setShowMenu(!showMenu)}
             >
               {!showMenu && advisorBadge}
@@ -461,22 +460,21 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
       {/* Expanded Tool Menu */}
       {showMenu && (
-        <div className="fixed inset-0 z-40 bg-[hsl(234_50%_4%/0.62)] animate-fadeIn" onClick={() => setShowMenu(false)}>
+        <div className="fixed inset-0 z-40 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn" onClick={() => setShowMenu(false)}>
           <div
-            className="hud-panel gold-hairline animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[70dvh] overflow-hidden rounded-2xl flex flex-col"
+            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[70dvh] overflow-hidden rounded-md flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* City Management section at top */}
-            <div className="p-3 border-b border-gold/15 flex-shrink-0 jaali-bg">
+            <div className="p-3 border-b border-chrome-border flex-shrink-0">
               <div className={SECTION_LABEL}>
-                <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
                 {m(msg('City Management'))}
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-sandstone rounded-xl"
+                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
                   onClick={() => { onOpenPanel('budget'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.budget)}
@@ -484,7 +482,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-sandstone rounded-xl"
+                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
                   onClick={() => { onOpenPanel('statistics'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.statistics)}
@@ -492,7 +490,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-sandstone rounded-xl relative"
+                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md relative"
                   onClick={() => { onOpenPanel('advisors'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.advisors)}
@@ -501,7 +499,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-sandstone rounded-xl"
+                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
                   onClick={() => { onOpenPanel('settings'); setShowMenu(false); }}
                 >
                   {m(UI_LABELS.settings)}
@@ -511,7 +509,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
             {/* Overlay Toggle Section */}
             {setOverlayMode && (
-              <div className="p-3 border-b border-gold/15 flex-shrink-0">
+              <div className="p-3 border-b border-chrome-border flex-shrink-0">
                 <div className={SECTION_LABEL}>
                   {m(UI_LABELS.viewOverlays)}
                 </div>
@@ -520,7 +518,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'none'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'none' ? 'hud-selected hover:text-primary-foreground' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'none' ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('none')}
                   >
                     {m(UI_LABELS.none)}
@@ -529,7 +527,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'power'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'power' ? 'bg-amber-500 hover:bg-amber-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'power' ? 'bg-amber-500 hover:bg-amber-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('power')}
                   >
                     {m(UI_LABELS.power)}
@@ -538,7 +536,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'water'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'water' ? 'bg-blue-500 hover:bg-blue-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'water' ? 'bg-blue-500 hover:bg-blue-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('water')}
                   >
                     {m(UI_LABELS.water)}
@@ -547,7 +545,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'fire'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'fire' ? 'bg-red-500 hover:bg-red-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'fire' ? 'bg-red-500 hover:bg-red-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('fire')}
                   >
                     {m(UI_LABELS.fire)}
@@ -556,7 +554,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'police'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'police' ? 'bg-blue-600 hover:bg-blue-700 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'police' ? 'bg-blue-600 hover:bg-blue-700 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('police')}
                   >
                     {m(UI_LABELS.police)}
@@ -565,7 +563,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'health'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'health' ? 'bg-green-500 hover:bg-green-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'health' ? 'bg-green-500 hover:bg-green-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('health')}
                   >
                     {m(UI_LABELS.health)}
@@ -574,7 +572,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'education'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'education' ? 'bg-purple-500 hover:bg-purple-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'education' ? 'bg-purple-500 hover:bg-purple-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('education')}
                   >
                     {m(UI_LABELS.education)}
@@ -583,7 +581,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'subway'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('subway')}
                   >
                     {m(UI_LABELS.subway)}
@@ -593,7 +591,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       size="sm"
                       aria-pressed={overlayMode === 'ganga'}
-                      className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'ganga' ? 'bg-cyan-600 hover:bg-cyan-700 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'ganga' ? 'bg-cyan-600 hover:bg-cyan-700 text-white ' : 'hud-well text-chrome-text'}`}
                       onClick={() => setOverlayMode('ganga')}
                     >
                       {m(UI_LABELS.ganga)}
@@ -604,7 +602,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       size="sm"
                       aria-pressed={overlayMode === 'flood'}
-                      className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'flood' ? 'bg-orange-600 hover:bg-orange-700 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'flood' ? 'bg-orange-600 hover:bg-orange-700 text-white ' : 'hud-well text-chrome-text'}`}
                       onClick={() => setOverlayMode('flood')}
                     >
                       {m(UI_LABELS.flood)}
@@ -625,10 +623,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                         <Button
                           variant="ghost"
                           aria-expanded={expandCityExpanded}
-                          className={`w-full justify-start gap-3 h-12 rounded-xl ${expandCityExpanded ? 'bg-sandstone/[0.08]' : ''}`}
+                          className={`w-full justify-start gap-3 h-12 rounded-md ${expandCityExpanded ? 'bg-chrome-well' : ''}`}
                           onClick={() => setExpandCityExpanded(!expandCityExpanded)}
                         >
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold" aria-hidden>{CATEGORY_ICONS.expandCity}</span>
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS.expandCity}</span>
                           <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS['EXPAND_CITY']) as Parameters<typeof m>[0])}</span>
                           <svg
                             className={`w-4 h-4 transition-transform ${expandCityExpanded ? 'rotate-180' : ''}`}
@@ -666,10 +664,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     <Button
                       variant="ghost"
                       aria-expanded={expandedCategory === category}
-                      className={`w-full justify-start gap-3 h-12 rounded-xl ${expandedCategory === category ? 'bg-sandstone/[0.08] text-foreground' : 'text-sandstone/90'} ${tools.includes(selectedTool) ? 'ring-1 ring-saffron/60' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
+                      className={`w-full justify-start gap-3 h-12 rounded-md ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'} ${tools.includes(selectedTool) ? 'border border-chrome-border' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
                       onClick={() => handleCategoryClick(category)}
                     >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
                       <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}</span>
                       <svg
                         className={`w-4 h-4 transition-transform ${expandedCategory === category ? 'rotate-180' : ''}`}
@@ -699,19 +697,19 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                               key={tool}
                               variant="ghost"
                               aria-pressed={selectedTool === tool}
-                              className={`press h-auto min-h-11 w-full flex-col items-center justify-start gap-1 rounded-xl px-1 py-2 whitespace-normal ${selectedTool === tool ? 'hud-selected hover:text-primary-foreground' : 'hud-well text-sandstone'}`}
+                              className={`press h-auto min-h-11 w-full flex-col items-center justify-start gap-1 rounded-md px-1 py-2 whitespace-normal ${selectedTool === tool ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
                               disabled={(!canAfford && info.cost > 0) || !!status?.locked || !!status?.built}
                               onClick={() => handleToolSelect(tool, true)}
                             >
-                              <ToolGlyph tool={tool} size={52} />
+                              <ToolGlyph tool={tool} size={52} selected={selectedTool === tool} />
                               <span className="w-full text-center text-[11px] font-medium leading-tight line-clamp-2">
                                 {status?.locked && <span aria-hidden className="mr-0.5">🔒</span>}
                                 {m(info.name)}
                               </span>
                               {statusNote ? (
-                                <span className="text-[10px] leading-tight text-center text-muted-foreground">{statusNote}</span>
+                                <span className="text-[10px] leading-tight text-center text-chrome-muted">{statusNote}</span>
                               ) : info.cost > 0 && (
-                                <span className={`text-[10px] font-mono ${selectedTool === tool ? 'text-primary-foreground/80' : canAfford ? 'text-marigold/90' : 'text-red-400'}`}>
+                                <span className={`text-[10px] font-mono ${selectedTool === tool ? 'text-chrome-accentText' : canAfford ? 'text-chrome-text' : 'text-red-700'}`}>
                                   {formatINR(info.cost)}
                                 </span>
                               )}

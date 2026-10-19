@@ -103,17 +103,19 @@ interface ToolGlyphProps {
   /** Box size in CSS px. */
   size?: number;
   className?: string;
+  /** Row is selected: icon tiles turn terracotta with a light icon. */
+  selected?: boolean;
 }
 
 /**
  * The picture for a build-menu tool: the building's code-drawn art when it has some,
  * otherwise a crisp line icon in a tinted tile.
  */
-export function ToolGlyph({ tool, size = 36, className }: ToolGlyphProps) {
+export function ToolGlyph({ tool, size = 36, className, selected = false }: ToolGlyphProps) {
   if (toolHasArt(tool)) {
     return (
       <span
-        className={cn('relative flex shrink-0 items-end justify-center overflow-hidden rounded-lg bg-gradient-to-b from-[hsl(233_30%_20%)] to-[hsl(234_40%_11%)] ring-1 ring-gold/20', className)}
+        className={cn('relative flex shrink-0 items-end justify-center overflow-hidden rounded-md bg-chrome-well border border-chrome-border', className)}
         style={{ width: size, height: size }}
         aria-hidden
       >
@@ -125,7 +127,7 @@ export function ToolGlyph({ tool, size = 36, className }: ToolGlyphProps) {
   const iconSize = Math.round(size * 0.5);
   return (
     <span
-      className={cn('flex shrink-0 items-center justify-center rounded-lg bg-sandstone/[0.06] text-sandstone/80 ring-1 ring-gold/15', className)}
+      className={cn('flex shrink-0 items-center justify-center rounded-md border', selected ? 'border-chrome-accentText bg-chrome-accent text-chrome-accentText' : 'border-chrome-border bg-chrome-well text-chrome-text', className)}
       style={{ width: size, height: size }}
       aria-hidden
     >

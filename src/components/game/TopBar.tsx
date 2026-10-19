@@ -71,21 +71,21 @@ export const TimeOfDayIcon = ({ hour }: TimeOfDayIconProps) => {
   if (isNight) {
     // Moon icon
     return (
-      <svg className="w-4 h-4 text-blue-300" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-blue-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
       </svg>
     );
   } else if (isDawn || isDusk) {
     // Sunrise/sunset icon
     return (
-      <svg className="w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-orange-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
       </svg>
     );
   } else {
     // Sun icon
     return (
-      <svg className="w-4 h-4 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
       </svg>
     );
@@ -103,13 +103,13 @@ interface StatBadgeProps {
 }
 
 export function StatBadge({ value, label, variant = 'default' }: StatBadgeProps) {
-  const colorClass = variant === 'success' ? 'text-green-500' : 
-                     variant === 'warning' ? 'text-amber-500' : 
-                     variant === 'destructive' ? 'text-red-500' : 'text-foreground';
+  const colorClass = variant === 'success' ? 'text-green-700' : 
+                     variant === 'warning' ? 'text-amber-700' : 
+                     variant === 'destructive' ? 'text-red-700' : 'text-chrome-text';
   
   return (
     <div className="flex flex-col items-start min-w-[70px]">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-0.5">{label}</div>
+      <div className="text-[10px] text-chrome-muted uppercase tracking-wider font-medium mb-0.5">{label}</div>
       <div className={`whitespace-nowrap text-sm font-mono tabular-nums font-semibold ${colorClass}`}>{value}</div>
     </div>
   );
@@ -132,10 +132,10 @@ export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) 
   return (
     <div className="flex flex-col items-center gap-1">
       <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
-      <div className="w-2.5 h-7 bg-black/40 ring-1 ring-gold/15 relative rounded-full overflow-hidden">
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-gold/30" />
+      <div className="w-2.5 h-7 bg-chrome-well border border-chrome-border relative rounded-sm overflow-hidden">
+        <div className="absolute left-0 right-0 top-1/2 h-px bg-chrome-border" />
         <div
-          className={`absolute left-0 right-0 rounded-full ${color.replace('text-', 'bg-')}`}
+          className={`absolute left-0 right-0 rounded-sm ${color.replace('text-', 'bg-')}`}
           style={{
             height: `${height}%`,
             top: isPositive ? `${50 - height}%` : '50%',
@@ -158,14 +158,14 @@ interface MiniStatProps {
 
 export function MiniStat({ icon, label, value }: MiniStatProps) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
-  const color = value >= 70 ? 'text-emerald-300' : value >= 40 ? 'text-amber-300' : 'text-red-400';
-  const bar = value >= 70 ? 'bg-emerald-400' : value >= 40 ? 'bg-amber-400' : 'bg-red-400';
+  const color = value >= 70 ? 'text-green-700' : value >= 40 ? 'text-amber-700' : 'text-red-700';
+  const bar = value >= 70 ? 'bg-green-600' : value >= 40 ? 'bg-amber-600' : 'bg-red-600';
   return (
     <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`}>
-      <span className="text-gold/80">{icon}</span>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="relative h-1 w-12 overflow-hidden rounded-full bg-white/10" aria-hidden>
-        <span className={`absolute inset-y-0 left-0 rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+      <span className="text-chrome-muted">{icon}</span>
+      <span className="text-chrome-muted">{label}</span>
+      <span className="relative h-1 w-12 overflow-hidden rounded-sm bg-chrome-border" aria-hidden>
+        <span className={`absolute inset-y-0 left-0 rounded-sm ${bar}`} style={{ width: `${pct}%` }} />
       </span>
       <span className={`font-mono font-semibold w-8 ${color}`}>{pct}%</span>
     </div>
@@ -182,7 +182,7 @@ export const StatsPanel = React.memo(function StatsPanel() {
   const m = useMessages();
   
   return (
-    <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-gold/15 bg-gradient-to-b from-[hsl(234_40%_10%)] to-[hsl(234_42%_8%)]">
+    <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-chrome-border bg-chrome-well">
       <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} />
       <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} />
       <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} />
@@ -237,16 +237,13 @@ export const TopBar = React.memo(function TopBar({
   const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
 
   return (
-    <div className="relative z-20 h-16 flex items-center justify-between gap-3 px-4 border-b border-gold/25 bg-gradient-to-b from-[hsl(var(--hud-top))] to-[hsl(var(--hud-bottom))] shadow-[inset_0_1px_0_hsl(var(--hud-highlight)/0.06),0_6px_20px_-8px_rgb(0_0_0/0.7)]">
-      {/* Gold hairline along the bottom edge */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
+    <div className="relative z-20 h-16 flex items-center justify-between gap-3 px-4 border-b border-chrome-border bg-chrome-panel">
       <div className="flex items-center gap-4 min-w-0">
         <div className="min-w-0 shrink-0">
           <div className="flex items-center gap-1.5">
-            <span className="ornament text-marigold" aria-hidden />
-            <h1 className="font-display text-[19px] leading-none text-sandstone truncate max-w-[180px]">{cityName}</h1>
+            <h1 className="font-sans font-semibold text-chrome-text text-[19px] leading-none truncate max-w-[180px]">{cityName}</h1>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-[11px] font-mono">
+          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-chrome-muted text-[11px] font-mono">
             <Tooltip>
               <TooltipTrigger asChild>
                 <span><SeasonDateLabel month={month} year={year} /></span>
@@ -262,14 +259,14 @@ export const TopBar = React.memo(function TopBar({
           <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-[160px]" />
         </div>
         
-        <div className="hud-well flex items-center gap-0.5 rounded-xl p-1" role="group" aria-label="Game speed">
+        <div className="hud-well flex items-center gap-0.5 rounded-md p-1" role="group" aria-label="Game speed">
           {[0, 1, 2, 3].map(s => (
             <button
               key={s}
               type="button"
               onClick={() => setSpeed(s as 0 | 1 | 2 | 3)}
-              className={`press h-8 w-8 rounded-lg flex items-center justify-center ${
-                speed === s ? 'hud-selected' : 'text-muted-foreground hover:text-foreground hover:bg-sandstone/10'
+              className={`press h-8 w-8 rounded-md flex items-center justify-center ${
+                speed === s ? 'hud-selected' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'
               }`}
               title={speedLabels[s]}
               aria-label={speedLabels[s]}
@@ -353,8 +350,8 @@ export const TopBar = React.memo(function TopBar({
           <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" />
         </div>
         
-        <div className="hud-well flex items-center gap-2 rounded-xl h-11 px-3">
-          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{m(UI_LABELS.tax)}</span>
+        <div className="hud-well flex items-center gap-2 rounded-md h-11 px-3">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.tax)}</span>
           <Slider
             value={[taxRate]}
             onValueChange={(value) => setTaxRate(value[0])}
@@ -364,31 +361,31 @@ export const TopBar = React.memo(function TopBar({
             className="w-14"
             aria-label={String(m(UI_LABELS.tax))}
           />
-          <span className="text-foreground text-xs font-mono font-semibold w-7">{taxRate}%</span>
+          <span className="text-chrome-text text-xs font-mono font-semibold w-7">{taxRate}%</span>
         </div>
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-3 rounded-xl border border-gold/15 hover:border-gold/40">
+            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-3 rounded-md border border-chrome-border text-chrome-text hover:bg-chrome-well">
               <span className="text-xs">Options</span>
-              <span className="text-xs text-gold/80" aria-hidden>▾</span>
+              <span className="text-xs text-chrome-muted" aria-hidden>▾</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 p-2">
             <div className="px-2 py-2">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.viewOverlay))}</span>
+                  <span className="text-xs text-chrome-muted">{String(m(UI_LABELS.viewOverlay))}</span>
                   <Switch checked={showOverlayPanel} onCheckedChange={onToggleOverlayPanel} />
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.minimap))}</span>
+                  <span className="text-xs text-chrome-muted">{String(m(UI_LABELS.minimap))}</span>
                   <Switch checked={showMinimap} onCheckedChange={onToggleMinimap} />
                 </div>
               </div>
             </div>
             <Separator className="my-1" />
-            <div className="px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+            <div className="px-2 py-1.5 text-xs uppercase tracking-wide text-chrome-muted">
               {String(m(UI_LABELS.languageSwitcher))}
             </div>
             {LANGUAGE_OPTIONS.map((language) => (
@@ -399,7 +396,7 @@ export const TopBar = React.memo(function TopBar({
               >
                 <span className="text-xs">{language.name}</span>
                 {language.code === locale ? (
-                  <span className="text-xs text-marigold">✓</span>
+                  <span className="text-xs text-chrome-text">✓</span>
                 ) : (
                   <span className="w-3 h-3" />
                 )}
