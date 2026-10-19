@@ -398,7 +398,7 @@ input[type="number"]:focus {
 
 /* Touch targets: at least 40px on tablets and touch screens (phones get 44px above) */
 @media (max-width: 1023px), (pointer: coarse) {
-  button, [role="button"] {
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]), [role="button"] {
     min-height: 40px;
     min-width: 40px;
   }
