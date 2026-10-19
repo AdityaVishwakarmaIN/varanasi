@@ -20,14 +20,22 @@ const SKYLINE: { type: string; variant?: number; size: number }[] = [
 
 /** Diya positions on the water: left %, top % within the river band, delay s. */
 const DIYAS: [number, number, number][] = [
-  [8, 30, 0], [15, 62, 1.2], [23, 42, 0.6], [31, 75, 2.1], [38, 34, 1.7], [46, 58, 0.3],
-  [53, 28, 2.4], [60, 70, 1.1], [67, 44, 0.9], [74, 64, 1.9], [82, 36, 0.4], [90, 56, 1.5],
+  [12, 38, 0], [28, 66, 1.2], [47, 46, 0.6], [63, 72, 2.1], [78, 40, 1.7], [91, 60, 0.9],
 ];
 
-function Skyline({ scale, className }: { scale: number; className?: string }) {
+/** Compact (phone) skyline: fewer buildings so the whole row fits a 390px screen uncropped. */
+const SKYLINE_COMPACT: typeof SKYLINE = [
+  { type: 'informal_housing', variant: 1, size: 92 },
+  { type: 'landmark_dashashwamedh', size: 164 },
+  { type: 'landmark_kashi_vishwanath', size: 208 },
+  { type: 'ghat', variant: 1, size: 112 },
+  { type: 'jal_sansthan_water_works', size: 132 },
+];
+
+function Skyline({ scale, className, compact }: { scale: number; className?: string; compact?: boolean }) {
   return (
     <div className={cn('flex items-end justify-center', className)}>
-      {SKYLINE.map((b, i) => (
+      {(compact ? SKYLINE_COMPACT : SKYLINE).map((b, i) => (
         <BuildingArtThumb
           key={i}
           type={b.type}
@@ -45,8 +53,10 @@ function Skyline({ scale, className }: { scale: number; className?: string }) {
  * reflection, and floating diyas. Pure CSS (transform/opacity animations), no canvas loop.
  */
 export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
-  const scale = compact ? 0.52 : 1;
-  const riverHeight = compact ? '17%' : '21%';
+  const scale = compact ? 0.5 : 1;
+  const riverHeight = compact ? '28%' : '21%';
+  const groundH = compact ? 18 : 30; // ghat / land strip the buildings stand on
+  const sunSize = compact ? 64 : 110;
   return (
     <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
       {/* Dusk sky */}
@@ -57,7 +67,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
             'linear-gradient(180deg, hsl(236 48% 7%) 0%, hsl(240 42% 12%) 34%, hsl(268 34% 20%) 56%, hsl(338 38% 30%) 70%, hsl(22 70% 42%) 79%, hsl(34 88% 56%) 83%)',
         }}
       />
-      <div className="absolute inset-0 jaali-bg opacity-60" />
+      <div className="absolute inset-0 title-jaali opacity-60" />
 
       {/* Stars */}
       <div
@@ -68,23 +78,40 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
         }}
       />
 
-      {/* Setting sun */}
+      {/* Setting sun: small, half sunk behind the skyline at the horizon */}
       <div
-        className="absolute left-[74%] animate-sun"
+        className="absolute left-[72%] animate-sun"
         style={{
-          width: compact ? 180 : 360,
-          height: compact ? 180 : 360,
-          marginLeft: compact ? -90 : -180,
-          bottom: `calc(${riverHeight} + ${compact ? 34 : 70}px)`,
+          width: sunSize,
+          height: sunSize,
+          marginLeft: -sunSize / 2,
+          bottom: `calc(${riverHeight} + ${groundH}px - ${Math.round(sunSize * 0.35)}px)`,
           borderRadius: '9999px',
           background:
-            'radial-gradient(circle at 50% 50%, hsl(44 100% 78%) 0%, hsl(36 100% 62%) 30%, hsl(22 95% 52% / 0.55) 52%, hsl(14 90% 45% / 0) 70%)',
+            'radial-gradient(circle at 50% 50%, hsl(44 100% 78%) 0%, hsl(36 100% 64%) 42%, hsl(22 95% 54% / 0.6) 62%, hsl(14 90% 45% / 0) 78%)',
         }}
       />
 
+      {/* Ghat / ground strip so the skyline sits on land */}
+      <div
+        className="absolute inset-x-0"
+        style={{
+          bottom: riverHeight,
+          height: groundH,
+          background:
+            'linear-gradient(180deg, hsl(28 24% 30%) 0%, hsl(26 26% 22%) 40%, hsl(24 28% 15%) 100%)',
+          borderTop: '1px solid hsl(32 30% 38% / 0.7)',
+        }}
+      >
+        <div
+          className="absolute inset-0 opacity-50"
+          style={{ backgroundImage: 'repeating-linear-gradient(180deg, transparent 0 5px, hsl(30 30% 10% / 0.45) 5px 6px)' }}
+        />
+      </div>
+
       {/* Skyline on the ghats */}
-      <div className="absolute inset-x-0" style={{ bottom: riverHeight }}>
-        <Skyline scale={scale} className="drop-shadow-[0_-6px_24px_rgba(0,0,0,0.35)] [filter:saturate(0.92)_brightness(0.86)]" />
+      <div className="absolute inset-x-0" style={{ bottom: `calc(${riverHeight} + ${Math.round(groundH * 0.45)}px)` }}>
+        <Skyline compact={compact} scale={scale} className="drop-shadow-[0_-6px_24px_rgba(0,0,0,0.35)] [filter:saturate(0.92)_brightness(0.86)]" />
         {/* Dusk haze over the buildings so the text reads */}
         <div className="absolute inset-0 bg-gradient-to-t from-[hsl(236_45%_10%/0.35)] to-transparent" />
       </div>
@@ -100,16 +127,21 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
         />
         {/* Reflection */}
         <div className="absolute inset-x-0 top-0 origin-top opacity-25 [transform:scaleY(-0.55)] blur-[1px]">
-          <Skyline scale={scale} />
+          <Skyline compact={compact} scale={scale} />
         </div>
-        {/* Shimmer */}
+        {/* Faint horizontal ripples */}
         <div
           className="absolute inset-y-0 left-0 w-[200%] animate-drift opacity-40"
           style={{
-            backgroundImage:
-              'repeating-linear-gradient(90deg, transparent 0 38px, hsl(40 90% 80% / 0.35) 38px 60px, transparent 60px 130px), repeating-linear-gradient(180deg, transparent 0 7px, hsl(177 60% 60% / 0.12) 7px 8px)',
-            maskImage: 'linear-gradient(180deg, black 0%, transparent 80%)',
-            WebkitMaskImage: 'linear-gradient(180deg, black 0%, transparent 80%)',
+            backgroundImage: [
+              'linear-gradient(90deg, transparent, hsl(40 90% 80% / 0.35), transparent) 0 12% / 170px 1px repeat-x',
+              'linear-gradient(90deg, transparent, hsl(177 60% 70% / 0.25), transparent) 60px 27% / 130px 1px repeat-x',
+              'linear-gradient(90deg, transparent, hsl(40 90% 80% / 0.25), transparent) 20px 44% / 210px 1px repeat-x',
+              'linear-gradient(90deg, transparent, hsl(177 60% 70% / 0.18), transparent) 110px 63% / 150px 1px repeat-x',
+              'linear-gradient(90deg, transparent, hsl(40 90% 80% / 0.14), transparent) 40px 82% / 240px 1px repeat-x',
+            ].join(', '),
+            maskImage: 'linear-gradient(180deg, black 0%, transparent 90%)',
+            WebkitMaskImage: 'linear-gradient(180deg, black 0%, transparent 90%)',
           }}
         />
         {/* Diyas */}
@@ -122,11 +154,11 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
             <span
               className="block animate-diya rounded-full"
               style={{
-                width: compact ? 4 : 6,
-                height: compact ? 4 : 6,
+                width: compact ? 3 : 4,
+                height: compact ? 3 : 4,
                 animationDelay: `${delay}s`,
                 background: 'hsl(42 100% 70%)',
-                boxShadow: '0 0 8px 3px hsl(34 100% 56% / 0.7), 0 0 22px 8px hsl(28 100% 50% / 0.25)',
+                boxShadow: '0 0 5px 1px hsl(34 100% 56% / 0.6)',
               }}
             />
           </span>

@@ -91,7 +91,7 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
     <div className="relative group">
       <button
         onClick={onLoad}
-        className="press hud-well w-full text-left p-3 pr-11 rounded-xl hover:!border-gold/40 hover:bg-[hsl(233_40%_14%/0.8)]"
+        className="press title-well w-full text-left p-3 pr-11 rounded-xl hover:!border-gold/40 hover:bg-[hsl(233_40%_14%/0.8)]"
       >
         <div className="flex items-center gap-2">
           <h3 className="text-foreground font-semibold truncate text-sm flex-1">
@@ -373,9 +373,9 @@ export default function HomePage() {
 
   if (isChecking) {
     return (
-      <main className="min-h-screen bg-background jaali-bg flex items-center justify-center">
+      <main className="min-h-screen bg-background title-jaali flex items-center justify-center">
         <div className="flex items-center gap-2 text-sandstone/70">
-          <span className="ornament text-marigold animate-diya" aria-hidden />
+          <span className="title-lotus text-marigold animate-diya" aria-hidden />
           <T>Loading...</T>
         </div>
       </main>
@@ -459,33 +459,38 @@ export default function HomePage() {
       >
         <T>Load Example</T>
       </Button>
+    </div>
+  );
 
-      <div className="mt-1 grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
-        <div className="flex flex-col">
+  const footer = (
+    <div className="flex w-full flex-col gap-1">
+      <div className="flex w-full items-center justify-between gap-3 text-sm tracking-wide">
+        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
           <a
             href="https://github.com/amilich/isometric-city"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-11 items-center text-left text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
+            className="flex min-h-11 items-center text-sandstone/60 hover:text-marigold transition-colors duration-200"
           >
-            <T>Built on IsoCity (MIT licence)</T>
+            <T>Built on IsoCity</T>
           </a>
-          <CreditsButton variant="ghost" className="justify-start h-auto min-h-11 px-0 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
+          <span className="text-sandstone/30" aria-hidden>·</span>
+          <CreditsButton variant="ghost" className="h-auto min-h-11 px-1 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
         </div>
-        <div className="flex h-full min-h-[88px] flex-col items-end justify-between">
-          <LanguageSelector variant="ghost" className="text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
-          {hasResettableProgress && (
-            <NewGameResetButton onClick={() => setShowResetDialog(true)} />
-          )}
-        </div>
+        <LanguageSelector variant="ghost" className="shrink-0 text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
       </div>
+      {hasResettableProgress && (
+        <div className="flex justify-end">
+          <NewGameResetButton onClick={() => setShowResetDialog(true)} />
+        </div>
+      )}
     </div>
   );
 
   const savedList = visibleSavedCities.length > 0 && (
     <>
-      <h2 className="hud-label mb-2.5 flex items-center gap-1.5 flex-shrink-0">
-        <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
+      <h2 className="title-label mb-2.5 flex items-center gap-1.5 flex-shrink-0">
+        <span className="title-lotus text-gold/80 !w-2.5 !h-2.5" aria-hidden />
         <T>Saved Cities</T>
       </h2>
       <div
@@ -536,11 +541,11 @@ export default function HomePage() {
               {menu}
             </div>
             {visibleSavedCities.length > 0 && (
-              <div className="hud-panel gold-hairline w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] flex flex-col animate-rise-in [animation-delay:200ms]">
+              <div className="title-panel w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] flex flex-col animate-rise-in [animation-delay:200ms]">
                 {savedList}
               </div>
             )}
-            <div className="flex-shrink-0 h-2" />
+            <div className="mt-auto w-full max-w-xs flex-shrink-0 pt-3">{footer}</div>
           </div>
           {dialogs}
         </main>
@@ -553,18 +558,18 @@ export default function HomePage() {
     <MultiplayerContextProvider>
       <main className="relative min-h-screen bg-background overflow-hidden">
         <TitleBackdrop />
-        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-8">
+        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-[calc(21vh+9rem)]">
           <TitleMark />
           <div className="mt-8 w-72 animate-rise-in [animation-delay:120ms]">
             {menu}
           </div>
+          {visibleSavedCities.length > 0 && (
+            <aside className="title-panel mt-5 w-72 max-h-[min(18rem,32vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
+              {savedList}
+            </aside>
+          )}
+          <div className="mt-auto w-72 pt-6">{footer}</div>
         </div>
-
-        {visibleSavedCities.length > 0 && (
-          <aside className="hud-panel gold-hairline absolute z-10 top-8 right-8 w-72 max-h-[min(24rem,45vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
-            {savedList}
-          </aside>
-        )}
 
         {dialogs}
       </main>
@@ -590,7 +595,7 @@ function TitleMark({ compact = false }: { compact?: boolean }) {
       </h1>
       <div className={`flex items-center gap-3 ${compact ? 'mt-2 w-56' : 'mt-3 w-80'}`} aria-hidden>
         <span className="h-px flex-1 bg-gradient-to-r from-transparent to-gold/70" />
-        <span className="ornament text-marigold animate-diya !w-4 !h-4" />
+        <span className="title-lotus text-marigold animate-diya !w-4 !h-4" />
         <span className="h-px flex-1 bg-gradient-to-l from-transparent to-gold/70" />
       </div>
       <p className={`mt-2 tracking-[0.18em] uppercase text-sandstone/85 ${compact ? 'text-xs' : 'text-sm'}`}>

@@ -47,6 +47,16 @@ module.exports = {
         ganga: "hsl(var(--ganga))",
         gold: "hsl(var(--gold))",
         sandstone: "hsl(var(--sandstone))",
+        chrome: {
+          bg: "hsl(var(--chrome-bg))",
+          panel: "hsl(var(--chrome-panel))",
+          well: "hsl(var(--chrome-well))",
+          border: "hsl(var(--chrome-border))",
+          text: "hsl(var(--chrome-text))",
+          muted: "hsl(var(--chrome-muted))",
+          accent: "hsl(var(--chrome-accent))",
+          accentText: "hsl(var(--chrome-accentText))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar))",
           foreground: "hsl(var(--sidebar-foreground))",
