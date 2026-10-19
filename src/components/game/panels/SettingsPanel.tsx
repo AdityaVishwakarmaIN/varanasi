@@ -321,7 +321,7 @@ export function SettingsPanel() {
             <div className="py-2">
               <Label>{m(UI_LABELS.language)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
-              <LocaleSelector />
+              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-md px-2 py-1" />
             </div>
 
             <GraphicsSettings />

@@ -280,9 +280,9 @@ export function MobileTopBar({
         {/* Demand indicators row */}
         <div className="flex items-center justify-between px-3 py-1 border-t border-chrome-border bg-chrome-well">
           <div className="flex items-center gap-3">
-            <DemandBar label="R" demand={stats.demand.residential} color="text-green-500" />
-            <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-500" />
-            <DemandBar label="I" demand={stats.demand.industrial} color="text-amber-500" />
+            <DemandBar label="R" demand={stats.demand.residential} color="text-green-700" />
+            <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-700" />
+            <DemandBar label="I" demand={stats.demand.industrial} color="text-amber-700" />
           </div>
 
           {gangaHealth !== undefined && onToggleGangaOverlay && (
@@ -461,31 +461,31 @@ export function MobileTopBar({
                 icon={<HappyIcon size={16} />}
                 label={String(m(UI_LABELS.happiness))}
                 value={stats.happiness}
-                color={stats.happiness >= 70 ? 'text-green-500' : stats.happiness >= 40 ? 'text-amber-500' : 'text-red-500'}
+                color={stats.happiness >= 70 ? 'text-green-700' : stats.happiness >= 40 ? 'text-amber-700' : 'text-red-700'}
               />
               <StatItem
                 icon={<HealthIcon size={16} />}
                 label={String(m(UI_LABELS.health))}
                 value={stats.health}
-                color={stats.health >= 70 ? 'text-green-500' : stats.health >= 40 ? 'text-amber-500' : 'text-red-500'}
+                color={stats.health >= 70 ? 'text-green-700' : stats.health >= 40 ? 'text-amber-700' : 'text-red-700'}
               />
               <StatItem
                 icon={<EducationIcon size={16} />}
                 label={String(m(UI_LABELS.education))}
                 value={stats.education}
-                color={stats.education >= 70 ? 'text-green-500' : stats.education >= 40 ? 'text-amber-500' : 'text-red-500'}
+                color={stats.education >= 70 ? 'text-green-700' : stats.education >= 40 ? 'text-amber-700' : 'text-red-700'}
               />
               <StatItem
                 icon={<SafetyIcon size={16} />}
                 label={String(m(UI_LABELS.safety))}
                 value={stats.safety}
-                color={stats.safety >= 70 ? 'text-green-500' : stats.safety >= 40 ? 'text-amber-500' : 'text-red-500'}
+                color={stats.safety >= 70 ? 'text-green-700' : stats.safety >= 40 ? 'text-amber-700' : 'text-red-700'}
               />
               <StatItem
                 icon={<EnvironmentIcon size={16} />}
                 label={String(m(UI_LABELS.environment))}
                 value={stats.environment}
-                color={stats.environment >= 70 ? 'text-green-500' : stats.environment >= 40 ? 'text-amber-500' : 'text-red-500'}
+                color={stats.environment >= 70 ? 'text-green-700' : stats.environment >= 40 ? 'text-amber-700' : 'text-red-700'}
               />
             </div>
 

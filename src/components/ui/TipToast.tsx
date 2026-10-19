@@ -76,14 +76,14 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
 
           <div className="flex-1 min-w-0 pt-0.5">
             <p className="hud-label mb-1">{gt('Tip')}</p>
-            <p className="text-sm text-foreground leading-relaxed">
+            <p className="text-sm text-chrome-text leading-relaxed">
               {m(message)}
             </p>
           </div>
 
           <button
             onClick={onContinue}
-            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-sandstone/[0.07] transition-colors"
+            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-lg text-chrome-muted hover:text-chrome-accent hover:bg-chrome-well transition-colors"
             aria-label={gt('Dismiss tip')}
           >
             <X className="w-4 h-4" aria-hidden />
@@ -95,7 +95,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
             variant="ghost"
             size="sm"
             onClick={onSkipAll}
-            className="text-xs text-muted-foreground hover:text-foreground gap-1 h-11 md:h-9"
+            className="text-xs text-chrome-muted hover:text-chrome-accent gap-1 h-11 md:h-9"
           >
             <T>
               <SkipForward className="w-3.5 h-3.5" />

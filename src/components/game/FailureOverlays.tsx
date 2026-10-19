@@ -143,20 +143,20 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
           {gameOver && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-destructive">
+                <DialogTitle className="text-red-700">
                   {m(gameOver.reason === 'bankruptcy' ? LABELS.gameOverBankrupt : LABELS.gameOverExodus)}
                 </DialogTitle>
-                <DialogDescription className="text-base font-medium text-foreground">{state.cityName}</DialogDescription>
+                <DialogDescription className="text-base font-medium text-chrome-text">{state.cityName}</DialogDescription>
               </DialogHeader>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">{m(LABELS.yearsSurvived)}</dt>
-                <dd className="text-right font-medium">{gameOver.yearsSurvived}</dd>
-                <dt className="text-muted-foreground">{m(LABELS.peakPopulation)}</dt>
-                <dd className="text-right font-medium">{formatIndianCompact(gameOver.peakPopulation)}</dd>
+                <dt className="text-chrome-muted">{m(LABELS.yearsSurvived)}</dt>
+                <dd className="text-right font-medium text-chrome-text">{gameOver.yearsSurvived}</dd>
+                <dt className="text-chrome-muted">{m(LABELS.peakPopulation)}</dt>
+                <dd className="text-right font-medium text-chrome-text">{formatIndianCompact(gameOver.peakPopulation)}</dd>
                 {gameOver.peakGangaHealth !== undefined && (
                   <>
-                    <dt className="text-muted-foreground">{m(LABELS.peakGanga)}</dt>
-                    <dd className="text-right font-medium">{Math.round(gameOver.peakGangaHealth)}</dd>
+                    <dt className="text-chrome-muted">{m(LABELS.peakGanga)}</dt>
+                    <dd className="text-right font-medium text-chrome-text">{Math.round(gameOver.peakGangaHealth)}</dd>
                   </>
                 )}
               </dl>
@@ -164,7 +164,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
                 <span className="font-medium">{m(LABELS.whatWentWrong)}: </span>
                 {m(FAILING_LINES[gameOver.failingStat])}
               </div>
-              {autosaveMissing && <p className="text-xs text-muted-foreground">{m(LABELS.noAutosave)}</p>}
+              {autosaveMissing && <p className="text-xs text-chrome-muted">{m(LABELS.noAutosave)}</p>}
               <DialogFooter className="gap-2">
                 <Button
                   variant="outline"

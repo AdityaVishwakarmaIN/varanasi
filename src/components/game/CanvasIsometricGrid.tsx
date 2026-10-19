@@ -4325,10 +4325,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             onMouseMove={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 pl-3 shadow-lg backdrop-blur-sm">
-              <span className="text-xs font-medium text-foreground whitespace-nowrap">
+            <div className="flex items-center gap-1 rounded-full hud-panel p-1 pl-3 shadow-lg">
+              <span className="text-xs font-medium text-chrome-text whitespace-nowrap">
                 {m(getToolDisplay(tool, TOOL_INFO[tool], state.mapId).name)}{' '}
-                <span className="font-mono text-amber-500">{formatINR(cost)}</span>
+                <span className="font-mono text-amber-700">{formatINR(cost)}</span>
               </span>
               <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
                 <Check className="w-5 h-5" />
@@ -4337,7 +4337,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <div className="w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-border" />
+            <div className="w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-chrome-border" />
           </div>
         );
       })()}
@@ -4371,7 +4371,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </DialogHeader>
               <div className="flex flex-col gap-4 mt-4">
                 <T>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-chrome-muted">
                     Connecting to <Var>{city.name}</Var> will establish a trade route, providing:
                     <ul className="mt-2 space-y-1 list-disc list-inside">
                       <li>₹5,000 one-time bonus</li>
@@ -4422,8 +4422,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         return (
           <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
             isPlacementInvalid
-              ? 'border bg-destructive/90 border-destructive-foreground/30 text-destructive-foreground'
-              : 'border bg-card/90 border-border'
+              ? 'border bg-red-700 border-red-900 text-white'
+              : 'hud-panel text-chrome-text'
           }`}>
             {isDragging && dragStartTile && dragEndTile && showsDragGrid ? (
               <>
@@ -4450,7 +4450,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
                 {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
                 {placementPreview?.warning && (
-                  <span className="text-amber-500">{' - '}{m(placementPreview.warning)}</span>
+                  <span className="text-amber-700">{' - '}{m(placementPreview.warning)}</span>
                 )}
                 {showsDragGrid && gt(' - Drag to zone area')}
                 {supportsDragPlace && !showsDragGrid && gt(' - Drag to place')}

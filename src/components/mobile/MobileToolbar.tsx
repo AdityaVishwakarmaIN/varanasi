@@ -112,22 +112,22 @@ const QuickToolIcons: Partial<Record<Tool, React.ReactNode>> = {
   subway: <SubwayIcon size={20} />,
   tree: <TreeIcon size={20} />,
   zone_residential: (
-    <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center text-[10px] font-bold text-white">R</div>
+    <div className="w-5 h-5 rounded-md bg-green-700 flex items-center justify-center text-[10px] font-bold text-white">R</div>
   ),
   zone_commercial: (
-    <div className="w-5 h-5 rounded-md bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">C</div>
+    <div className="w-5 h-5 rounded-md bg-blue-700 flex items-center justify-center text-[10px] font-bold text-white">C</div>
   ),
   zone_industrial: (
-    <div className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center text-[10px] font-bold text-white">I</div>
+    <div className="w-5 h-5 rounded-md bg-amber-700 flex items-center justify-center text-[10px] font-bold text-white">I</div>
   ),
   zone_dezone: (
-    <div className="w-5 h-5 rounded-md bg-gray-500 flex items-center justify-center text-[10px] font-bold text-white">X</div>
+    <div className="w-5 h-5 rounded-md bg-gray-700 flex items-center justify-center text-[10px] font-bold text-white">X</div>
   ),
   zone_water: (
-    <div className="w-5 h-5 rounded-md bg-cyan-500 flex items-center justify-center text-[10px] font-bold text-white">~</div>
+    <div className="w-5 h-5 rounded-md bg-cyan-700 flex items-center justify-center text-[10px] font-bold text-white">~</div>
   ),
   zone_land: (
-    <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-[10px] font-bold text-white">▲</div>
+    <div className="w-5 h-5 rounded-md bg-emerald-700 flex items-center justify-center text-[10px] font-bold text-white">▲</div>
   ),
   police_station: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -527,7 +527,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'power'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'power' ? 'bg-amber-500 hover:bg-amber-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'power' ? 'bg-amber-700 hover:bg-amber-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('power')}
                   >
                     {m(UI_LABELS.power)}
@@ -536,7 +536,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'water'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'water' ? 'bg-blue-500 hover:bg-blue-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'water' ? 'bg-blue-700 hover:bg-blue-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('water')}
                   >
                     {m(UI_LABELS.water)}
@@ -545,7 +545,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'fire'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'fire' ? 'bg-red-500 hover:bg-red-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'fire' ? 'bg-red-700 hover:bg-red-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('fire')}
                   >
                     {m(UI_LABELS.fire)}
@@ -554,7 +554,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'police'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'police' ? 'bg-blue-600 hover:bg-blue-700 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'police' ? 'bg-blue-700 hover:bg-blue-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('police')}
                   >
                     {m(UI_LABELS.police)}
@@ -563,7 +563,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'health'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'health' ? 'bg-green-500 hover:bg-green-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'health' ? 'bg-green-700 hover:bg-green-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('health')}
                   >
                     {m(UI_LABELS.health)}
@@ -572,7 +572,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'education'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'education' ? 'bg-purple-500 hover:bg-purple-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'education' ? 'bg-purple-700 hover:bg-purple-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('education')}
                   >
                     {m(UI_LABELS.education)}
@@ -581,7 +581,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     variant="ghost"
                     size="sm"
                     aria-pressed={overlayMode === 'subway'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600 text-white ' : 'hud-well text-chrome-text'}`}
+                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'subway' ? 'bg-yellow-700 hover:bg-yellow-800 text-white ' : 'hud-well text-chrome-text'}`}
                     onClick={() => setOverlayMode('subway')}
                   >
                     {m(UI_LABELS.subway)}
@@ -591,7 +591,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       size="sm"
                       aria-pressed={overlayMode === 'ganga'}
-                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'ganga' ? 'bg-cyan-600 hover:bg-cyan-700 text-white ' : 'hud-well text-chrome-text'}`}
+                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'ganga' ? 'bg-cyan-700 hover:bg-cyan-800 text-white ' : 'hud-well text-chrome-text'}`}
                       onClick={() => setOverlayMode('ganga')}
                     >
                       {m(UI_LABELS.ganga)}
@@ -602,7 +602,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       size="sm"
                       aria-pressed={overlayMode === 'flood'}
-                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'flood' ? 'bg-orange-600 hover:bg-orange-700 text-white ' : 'hud-well text-chrome-text'}`}
+                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'flood' ? 'bg-orange-700 hover:bg-orange-800 text-white ' : 'hud-well text-chrome-text'}`}
                       onClick={() => setOverlayMode('flood')}
                     >
                       {m(UI_LABELS.flood)}

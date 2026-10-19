@@ -345,9 +345,9 @@ export const TopBar = React.memo(function TopBar({
       
       <div className="flex items-center gap-2.5 shrink-0">
         <div className="flex items-center gap-1.5" role="group" aria-label="Zone demand">
-          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-500" />
-          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-500" />
-          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" />
+          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-700" />
+          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-700" />
+          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-700" />
         </div>
         
         <div className="hud-well flex items-center gap-2 rounded-md h-11 px-3">

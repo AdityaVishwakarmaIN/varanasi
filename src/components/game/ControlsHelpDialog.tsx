@@ -18,7 +18,7 @@ const LABELS = {
 
 function KeyCap({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-block rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] leading-none text-foreground whitespace-nowrap">
+    <kbd className="inline-block rounded border border-chrome-border bg-chrome-well px-1.5 py-0.5 font-mono text-[11px] leading-none text-chrome-text whitespace-nowrap">
       {children}
     </kbd>
   );
@@ -45,7 +45,7 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
             <table className="w-full">
               <tbody>
                 {MOUSE_BINDINGS.map((row) => (
-                  <tr key={row.input} className="border-b border-border/40 last:border-0">
+                  <tr key={row.input} className="border-b border-chrome-border/60 last:border-0">
                     <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{m(row.input)}</KeyCap></td>
                     <td className="py-1 text-chrome-muted">{m(row.label)}</td>
                   </tr>
@@ -58,7 +58,7 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
             <table className="w-full">
               <tbody>
                 {KEY_BINDINGS.filter((b) => b.action !== 'perfHud' || isDevMode()).map((binding) => (
-                  <tr key={binding.action} className="border-b border-border/40 last:border-0">
+                  <tr key={binding.action} className="border-b border-chrome-border/60 last:border-0">
                     <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{binding.keyLabel}</KeyCap></td>
                     <td className="py-1 text-chrome-muted">{m(binding.label)}</td>
                   </tr>

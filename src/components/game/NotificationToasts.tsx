@@ -135,7 +135,7 @@ function NotificationToast({
         isCelebration && '!border-marigold/70 ring-1 ring-marigold/40 shadow-[0_0_24px_-6px_hsl(var(--marigold)/0.6)]'
       )}
     >
-      <span className={cn('shrink-0 h-8 w-8 rounded-lg ring-1 flex items-center justify-center', isCrisis ? 'bg-red-500/15 ring-red-400/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-sandstone/[0.06] ring-gold/15')}>
+      <span className={cn('shrink-0 h-8 w-8 rounded-lg ring-1 flex items-center justify-center', isCrisis ? 'bg-red-500/15 ring-red-400/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
         <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
       </span>
       <button
@@ -144,7 +144,7 @@ function NotificationToast({
         disabled={!canLocate}
         className="flex-1 min-w-0 text-left disabled:cursor-default"
       >
-        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-foreground')}>{n.title}</p>
+        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-chrome-text')}>{n.title}</p>
         <p className="text-xs text-chrome-muted line-clamp-2">{n.description}</p>
         {canLocate && (
           <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent">
@@ -156,7 +156,7 @@ function NotificationToast({
       <button
         type="button"
         onClick={() => onDismiss(n.id)}
-        className="text-chrome-muted hover:text-foreground -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
+        className="text-chrome-muted hover:text-chrome-accent -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
         aria-label={dismissLabel}
       >
         <X className="w-4 h-4" />

@@ -135,7 +135,7 @@ export function FestivalEventPanel({
                     ) : (
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-sm hover:bg-sandstone/[0.07]"
+                        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-sm text-chrome-text hover:bg-chrome-well"
                         onClick={() => {
                           onLocate(center.x, center.y, readinessOverlay(r));
                           onClose();

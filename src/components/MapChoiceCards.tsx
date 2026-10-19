@@ -71,15 +71,15 @@ export function MapChoiceCards({
             aria-checked={selected}
             onClick={() => onChange(card.id)}
             className={`text-left rounded-md border overflow-hidden transition-colors min-h-[44px] ${
-              selected ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-400/10' : 'border-white/15 hover:border-white/40'
+              selected ? 'border-chrome-accent ring-2 ring-chrome-accent/40 bg-chrome-well' : 'border-chrome-border hover:border-chrome-text'
             }`}
           >
             {!compact && <div className="aspect-[3/2] w-full">{card.thumb}</div>}
             <div className="p-2.5">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{m(card.title as Parameters<typeof m>[0])}</span>
+                <span className="font-medium text-sm text-chrome-text">{m(card.title as Parameters<typeof m>[0])}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1 leading-snug">{m(card.text as Parameters<typeof m>[0])}</p>
+              <p className="text-xs text-chrome-muted mt-1 leading-snug">{m(card.text as Parameters<typeof m>[0])}</p>
             </div>
           </button>
         );
