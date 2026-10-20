@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PlayIcon, PauseIcon, CloseIcon } from '@/components/ui/Icons';
-import { Users } from 'lucide-react';
+import { LogOut, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -206,7 +206,7 @@ export function MobileTopBar({
                 title="Invite Players"
                 aria-label="Invite Players"
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users size={16} strokeWidth={1.75} aria-hidden />
               </button>
             )}
 
@@ -217,14 +217,7 @@ export function MobileTopBar({
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
               >
-                <svg 
-                  className="w-3.5 h-3.5 -scale-x-100" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
+                <LogOut size={16} strokeWidth={1.75} aria-hidden className="-scale-x-100" />
               </button>
             )}
           </div>
@@ -254,7 +247,7 @@ export function MobileTopBar({
           <div className="border-t border-chrome-border bg-chrome-well pl-3 pr-1 flex items-start gap-1 text-[11px]">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
               <div className="flex items-center gap-1.5">
-                <div className={`w-2 h-2 rounded-full ${
+                <div className={`w-2 h-2 rounded-none ${
                   selectedTile.zone === 'residential' ? 'bg-green-500' :
                   selectedTile.zone === 'commercial' ? 'bg-blue-500' :
                   selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-chrome-border'

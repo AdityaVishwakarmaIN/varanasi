@@ -27,7 +27,7 @@ function BuildingFallbackIcon({ size = 18, className }: { size?: number; classNa
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
       <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" opacity="0.14" />
-      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
     </svg>
   );
 }
