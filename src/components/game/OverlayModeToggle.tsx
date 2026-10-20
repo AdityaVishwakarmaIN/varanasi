@@ -73,12 +73,12 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   
   return (
     <div
-      className="hud-glass fixed bottom-4 left-[240px] z-50 flex items-center gap-2 rounded-md py-1.5 pl-3 pr-1.5"
+      className="hud-glass fixed bottom-4 left-[240px] z-50 flex items-center gap-2 rounded-none py-1.5 pl-3 pr-1.5"
       role="toolbar"
       aria-label={String(m(VIEW_OVERLAY_LABEL))}
     >
       <span className="hud-label max-w-[4.5rem] leading-tight whitespace-normal">{m(VIEW_OVERLAY_LABEL)}</span>
-      <div className="flex gap-1 hud-well rounded-md p-1">
+      <div className="flex gap-1 hud-well rounded-none p-1">
         {getOverlayModesForMap(mapId).map((mode) => {
           const config = OVERLAY_CONFIG[mode];
           const isActive = overlayMode === mode;
@@ -91,7 +91,7 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
               onClick={() => setOverlayMode(mode)}
               aria-pressed={isActive}
               aria-label={config.title}
-              className={`press h-9 w-9 p-0 rounded-md ${
+              className={`press h-9 w-9 p-0 rounded-none ${
                 isActive
                   ? mode === 'none' ? 'hud-selected hover:text-chrome-accentText' : `${getOverlayButtonClass(mode, isActive)} text-white`
                   : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'

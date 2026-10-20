@@ -4335,15 +4335,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             onMouseMove={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-1 rounded-full hud-panel p-1 pl-3 shadow-lg">
+            <div className="flex items-center gap-1 rounded-none hud-panel p-1 pl-3 shadow-lg">
               <span className="text-xs font-medium text-chrome-text whitespace-nowrap">
                 {m(getToolDisplay(tool, TOOL_INFO[tool], state.mapId).name)}{' '}
                 <span className="font-mono text-amber-700">{formatINR(cost)}</span>
               </span>
-              <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
+              <Button size="icon" className="h-11 w-11 rounded-none" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
                 <Check className="w-5 h-5" />
               </Button>
-              <Button size="icon" variant="secondary" className="h-11 w-11 rounded-full" aria-label={gt('Cancel')} onClick={() => setPendingPlacement(null)}>
+              <Button size="icon" variant="secondary" className="h-11 w-11 rounded-none" aria-label={gt('Cancel')} onClick={() => setPendingPlacement(null)}>
                 <X className="w-5 h-5" />
               </Button>
             </div>
@@ -4431,7 +4431,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
         return (
-          <div data-testid="placement-label" className={`pointer-events-none absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 text-center px-4 py-2 rounded-md text-sm z-10 ${
+          <div data-testid="placement-label" className={`pointer-events-none absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 text-center px-4 py-2 rounded-none text-sm z-10 ${
             isPlacementInvalid
               ? 'border bg-red-700 border-red-900 text-white'
               : 'hud-panel text-chrome-text'
@@ -4489,7 +4489,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             className="fixed pointer-events-none z-[100]"
             style={{ left, top: hoveredIncident.screenY - 8 }}
           >
-            <div className="bg-sidebar border border-sidebar-border rounded-md shadow-lg px-3 py-2 w-[220px]">
+            <div className="bg-sidebar border border-sidebar-border rounded-none shadow-lg px-3 py-2 w-[220px]">
               {/* Header */}
               <div className="flex gap-2 items-center mb-1">
                 {hoveredIncident.type === 'fire' ? (

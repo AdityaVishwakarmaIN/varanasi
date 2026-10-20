@@ -356,7 +356,7 @@ export function SpriteTestPanel({ onClose }: { onClose: () => void }) {
           </TabsList>
         </Tabs>
         
-        <div className="overflow-auto max-h-[70vh] bg-[#1a1a2e] rounded-md">
+        <div className="overflow-auto max-h-[70vh] bg-[#1a1a2e] rounded-none">
           <canvas
             ref={canvasRef}
             className="mx-auto"
@@ -366,7 +366,7 @@ export function SpriteTestPanel({ onClose }: { onClose: () => void }) {
         
         <div className="space-y-1 text-xs text-chrome-muted">
           <p>Sprite sheet: {currentSheetInfo} ({gridInfo} grid)</p>
-          <p>Edit offsets in <code className="px-1 rounded bg-chrome-well">src/lib/renderConfig.ts</code> → each sprite pack&apos;s verticalOffsets</p>
+          <p>Edit offsets in <code className="px-1 rounded-none bg-chrome-well">src/lib/renderConfig.ts</code> → each sprite pack&apos;s verticalOffsets</p>
         </div>
       </DialogContent>
     </Dialog>

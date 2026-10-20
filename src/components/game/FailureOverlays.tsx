@@ -76,7 +76,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
       {(inDebt || lowHappiness) && (
         <div className={cn('pointer-events-none flex flex-col gap-2', bannerClassName)} role="status" aria-live="polite">
           {inDebt && (
-            <div className="flex items-start gap-2 rounded-md border border-red-500/80 bg-red-950/90 px-3 py-2 text-red-50 shadow-lg">
+            <div className="flex items-start gap-2 rounded-none border border-red-500/80 bg-red-950/90 px-3 py-2 text-red-50 shadow-lg">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" aria-hidden />
               <div className="min-w-0">
                 <p className="text-sm font-semibold">{m(LABELS.treasuryEmpty)}</p>
@@ -87,7 +87,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
           {lowHappiness && failure && (
             <div
               className={cn(
-                'flex items-start gap-2 rounded-md border px-3 py-2 shadow-lg',
+                'flex items-start gap-2 rounded-none border px-3 py-2 shadow-lg',
                 failure.exodusActive ? 'border-red-500/80 bg-red-950/90 text-red-50' : 'border-amber-500/80 bg-amber-950/90 text-amber-50'
               )}
             >
@@ -161,7 +161,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
                   </>
                 )}
               </dl>
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              <div className="rounded-none border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
                 <span className="font-medium">{m(LABELS.whatWentWrong)}: </span>
                 {m(FAILING_LINES[gameOver.failingStat])}
               </div>

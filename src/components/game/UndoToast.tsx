@@ -72,7 +72,7 @@ export function UndoToast({
       role="status"
       className="fixed z-[60] left-3 right-3 bottom-[calc(19rem+env(safe-area-inset-bottom))] md:left-1/2 md:right-auto md:bottom-16 md:-translate-x-1/2 md:w-max md:max-w-[28rem] animate-rise-in"
     >
-      <div className="hud-panel flex items-center gap-3 rounded-xl py-2 pl-3.5 pr-1.5 text-sm text-chrome-text">
+      <div className="hud-panel flex items-center gap-3 rounded-none py-2 pl-3.5 pr-1.5 text-sm text-chrome-text">
         <div className="min-w-0 flex-1">
           <p className="font-semibold">{title}</p>
           {note && <p className="text-xs text-chrome-muted">{note}</p>}
@@ -84,7 +84,7 @@ export function UndoToast({
         <button
           type="button"
           onClick={onDismiss}
-          className="text-chrome-muted hover:text-chrome-accent min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
+          className="text-chrome-muted hover:text-chrome-accent min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-none flex items-center justify-center"
           aria-label={gt('Dismiss')}
         >
           <X className="w-4 h-4" />

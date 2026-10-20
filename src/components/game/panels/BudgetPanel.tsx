@@ -48,7 +48,7 @@ export function BudgetPanel() {
         
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-none p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.income)}</div>
               <div className="text-green-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINRPerMonth(stats.income)}</div>
               <div className="mt-1 space-y-0.5 text-xs">
@@ -64,11 +64,11 @@ export function BudgetPanel() {
                 )}
               </div>
             </div>
-            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-none p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.expenses)}</div>
               <div className="text-red-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINRPerMonth(stats.expenses)}</div>
             </div>
-            <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
+            <div className="hud-well rounded-none p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.net)}</div>
               <div className={`font-mono font-semibold text-xs sm:text-base leading-tight break-words ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
                 {formatINRPerMonth(stats.income - stats.expenses, true)}

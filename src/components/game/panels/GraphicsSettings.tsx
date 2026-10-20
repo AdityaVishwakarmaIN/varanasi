@@ -38,7 +38,7 @@ function Segmented<T extends string>({
   label: (v: T) => string;
 }) {
   return (
-    <div className="flex rounded-md border border-chrome-border overflow-hidden">
+    <div className="flex rounded-none border border-chrome-border overflow-hidden">
       {options.map((opt) => (
         <button
           key={opt}

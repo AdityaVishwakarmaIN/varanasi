@@ -131,7 +131,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
         <div className="space-y-4 min-h-0">
           <Card className=" flex items-center gap-4 p-4 bg-transparent hud-well">
-            <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-md ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
+            <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-none ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}
             </div>
             <div>

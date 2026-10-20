@@ -71,9 +71,9 @@ const TOOL_KEY_HINTS: Partial<Record<Tool, string>> = {
 
 /** Shared look for a sidebar category row. */
 // On short screens (768 px laptops) rows shrink to 36 px so Tools, Zones and the first building groups all fit.
-const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-md';
-const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text';
-const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-md overflow-hidden animate-submenu-in';
+const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none';
+const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text';
+const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-none overflow-hidden animate-submenu-in';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -296,7 +296,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   variant="ghost"
                   role="menuitem"
                   aria-current={isSelected || undefined}
-                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-md ${
+                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-none ${
                     isSelected ? 'hud-selected hover:text-chrome-accentText' : 'hover:bg-chrome-well'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
@@ -480,7 +480,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
                 key={action.key}
                 onClick={action.onClick}
                 variant="ghost"
-                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-md hover:bg-chrome-well"
+                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-none hover:bg-chrome-well"
                 title={action.description}
               >
                 <span className="flex-1 text-left truncate">{m(action.name as Parameters<typeof m>[0])}</span>
@@ -679,7 +679,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               onClick={openCommandMenu}
               title={`Search (${formatKeyLabel('Ctrl+K')})`}
               aria-label={`Search (${formatKeyLabel('Ctrl+K')})`}
-              className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
+              className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
             >
               <svg 
                 className="w-4 h-4" 
@@ -699,7 +699,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowShareModal(true)}
                 title="Invite Players"
                 aria-label="Invite Players"
-                className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
+                className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
                 <Users className="w-4 h-4" />
               </Button>
@@ -711,7 +711,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowExitDialog(true)}
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
-                className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
+                className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
                 <svg 
                   className="w-4 h-4 -scale-x-100" 
@@ -749,7 +749,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     disabled={!canAfford && info.cost > 0}
                     variant="ghost"
                     aria-pressed={isSelected}
-                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-md ${
+                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none ${
                       isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}${TOOL_KEY_HINTS[tool] ? ` (${TOOL_KEY_HINTS[tool]})` : ''}`}
@@ -815,7 +815,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
       </ScrollArea>
       
       <div className="border-t border-chrome-border p-2">
-        <div className="grid grid-cols-4 gap-1 hud-well rounded-md p-1">
+        <div className="grid grid-cols-4 gap-1 hud-well rounded-none p-1">
           {[
             { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
             { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
@@ -829,13 +829,13 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               size="icon-sm"
               aria-pressed={activePanel === panel}
               aria-label={String(m(UI_LABELS[labelKey]))}
-              className={`press w-full h-11 relative rounded-md ${activePanel === panel ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'}`}
+              className={`press w-full h-11 relative rounded-none ${activePanel === panel ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'}`}
               title={String(m(UI_LABELS[labelKey]))}
             >
               {icon}
               {panel === 'advisors' && urgentAdvisorCount > 0 && (
                 <span
-                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-sm bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
+                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-none bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
                   aria-label={`${urgentAdvisorCount}`}
                 >
                   {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}

@@ -135,10 +135,10 @@ export function DemandIndicator({ label, demand, color, title }: DemandIndicator
   const indicator = (
     <div className="flex flex-col items-center gap-1" role="img" aria-label={title}>
       <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
-      <div className="w-2.5 h-7 bg-chrome-well border border-chrome-border relative rounded-sm overflow-hidden">
+      <div className="w-2.5 h-7 bg-chrome-well border border-chrome-border relative rounded-none overflow-hidden">
         <div className="absolute left-0 right-0 top-1/2 h-px bg-chrome-border" />
         <div
-          className={`absolute left-0 right-0 rounded-sm ${color.replace('text-', 'bg-')}`}
+          className={`absolute left-0 right-0 rounded-none ${color.replace('text-', 'bg-')}`}
           style={{
             height: `${height}%`,
             top: isPositive ? `${50 - height}%` : '50%',
@@ -176,7 +176,7 @@ export function MiniStat({ icon, label, value, empty = false }: MiniStatProps) {
       <div className="flex items-center gap-2" role="group" aria-label={`${label}: no data yet`}>
         <span className="text-chrome-muted">{icon}</span>
         <span className="text-chrome-muted">{label}</span>
-        <span className="relative h-1 w-12 overflow-hidden rounded-sm bg-chrome-border" aria-hidden />
+        <span className="relative h-1 w-12 overflow-hidden rounded-none bg-chrome-border" aria-hidden />
         <span className="font-mono font-semibold w-8 text-chrome-muted">—</span>
       </div>
     );
@@ -188,8 +188,8 @@ export function MiniStat({ icon, label, value, empty = false }: MiniStatProps) {
     <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`}>
       <span className="text-chrome-muted">{icon}</span>
       <span className="text-chrome-muted">{label}</span>
-      <span className="relative h-1 w-12 overflow-hidden rounded-sm bg-chrome-border" aria-hidden>
-        <span className={`absolute inset-y-0 left-0 rounded-sm ${bar}`} style={{ width: `${pct}%` }} />
+      <span className="relative h-1 w-12 overflow-hidden rounded-none bg-chrome-border" aria-hidden>
+        <span className={`absolute inset-y-0 left-0 rounded-none ${bar}`} style={{ width: `${pct}%` }} />
       </span>
       <span className={`font-mono font-semibold w-8 ${color}`}>{pct}%</span>
     </div>
@@ -286,13 +286,13 @@ export const TopBar = React.memo(function TopBar({
           <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-full" />
         </div>
         
-        <div className="hud-well flex items-center gap-0.5 rounded-md p-1" role="group" aria-label="Game speed">
+        <div className="hud-well flex items-center gap-0.5 rounded-none p-1" role="group" aria-label="Game speed">
           {[0, 1, 2, 3].map(s => (
             <button
               key={s}
               type="button"
               onClick={() => setSpeed(s as 0 | 1 | 2 | 3)}
-              className={`press h-8 w-8 rounded-md flex items-center justify-center ${
+              className={`press h-8 w-8 rounded-none flex items-center justify-center ${
                 speed === s ? 'hud-selected' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'
               }`}
               title={speedLabels[s]}
@@ -378,7 +378,7 @@ export const TopBar = React.memo(function TopBar({
           <DemandIndicator label="I" title="Industrial demand" demand={stats.demand.industrial} color="text-amber-700" />
         </div>
         
-        <div className="hud-well flex items-center gap-2 rounded-md h-11 px-2 min-[1440px]:px-3">
+        <div className="hud-well flex items-center gap-2 rounded-none h-11 px-2 min-[1440px]:px-3">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.tax)}</span>
           <Slider
             value={[taxRate]}
@@ -394,7 +394,7 @@ export const TopBar = React.memo(function TopBar({
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-md border border-chrome-border text-chrome-text hover:bg-chrome-well">
+            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-none border border-chrome-border text-chrome-text hover:bg-chrome-well">
               <span className="text-xs">Options</span>
               <span className="text-xs text-chrome-muted" aria-hidden>▾</span>
             </Button>

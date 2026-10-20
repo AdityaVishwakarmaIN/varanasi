@@ -238,7 +238,7 @@ export function TileInfoPanel({
         )}
         
         {isInformal && (
-          <div className="flex flex-col gap-1 rounded-md bg-amber-500/10 p-2 text-xs">
+          <div className="flex flex-col gap-1 rounded-none bg-amber-500/10 p-2 text-xs">
             <span className="text-amber-800">{INFORMAL_CONFIG.tileInfoHint}</span>
             <span className="text-chrome-muted">
               {formaliseDays > 0

@@ -118,7 +118,7 @@ export function LanguageSelector({
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             {/* Drawer */}
             <div
-              className="absolute bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-xl animate-in slide-in-from-bottom duration-200 pb-24"
+              className="absolute bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-none animate-in slide-in-from-bottom duration-200 pb-24"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Drag handle */}
