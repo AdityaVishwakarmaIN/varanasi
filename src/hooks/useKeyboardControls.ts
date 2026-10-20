@@ -28,6 +28,8 @@ export interface KeyboardControlsOptions<Overlay extends string> {
   speed: GameState['speed'];
   setSpeed: (speed: GameState['speed']) => void;
   onShowHelp: () => void;
+  /** Ctrl/Cmd+Z: undo the last build or bulldoze. */
+  onUndo?: () => void;
 }
 
 const TOOL_ACTIONS: Partial<Record<ControlAction, Tool>> = {
@@ -71,6 +73,11 @@ export function useKeyboardControls<Overlay extends string>(options: KeyboardCon
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || isInsideModal(e.target)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && optionsRef.current.onUndo) {
+        e.preventDefault();
+        optionsRef.current.onUndo();
+        return;
+      }
       const binding = matchKeyBinding(e);
       if (!binding || binding.handledElsewhere) return;
       const opts = optionsRef.current;

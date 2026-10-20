@@ -71,7 +71,7 @@ type MiniMapViewportListener = (viewport: ViewportState | null) => void;
 export default function Game({ onExit }: { onExit?: () => void }) {
   const gt = useGT();
   const m = useMessages();
-  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
+  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed, undoLast } = useGame();
   // S5-T9: music, sound effects and ambient
   useGameAudio(state, latestStateRef);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
@@ -288,6 +288,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     speed: state.speed,
     setSpeed,
     onShowHelp: openControlsHelp,
+    onUndo: undoLast,
   });
 
   // Handle cheat code triggers

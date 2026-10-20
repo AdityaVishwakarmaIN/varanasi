@@ -63,6 +63,8 @@ import {
 } from '@/lib/isocityStorage';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
 import { SaveErrorToast } from '@/components/game/SaveErrorToast';
+import { UndoToast, type UndoToastInfo } from '@/components/game/UndoToast';
+import { applyUndo, createUndoEntry, pushUndoEntry, type UndoEntry } from '@/lib/undo';
 import {
   copyLegacyGridToBuffer,
   createIsoCityGridBufferFromGrid,
@@ -113,6 +115,8 @@ type GameContextValue = {
   setBudgetFunding: (key: keyof Budget, funding: number) => void;
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
   placeAtTile: (x: number, y: number, isRemote?: boolean) => void;
+  /** Undoes the last build / bulldoze (up to 10 deep). Returns false when there is nothing to undo. */
+  undoLast: () => boolean;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
   finishTrackDrag: (pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote?: boolean) => void; // Create bridges after road/rail drag
   setBridgeCallback: (callback: ((args: { pathTiles: { x: number; y: number }[]; trackType: 'road' | 'rail' }) => void) | null) => void;
@@ -673,6 +677,13 @@ export function GameProvider({
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
+  // Undo ring (last 10 build / bulldoze actions): changed tiles only, see lib/undo.ts
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  const undoSeqRef = useRef(0);
+  /** The state an action was recorded from: a re-run of the same updater (Strict Mode) records once. */
+  const undoRecordedFromRef = useRef<GameState | null>(null);
+  const shownUndoSeqRef = useRef(0);
+  const [undoToast, setUndoToast] = useState<(UndoToastInfo & { cityKey: string }) | null>(null);
   const [pendingLandmarkBulldoze, setPendingLandmarkBulldoze] = useState<{ x: number; y: number; id: LandmarkId } | null>(null);
   const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
@@ -992,6 +1003,14 @@ export function GameProvider({
     [],
   );
 
+  /** Called from state updaters: must stay idempotent for the same `prev` (React may run an updater twice). */
+  const rememberForUndo = useCallback((prev: GameState, next: GameState, tool: Tool = prev.selectedTool) => {
+    if (undoRecordedFromRef.current === prev) return;
+    undoRecordedFromRef.current = prev;
+    const entry = createUndoEntry(prev, next, tool, Date.now());
+    if (entry) undoStackRef.current = pushUndoEntry(undoStackRef.current, entry, ++undoSeqRef.current);
+  }, []);
+
   const placeAtTile = useCallback((x: number, y: number, isRemote = false) => {
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
@@ -1008,7 +1027,7 @@ export function GameProvider({
       }
     }
     
-    setState((prev) => {
+    const applyPlacement = (prev: GameState): GameState => {
       const tool = prev.selectedTool;
       if (tool === 'select') return prev;
 
@@ -1098,6 +1117,13 @@ export function GameProvider({
       }
 
       return recalculateDerivedState(nextState);
+    };
+    // Multiplayer actions are broadcast tile by tile, so only a solo city can be undone.
+    const recordUndo = !isRemote && !placeCallbackRef.current;
+    setState((prev) => {
+      const next = applyPlacement(prev);
+      if (recordUndo && next !== prev) rememberForUndo(prev, next);
+      return next;
     });
     
     // S5-T9: sound for a local build/road/bulldoze that actually changed the tile.
@@ -1114,7 +1140,7 @@ export function GameProvider({
     if (!isRemote && currentTool !== 'select' && placeCallbackRef.current) {
       placeCallbackRef.current({ x, y, tool: currentTool });
     }
-  }, []);
+  }, [rememberForUndo]);
 
   const upgradeServiceBuildingHandler = useCallback((x: number, y: number) => {
     let upgradeSucceeded = false;
@@ -1131,13 +1157,50 @@ export function GameProvider({
 
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
-    setState((prev) => recalculateDerivedState(createBridgesOnPath(prev, pathTiles, trackType)));
+    setState((prev) => {
+      const bridged = createBridgesOnPath(prev, pathTiles, trackType);
+      // Bridges built by a drag join that drag's undo entry
+      if (!isRemote && !placeCallbackRef.current && bridged !== prev) rememberForUndo(prev, bridged, trackType);
+      return recalculateDerivedState(bridged);
+    });
     
     // Broadcast to multiplayer if this is a local action (not remote)
     if (!isRemote && bridgeCallbackRef.current) {
       bridgeCallbackRef.current({ pathTiles, trackType });
     }
+  }, [rememberForUndo]);
+
+  const undoLast = useCallback((): boolean => {
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!entry) return false;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setState((prev) => recalculateDerivedState(applyUndo(prev, entry)));
+    setUndoToast(null);
+    return true;
   }, []);
+
+  // A new game or a loaded city starts with an empty history
+  const cityKey = `${state.id}:${state.gameVersion ?? 0}`;
+  useEffect(() => {
+    undoStackRef.current = [];
+  }, [cityKey]);
+
+  // Show the "Built X - Undo" toast for the newest history entry (a drag keeps updating one entry)
+  useEffect(() => {
+    const top = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!top || top.seq === shownUndoSeqRef.current) return;
+    shownUndoSeqRef.current = top.seq;
+    setUndoToast({
+      seq: top.seq,
+      cityKey,
+      kind: top.kind,
+      subject: top.subject,
+      count: top.count,
+      mapId: state.mapId,
+      lostValue: top.lostValue,
+      refund: top.spent,
+    });
+  }, [state, cityKey]);
 
   const connectToCity = useCallback((cityId: string) => {
     setState((prev) => {
@@ -1860,6 +1923,7 @@ export function GameProvider({
     setActivePanel,
     setBudgetFunding,
     placeAtTile,
+    undoLast,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,
     finishTrackDrag,
@@ -1918,6 +1982,9 @@ export function GameProvider({
         <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/90 text-base font-medium">
           <T>Loading city...</T>
         </div>
+      )}
+      {undoToast && undoToast.cityKey === cityKey && (
+        <UndoToast info={undoToast} onUndo={undoLast} onDismiss={() => setUndoToast(null)} />
       )}
       {saveError && (
         <SaveErrorToast
