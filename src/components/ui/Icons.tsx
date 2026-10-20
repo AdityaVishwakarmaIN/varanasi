@@ -8,25 +8,28 @@ type IconProps = { size?: number; className?: string };
 const baseStroke = {
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.8,
+  strokeWidth: 1.75,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
 
 export function SelectIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M5 5h14v14H5z" />
-      <path {...baseStroke} d="M5 5l14 14" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M5 3l14 7-6 2-2.5 6.5z" fill="currentColor" fillOpacity="0.18" />
+      <path {...baseStroke} d="M13 12l5.5 6.5" />
     </svg>
   );
 }
 
 export function BulldozeIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M4 4l16 16M20 4L4 20" />
-      <path {...baseStroke} d="M7 17h10" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M3 17v-6h9v6" />
+      <path {...baseStroke} d="M5.5 11V7h4l2.5 4" />
+      <rect {...baseStroke} x="2.5" y="17" width="13" height="4" />
+      <path {...baseStroke} d="M15 12h4.5M20 5v13" />
+      <path {...baseStroke} d="M6 19h.01M12 19h.01" />
     </svg>
   );
 }
@@ -65,23 +68,20 @@ export function CloseIcon({ size = 18, className }: IconProps) {
 
 export function RoadIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      {/* Road surface */}
-      <rect {...baseStroke} x="6" y="4" width="12" height="16" rx="1" />
-      {/* Center lane divider */}
-      <path {...baseStroke} d="M12 6v12" strokeDasharray="2 2" />
-      {/* Side edges */}
-      <path {...baseStroke} d="M6 8h12M6 16h12" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M9.5 3L4 21M14.5 3L20 21" />
+      <path {...baseStroke} d="M12 4v2.5M12 10v3M12 17v3.5" />
+      <path {...baseStroke} d="M3 21h18" />
     </svg>
   );
 }
 
 export function TreeIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M12 3c3 2 4 4.5 4 6.5A4 4 0 0 1 12 14a4 4 0 0 1-4-4.5C8 7.5 9 5 12 3z" />
-      <path {...baseStroke} d="M12 14v5" />
-      <path {...baseStroke} d="M9 20h6" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M12 2.5c3.6 2.2 6 4.6 6 8a6 6 0 01-12 0c0-3.4 2.4-5.8 6-8z" fill="currentColor" fillOpacity="0.15" />
+      <path {...baseStroke} d="M12 10v11M12 14l-2.5-2.5M12 12.5l2.5-2.5" />
+      <path {...baseStroke} d="M8.5 21h7" />
     </svg>
   );
 }
@@ -106,10 +106,11 @@ export function PowerIcon({ size = 18, className }: IconProps) {
 /** A river with waves: used for the Ganga overlay and Ganga Health. */
 export function RiverIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M3 8c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
-      <path {...baseStroke} d="M3 13c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
-      <path {...baseStroke} d="M3 18c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M3 3.5h4v4h4v4h4v3.5" />
+      <path {...baseStroke} d="M3 17c2-1.4 4-1.4 6 0s4 1.4 6 0 4-1.4 6 0" />
+      <path {...baseStroke} d="M3 21c2-1.4 4-1.4 6 0s4 1.4 6 0 4-1.4 6 0" />
+      <path {...baseStroke} d="M17 8c1.2-.8 2.8-.8 4 0" />
     </svg>
   );
 }
@@ -221,20 +222,22 @@ export function EnvironmentIcon({ size = 18, className }: IconProps) {
 
 export function BudgetIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M4 7h16v10H4z" />
-      <path {...baseStroke} d="M8 11h4M8 15h8" />
-      <circle {...baseStroke} cx="16" cy="9" r="1.2" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M3 8h18v12H3z" fill="currentColor" fillOpacity="0.14" />
+      <path {...baseStroke} d="M3 8V5.5L17 4v4" />
+      <path {...baseStroke} d="M21 12.5h-5.5v4H21" />
+      <path {...baseStroke} d="M17.5 14.5h.01" strokeWidth={2.6} />
     </svg>
   );
 }
 
 export function ChartIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M4 19h16" />
-      <path {...baseStroke} d="M7 15l3-4 4 3 3-5" />
-      <path {...baseStroke} d="M7 10h.01M10 11h.01M14 14h.01M17 9h.01" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M3.5 20.5h17" />
+      <rect {...baseStroke} x="5" y="13" width="3.5" height="7.5" />
+      <rect {...baseStroke} x="10.25" y="8" width="3.5" height="12.5" />
+      <rect {...baseStroke} x="15.5" y="4" width="3.5" height="16.5" />
     </svg>
   );
 }
@@ -252,9 +255,9 @@ export function TrophyIcon({ size = 18, className }: IconProps) {
 
 export function AdvisorIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M12 3l7 4-7 4-7-4z" />
-      <path {...baseStroke} d="M5 11v5l7 4 7-4v-5" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M9 17.5h6M10 21h4" />
+      <path {...baseStroke} d="M12 3a6 6 0 00-3.6 10.8c.6.5 1.1 1.2 1.1 2h5c0-.8.5-1.5 1.1-2A6 6 0 0012 3z" fill="currentColor" fillOpacity="0.14" />
     </svg>
   );
 }
@@ -367,32 +370,21 @@ export function CheckIcon({ size = 18, className }: IconProps) {
 
 export function SubwayIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      {/* Train car body */}
-      <rect {...baseStroke} x="4" y="8" width="16" height="10" rx="3" />
-      {/* Windows */}
-      <rect {...baseStroke} x="6" y="10" width="4" height="4" rx="1" />
-      <rect {...baseStroke} x="14" y="10" width="4" height="4" rx="1" />
-      {/* Wheels */}
-      <circle {...baseStroke} cx="8" cy="19" r="1.5" />
-      <circle {...baseStroke} cx="16" cy="19" r="1.5" />
-      {/* Pantograph/top */}
-      <path {...baseStroke} d="M10 8V5M14 8V5M10 5h4" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect {...baseStroke} x="5" y="3" width="14" height="15" rx="3" />
+      <path {...baseStroke} d="M5 11h14" />
+      <rect {...baseStroke} x="7.5" y="5.5" width="9" height="3.5" />
+      <path {...baseStroke} d="M8.5 14.5h.01M15.5 14.5h.01" strokeWidth={2.6} />
+      <path {...baseStroke} d="M8 18l-2 3M16 18l2 3" />
     </svg>
   );
 }
 
 export function RailIcon({ size = 18, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      {/* Two parallel rails */}
-      <path {...baseStroke} d="M6 4v16" />
-      <path {...baseStroke} d="M18 4v16" />
-      {/* Cross ties */}
-      <path {...baseStroke} d="M4 6h16" />
-      <path {...baseStroke} d="M4 10h16" />
-      <path {...baseStroke} d="M4 14h16" />
-      <path {...baseStroke} d="M4 18h16" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <path {...baseStroke} d="M9.5 3L7 21M14.5 3L17 21" />
+      <path {...baseStroke} d="M8.5 6.5h7M7.8 11.5h8.4M7.2 16.5h9.6M4.5 21h15" />
     </svg>
   );
 }
@@ -411,11 +403,37 @@ export function SubwayStationIcon({ size = 18, className }: IconProps) {
   );
 }
 
-function ZoneIcon({ color, size = 18, className }: IconProps & { color: string }) {
+/** Zone tool glyph: a building that says which zone it is, with a faint zone-colour fill. */
+function ZoneBuilding({ color, size = 18, className, kind }: IconProps & { color: string; kind: 'res' | 'com' | 'ind' }) {
+  const tint = { fill: color, fillOpacity: 0.34, stroke: 'none' };
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <rect x="4" y="4" width="16" height="16" rx="3" fill={color} opacity="0.18" stroke="currentColor" strokeWidth="1.6" />
-      <path {...baseStroke} d="M8 16l8-8" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      {kind === 'res' && (<>
+        <rect {...tint} x="4" y="9" width="16" height="12" />
+        <path {...baseStroke} d="M4 21V9h16v12M2.5 21h19M6.5 9V5.5h11V9M10 21v-5a2 2 0 014 0v5" />
+      </>)}
+      {kind === 'com' && (<>
+        <rect {...tint} x="4" y="10" width="16" height="11" />
+        <path {...baseStroke} d="M4 10v11h16V10M2.5 21h19M5 3.5h14l2 6.5H3zM9.7 3.5L8.5 10M14.3 3.5L15.5 10M10 21v-6h4v6" />
+      </>)}
+      {kind === 'ind' && (<>
+        <path {...tint} d="M3 21V10l6 4v-4l6 4v7z" />
+        <path {...baseStroke} d="M3 21V10l6 4v-4l6 4V21M2 21h20M17 21V4h4v17M18 1.5c1 .8 2 .8 3 0" />
+        <path {...baseStroke} d="M7 18h.01M11 18h.01" />
+      </>)}
+    </svg>
+  );
+}
+
+/** Land tools: a dashed tile with a small mark (X to clear, waves for water, mound for land). */
+function ZoneTile({ color, size = 18, className, mark }: IconProps & { color: string; mark: 'x' | 'water' | 'land' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect x="3.5" y="3.5" width="17" height="17" fill={color} fillOpacity="0.3" />
+      <rect {...baseStroke} x="3.5" y="3.5" width="17" height="17" strokeDasharray="3.2 2.6" />
+      {mark === 'x' && <path {...baseStroke} d="M8.5 8.5l7 7M15.5 8.5l-7 7" />}
+      {mark === 'water' && <path {...baseStroke} d="M7 10.5c1.2-1 2.3-1 3.5 0s2.3 1 3.5 0 1.8-.7 2.5-.4M7 15c1.2-1 2.3-1 3.5 0s2.3 1 3.5 0 1.8-.7 2.5-.4" />}
+      {mark === 'land' && <path {...baseStroke} d="M7 16l3.5-5 2.5 3 1.5-2L17 16z" />}
     </svg>
   );
 }
@@ -427,12 +445,12 @@ export const ToolIcons: Partial<Record<Tool, React.FC<IconProps>>> = {
   rail: RailIcon,
   subway: SubwayIcon,
   tree: TreeIcon,
-  zone_residential: (props) => <ZoneIcon {...props} color="#22c55e" />, 
-  zone_commercial: (props) => <ZoneIcon {...props} color="#38bdf8" />, 
-  zone_industrial: (props) => <ZoneIcon {...props} color="#f59e0b" />, 
-  zone_dezone: (props) => <ZoneIcon {...props} color="#94a3b8" />,
-  zone_water: (props) => <ZoneIcon {...props} color="#06b6d4" />,
-  zone_land: (props) => <ZoneIcon {...props} color="#059669" />,
+  zone_residential: (props) => <ZoneBuilding {...props} kind="res" color="#4ade80" />, 
+  zone_commercial: (props) => <ZoneBuilding {...props} kind="com" color="#38bdf8" />, 
+  zone_industrial: (props) => <ZoneBuilding {...props} kind="ind" color="#fbbf24" />, 
+  zone_dezone: (props) => <ZoneTile {...props} mark="x" color="#94a3b8" />,
+  zone_water: (props) => <ZoneTile {...props} mark="water" color="#06b6d4" />,
+  zone_land: (props) => <ZoneTile {...props} mark="land" color="#34d399" />,
   police_station: SafetyIcon,
   fire_station: FireIcon,
   hospital: HealthIcon,

@@ -72,7 +72,7 @@ const TOOL_KEY_HINTS: Partial<Record<Tool, string>> = {
 /** Shared look for a sidebar category row. */
 // On short screens (768 px laptops) rows shrink to 36 px so Tools, Zones and the first building groups all fit.
 const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none';
-const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text';
+const CATEGORY_ICON = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text';
 const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-none overflow-hidden animate-submenu-in';
 
 // Hover Submenu Component for collapsible tool categories
@@ -754,7 +754,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}${TOOL_KEY_HINTS[tool] ? ` (${TOOL_KEY_HINTS[tool]})` : ''}`}
                   >
-                    <ToolGlyph tool={tool} size={28} selected={isSelected} />
+                    <ToolGlyph tool={tool} size={32} selected={isSelected} />
                     <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>
                     {info.cost > 0 && (
                       <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{formatINR(info.cost)}</span>
@@ -817,10 +817,10 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
       <div className="border-t border-chrome-border p-2">
         <div className="grid grid-cols-4 gap-1 hud-well rounded-none p-1">
           {[
-            { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
-            { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
-            { panel: 'advisors' as const, icon: <AdvisorIcon size={16} />, labelKey: 'advisors' as const },
-            { panel: 'settings' as const, icon: <SettingsIcon size={16} />, labelKey: 'settings' as const },
+            { panel: 'budget' as const, icon: <BudgetIcon size={22} />, labelKey: 'budget' as const },
+            { panel: 'statistics' as const, icon: <ChartIcon size={22} />, labelKey: 'statistics' as const },
+            { panel: 'advisors' as const, icon: <AdvisorIcon size={22} />, labelKey: 'advisors' as const },
+            { panel: 'settings' as const, icon: <SettingsIcon size={22} />, labelKey: 'settings' as const },
           ].map(({ panel, icon, labelKey }) => (
             <Button
               key={panel}
