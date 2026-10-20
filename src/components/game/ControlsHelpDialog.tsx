@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { KEY_BINDINGS, MOUSE_BINDINGS } from '@/lib/controlsConfig';
+import { KEY_BINDINGS, MOUSE_BINDINGS, formatKeyLabel } from '@/lib/controlsConfig';
 import { isDevMode } from '@/lib/devMode';
 
 const LABELS = {
@@ -34,7 +34,7 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
   const m = useMessages();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[480px] max-h-[85vh] overflow-y-auto" data-testid="controls-help">
+      <DialogContent showClose className="max-w-[480px] max-h-[85vh] overflow-y-auto" data-testid="controls-help">
         <DialogHeader>
           <DialogTitle>{m(LABELS.title)}</DialogTitle>
           <DialogDescription>{m(LABELS.description)}</DialogDescription>
@@ -59,7 +59,7 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
               <tbody>
                 {KEY_BINDINGS.filter((b) => b.action !== 'perfHud' || isDevMode()).map((binding) => (
                   <tr key={binding.action} className="border-b border-chrome-border/60 last:border-0">
-                    <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{binding.keyLabel}</KeyCap></td>
+                    <td className="py-1 pr-3 align-top whitespace-nowrap"><KeyCap>{formatKeyLabel(binding.keyLabel)}</KeyCap></td>
                     <td className="py-1 text-chrome-muted">{m(binding.label)}</td>
                   </tr>
                 ))}

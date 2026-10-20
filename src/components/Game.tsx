@@ -17,7 +17,7 @@ import { loadIsocityUiPreferences, saveIsocityUiPreferences } from '@/lib/isocit
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useCheatCodes } from '@/hooks/useCheatCodes';
 import { VinnieDialog } from '@/components/VinnieDialog';
-import { CommandMenu } from '@/components/ui/CommandMenu';
+import { CommandMenu, type CommandAction } from '@/components/ui/CommandMenu';
 import { TipToast } from '@/components/ui/TipToast';
 import { useTipSystem } from '@/hooks/useTipSystem';
 import { useGameAudio } from '@/hooks/useGameAudio';
@@ -46,6 +46,7 @@ import { MiniMap } from '@/components/game/MiniMap';
 import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
+import { PausedIndicator } from '@/components/game/PausedIndicator';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
@@ -71,7 +72,7 @@ type MiniMapViewportListener = (viewport: ViewportState | null) => void;
 export default function Game({ onExit }: { onExit?: () => void }) {
   const gt = useGT();
   const m = useMessages();
-  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed, undoLast } = useGame();
+  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed, lastRunSpeed, saveCity, undoLast } = useGame();
   // S5-T9: music, sound effects and ambient
   useGameAudio(state, latestStateRef);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
@@ -273,6 +274,34 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     }, 0);
   }, [state.selectedTool]);
   
+  // Ctrl/Cmd+S: save the city and say so
+  const saveWithToast = useCallback(() => {
+    saveCity();
+    addNotification(gt('Saved'), gt('"{name}" is saved. Load it any time from Settings.', { name: state.cityName }), 'info');
+  }, [saveCity, addNotification, gt, state.cityName]);
+
+  // Commands for the Ctrl+K menu: Save, Pause/Resume and the overlays
+  const resumeSpeed = lastRunSpeed;
+  const isPaused = state.speed === 0;
+  const commandActions = useMemo<CommandAction[]>(() => [
+    { id: 'save', name: gt('Save city'), description: gt('Save "{name}" now (Ctrl+S)', { name: state.cityName }), keywords: ['save', 'store'], run: saveWithToast },
+    {
+      id: 'pause',
+      name: isPaused ? gt('Resume game') : gt('Pause game'),
+      description: isPaused ? gt('Continue at the speed you had before (Space)') : gt('Stop the clock (Space)'),
+      keywords: ['pause', 'resume', 'play', 'stop', 'continue', 'speed'],
+      run: () => setSpeed(isPaused ? resumeSpeed : 0),
+    },
+    ...OVERLAY_ORDER.filter((mode) => mode !== 'none').map((mode) => ({
+      id: `overlay-${mode}`,
+      name: gt('Overlay: {name}', { name: OVERLAY_CONFIG[mode].label }),
+      description: gt('Show the {title} overlay (Tab cycles overlays)', { title: OVERLAY_CONFIG[mode].title }),
+      keywords: ['overlay', 'map', 'view', mode],
+      run: () => setOverlayMode(mode),
+    })),
+    { id: 'overlay-off', name: gt('Overlay: off'), description: gt('Hide the map overlay'), keywords: ['overlay', 'hide', 'none', 'off', 'clear'], run: () => setOverlayMode('none') },
+  ], [gt, isPaused, resumeSpeed, saveWithToast, setSpeed, state.cityName]);
+
   // All keyboard shortcuts (bindings in src/lib/controlsConfig.ts KEY_BINDINGS)
   useKeyboardControls({
     controlsRef,
@@ -287,8 +316,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     setTool,
     speed: state.speed,
     setSpeed,
+    resumeSpeed: lastRunSpeed,
     onShowHelp: openControlsHelp,
     onUndo: undoLast,
+    onSave: saveWithToast,
   });
 
   // Handle cheat code triggers
@@ -396,6 +427,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
             <div className={`absolute ${tileStripOpen ? 'top-[calc(112px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none`}>
+              <PausedIndicator className="self-start" />
               <TipToast
                 message={currentTip || ''}
                 isVisible={isTipVisible}
@@ -517,6 +549,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
+            <PausedIndicator className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[min(24rem,calc(100%-2rem))]" />
             <CitizenFeed
               compact
               onLocate={locateTile}
@@ -584,7 +617,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />
         
         <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
-        <CommandMenu />
+        <CommandMenu actions={commandActions} />
         
       </div>
     </TooltipProvider>

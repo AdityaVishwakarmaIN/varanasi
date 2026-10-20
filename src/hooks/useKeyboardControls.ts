@@ -27,9 +27,13 @@ export interface KeyboardControlsOptions<Overlay extends string> {
   setTool: (tool: Tool) => void;
   speed: GameState['speed'];
   setSpeed: (speed: GameState['speed']) => void;
+  /** Speed that Space/P resumes at (the last speed the player chose). */
+  resumeSpeed: 1 | 2 | 3;
   onShowHelp: () => void;
   /** Ctrl/Cmd+Z: undo the last build or bulldoze. */
   onUndo?: () => void;
+  /** Ctrl/Cmd+S: save the city. */
+  onSave: () => void;
 }
 
 const TOOL_ACTIONS: Partial<Record<ControlAction, Tool>> = {
@@ -66,12 +70,21 @@ export function useKeyboardControls<Overlay extends string>(options: KeyboardCon
     let spaceDownAt = 0;
 
     const togglePause = () => {
-      const { speed, setSpeed } = optionsRef.current;
-      // Same behaviour as the old P shortcut: paused → normal speed, running → paused.
-      setSpeed(speed === 0 ? 1 : 0);
+      const { speed, setSpeed, resumeSpeed } = optionsRef.current;
+      // Paused → back to the speed the player had; running → paused.
+      setSpeed(speed === 0 ? resumeSpeed : 0);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+S saves the city instead of the browser's "Save page" (works from inside dialogs too).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (!e.repeat) optionsRef.current.onSave();
+        return;
+      }
+      // A focused slider (e.g. the tax rate) keeps its arrow keys; Esc hands the focus back to the map.
+      const target = e.target as HTMLElement | null;
+      if (e.key === 'Escape' && target?.getAttribute?.('role') === 'slider') target.blur();
       if (isTypingTarget(e.target) || isInsideModal(e.target)) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && optionsRef.current.onUndo) {
         e.preventDefault();

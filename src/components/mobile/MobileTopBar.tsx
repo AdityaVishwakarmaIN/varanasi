@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tile } from '@/types/game';
@@ -144,7 +144,7 @@ export function MobileTopBar({
   onShare?: () => void;
   onExit?: () => void;
 }) {
-  const { state, setSpeed, setTaxRate, visualHour, saveCity } = useGame();
+  const { state, setSpeed, setTaxRate, visualHour, saveCity, discardUnsavedChanges } = useGame();
   const { stats, year, month, day, speed, taxRate, cityName } = state;
   const [showDetails, setShowDetails] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
@@ -165,9 +165,20 @@ export function MobileTopBar({
   }, [saveCity, onExit]);
 
   const handleExitWithoutSaving = useCallback(() => {
+    discardUnsavedChanges(); // no autosave on the way out, so Continue restores the last save
     setShowExitDialog(false);
     onExit?.();
-  }, [onExit]);
+  }, [discardUnsavedChanges, onExit]);
+
+  // Esc closes the calendar/details popover
+  useEffect(() => {
+    if (!showDetails) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowDetails(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showDetails]);
 
   const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
   // S2-T8: "Effect on Ganga" for catchment tiles (memoized per grid inside ganga.ts).
@@ -552,6 +563,13 @@ export function MobileTopBar({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowExitDialog(false)}
+              className="w-full sm:w-auto h-11"
+            >
+              Cancel
+            </Button>
             <Button
               variant="outline"
               onClick={handleExitWithoutSaving}
