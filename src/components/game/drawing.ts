@@ -34,6 +34,34 @@ export type BeachEdge = 'north' | 'east' | 'south' | 'west';
 // Color Constants
 // ============================================================================
 
+/**
+ * Zone look. Empty zoned lots get a strong, opaque fill (distinct in lightness as well as hue so they stay
+ * readable for colour-blind players: R light green, C mid blue, I dark brown), a crisp inset outline and a letter.
+ * Developed tiles keep a subtler tint (`built`), a bit stronger while a zone tool is selected (`builtStrong`).
+ * All strings are constants, so drawing allocates nothing per frame.
+ */
+export type ZoneLotStyle = {
+  /** Top face of an empty zoned lot. */
+  fill: string;
+  /** Subtle tint under a developed building. */
+  built: string;
+  /** Developed tint while a zone tool is selected. */
+  builtStrong: string;
+  /** Inset outline of an empty lot. */
+  line: string;
+  /** Letter colour (contrasts with `fill`). */
+  letter: string;
+  /** Single-letter label drawn on empty lots. */
+  label: string;
+};
+
+export const ZONE_LOT_STYLES: Record<ZoneType, ZoneLotStyle | null> = {
+  none: null,
+  residential: { fill: '#8fd17f', built: '#3f7f41', builtStrong: '#4f9a4d', line: '#1b5a25', letter: '#143f1b', label: 'R' },
+  commercial: { fill: '#4c8fe0', built: '#3a5c7c', builtStrong: '#3f73b0', line: '#0c3470', letter: '#ffffff', label: 'C' },
+  industrial: { fill: '#7a4518', built: '#7c5c3a', builtStrong: '#94602a', line: '#ffd27a', letter: '#ffe6b0', label: 'I' },
+};
+
 /** Zone-based color schemes for grass tiles */
 export const ZONE_COLORS: Record<ZoneType, TileColorScheme> = {
   none: {
@@ -43,32 +71,72 @@ export const ZONE_COLORS: Record<ZoneType, TileColorScheme> = {
     stroke: '#2d4a26',
   },
   residential: {
-    top: '#2d5a2d',
-    left: '#1d4a1d',
-    right: '#3d6a3d',
-    stroke: '#22c55e',
+    top: ZONE_LOT_STYLES.residential!.fill,
+    left: '#6fb862',
+    right: '#a3dd94',
+    stroke: ZONE_LOT_STYLES.residential!.line,
   },
   commercial: {
-    top: '#2a4a6a',
-    left: '#1a3a5a',
-    right: '#3a5a7a',
-    stroke: '#3b82f6',
+    top: ZONE_LOT_STYLES.commercial!.fill,
+    left: '#3a77c4',
+    right: '#6aa3ea',
+    stroke: ZONE_LOT_STYLES.commercial!.line,
   },
   industrial: {
-    top: '#6a4a2a',
-    left: '#5a3a1a',
-    right: '#7a5a3a',
-    stroke: '#f59e0b',
+    top: ZONE_LOT_STYLES.industrial!.fill,
+    left: '#633812',
+    right: '#8f5524',
+    stroke: ZONE_LOT_STYLES.industrial!.line,
   },
 };
 
-/** Zone border colors (dashed lines) */
+/** Zone border colors (inset outline on empty lots) */
 export const ZONE_BORDER_COLORS: Record<ZoneType, string> = {
   none: 'transparent',
-  residential: '#22c55e',
-  commercial: '#3b82f6',
-  industrial: '#f59e0b',
+  residential: ZONE_LOT_STYLES.residential!.line,
+  commercial: ZONE_LOT_STYLES.commercial!.line,
+  industrial: ZONE_LOT_STYLES.industrial!.line,
 };
+
+/** Inset factor of the zone outline (share of the tile half-size). */
+const ZONE_INSET = 0.8;
+
+/**
+ * Crisp inset outline plus an R/C/I letter on an EMPTY zoned lot. Runs inside the existing tile loop, so it adds
+ * no pass: one small path, and one glyph only when zoomed in far enough. `emphasis` is true while a zone tool is
+ * selected (heavier outline, letter at lower zoom).
+ */
+export function drawZoneLotMarks(
+  ctx: IsoRenderer,
+  x: number,
+  y: number,
+  zone: ZoneType,
+  currentZoom: number,
+  emphasis: boolean
+): void {
+  const style = ZONE_LOT_STYLES[zone];
+  if (!style || currentZoom < 0.5) return;
+  const hw = (TILE_WIDTH / 2) * ZONE_INSET;
+  const hh = (TILE_HEIGHT / 2) * ZONE_INSET;
+  const cx = x + TILE_WIDTH / 2;
+  const cy = y + TILE_HEIGHT / 2;
+  ctx.strokeStyle = style.line;
+  ctx.lineWidth = emphasis ? 2.2 : 1.6;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hh);
+  ctx.lineTo(cx + hw, cy);
+  ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx - hw, cy);
+  ctx.closePath();
+  ctx.stroke();
+  if (currentZoom >= (emphasis ? 0.7 : 0.95)) {
+    ctx.fillStyle = style.letter;
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(style.label, cx, cy + 0.5);
+  }
+}
 
 /** Grey base tile colors for buildings */
 export const GREY_TILE_COLORS: TileColorScheme = {
@@ -176,7 +244,9 @@ export function drawGreenBaseTile(
   tile: Tile,
   currentZoom: number,
   /** Replaces the zone colours (e.g. the Varanasi floodplain sand, S2-T4). */
-  colorsOverride?: TileColorScheme
+  colorsOverride?: TileColorScheme,
+  /** True while a zone tool is selected (heavier zone marks). */
+  zoneEmphasis = false
 ): void {
   const colors = colorsOverride ?? ZONE_COLORS[tile.zone];
 
@@ -186,22 +256,9 @@ export function drawGreenBaseTile(
     strokeWidth: 0.5,
   });
 
-  // Draw zone border with dashed line when zoomed in enough
-  if (tile.zone !== 'none' && currentZoom >= 0.95) {
-    const borderColor = ZONE_BORDER_COLORS[tile.zone];
-    const corners = getDiamondCorners(x, y);
-
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 2]);
-    ctx.beginPath();
-    ctx.moveTo(corners.top.x, corners.top.y);
-    ctx.lineTo(corners.right.x, corners.right.y);
-    ctx.lineTo(corners.bottom.x, corners.bottom.y);
-    ctx.lineTo(corners.left.x, corners.left.y);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.setLineDash([]);
+  // Crisp inset outline + letter on empty zoned lots
+  if (tile.zone !== 'none' && (tile.building.type === 'grass' || tile.building.type === 'empty')) {
+    drawZoneLotMarks(ctx, x, y, tile.zone, currentZoom, zoneEmphasis);
   }
 }
 
