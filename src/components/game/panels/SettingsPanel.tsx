@@ -24,7 +24,7 @@ import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
 import { getShowProblemIcons, resetShownTips, setShowProblemIcons, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
 import type { MapId } from '@/games/isocity/maps/varanasi';
-import { localizeExampleState } from '@/lib/names';
+import { localizeExampleState } from '@/lib/exampleCity';
 import { DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 
 // Translatable UI labels

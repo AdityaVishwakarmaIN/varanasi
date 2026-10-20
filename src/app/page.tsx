@@ -44,7 +44,7 @@ import { Input } from '@/components/ui/input';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { DEFAULT_CITY_NAMES } from '@/lib/mapConfig';
 import type { NewGameOptions } from '@/lib/newGame';
-import { localizeExampleState } from '@/lib/names';
+import { localizeExampleState } from '@/lib/exampleCity';
 
 // Save a city to the saved cities index (for multiplayer cities)
 async function saveCityToIndex(state: GameState, roomCode?: string): Promise<void> {
