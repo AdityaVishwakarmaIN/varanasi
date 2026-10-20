@@ -8,6 +8,7 @@ import { TOOL_INFO, type GameState, type Tool } from '@/types/game';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
 import { formatINR } from '@/lib/format';
 import type { UndoKind } from '@/lib/undo';
+import { BottomToastPortal } from '@/components/game/BottomToastPortal';
 
 /** How long the toast stays up. Ctrl/Cmd+Z keeps working after it is gone. */
 const UNDO_TOAST_MS = 5000;
@@ -68,9 +69,9 @@ export function UndoToast({
       : null;
 
   return (
-    <div
+    <BottomToastPortal
       role="status"
-      className="fixed z-[60] left-3 right-3 bottom-[calc(19rem+env(safe-area-inset-bottom))] md:left-1/2 md:right-auto md:bottom-16 md:-translate-x-1/2 md:w-max md:max-w-[28rem] animate-rise-in"
+      fallbackClassName="fixed z-[60] left-3 right-3 bottom-[calc(19rem+env(safe-area-inset-bottom))] md:left-1/2 md:right-auto md:bottom-24 md:-translate-x-1/2 md:w-max md:max-w-[28rem]"
     >
       <div className="hud-panel flex items-center gap-3 rounded-none py-2 pl-3.5 pr-1.5 text-sm text-chrome-text">
         <div className="min-w-0 flex-1">
@@ -90,6 +91,6 @@ export function UndoToast({
           <X className="w-4 h-4" />
         </button>
       </div>
-    </div>
+    </BottomToastPortal>
   );
 }

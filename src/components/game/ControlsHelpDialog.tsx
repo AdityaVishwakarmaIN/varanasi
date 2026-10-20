@@ -53,12 +53,13 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
   const { isTouchDevice } = useMobile();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showClose className="max-w-[480px] max-h-[85vh] overflow-y-auto" data-testid="controls-help">
-        <DialogHeader>
+      {/* Header (and close button) stay put; only the list scrolls, so nothing is cut off on short screens. */}
+      <DialogContent showClose className="max-w-[480px] max-h-[min(85vh,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden" data-testid="controls-help">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(isTouchDevice ? LABELS.legend : LABELS.title)}</DialogTitle>
           <DialogDescription>{m(isTouchDevice ? LABELS.legendDesc : LABELS.description)}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 text-sm">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4 text-sm" data-testid="controls-help-body">
           <section>
             <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-2">{m(LABELS.legend)}</div>
             <ul className="space-y-1.5">

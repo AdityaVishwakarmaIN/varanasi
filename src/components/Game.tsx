@@ -35,6 +35,7 @@ import { ControlsHelpDialog } from '@/components/game/ControlsHelpDialog';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { createSharedControlsState, SharedControlsState } from '@/lib/controlsConfig';
 import { OverlayModeToggle } from '@/components/game/OverlayModeToggle';
+import { BOTTOM_TOAST_SLOT_ID } from '@/components/game/BottomToastPortal';
 import { Sidebar } from '@/components/game/Sidebar';
 import {
   BudgetPanel,
@@ -490,7 +491,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onDrawModeChange={setTouchDrawMode}
             bannerSlot={
               <>
-                <FailureOverlays bannerClassName="w-full" />
+                <FailureOverlays bannerClassName="w-full empty:hidden" />
                 <FestivalEventBanner state={state} onOpen={setEventPanel} />
               </>
             }
@@ -546,11 +547,16 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onLocate={locateNotification}
               className="absolute top-3 left-4 min-[1440px]:left-1/2 min-[1440px]:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
             />
-            {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
-            <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
+            {/* Bottom-centre stack: one column above the overlay bar (bottom-left) and clear of the
+                minimap (bottom-right). It grows upward, so paused bar, debt banners, festival banner
+                and the undo / save-error toasts (portalled into the slot) never overlap. */}
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(26rem,calc(100%-2rem))] flex flex-col-reverse items-center gap-2 pointer-events-none">
+              <PausedIndicator className="pointer-events-auto max-w-full" />
+              <FailureOverlays bannerClassName="w-full empty:hidden" />
+              <div id={BOTTOM_TOAST_SLOT_ID} className="w-full flex flex-col-reverse gap-2 empty:hidden" />
+              <FestivalEventBanner state={state} onOpen={setEventPanel} className="pointer-events-auto" />
+            </div>
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
-            <PausedIndicator className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[min(24rem,calc(100%-2rem))]" />
             <CitizenFeed
               compact
               onLocate={locateTile}

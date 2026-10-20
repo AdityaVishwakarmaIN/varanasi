@@ -310,14 +310,41 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
       {/* Expanded Tool Menu */}
       {showMenu && (
-        <div className="fixed inset-0 z-40 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn" onClick={() => setShowMenu(false)}>
+        <>
+          {/* Scrim: covers the top bar and the map (it sits above the top bar's z-40), so nothing
+              under it reacts; a tap anywhere on it only closes the menu. */}
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={gt('Close build menu')}
+            data-testid="build-menu-scrim"
+            className="fixed inset-0 z-[45] cursor-default touch-none bg-[hsl(25_30%_10%/0.55)] animate-fadeIn"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowMenu(false); }}
+          />
+          {/* The whole sheet scrolls as one, so the categories get almost all of its height. */}
           <div
-            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(78dvh,calc(100dvh-10.5rem))] overflow-hidden rounded-none flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            ref={listRef}
+            data-testid="build-menu-sheet"
+            className="hud-panel animate-rise-in fixed z-[46] bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(78dvh,calc(100dvh-10.5rem))] overflow-y-auto overscroll-contain touch-pan-y rounded-none"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            {/* Categories first: they get the sheet's height. */}
-            <div ref={listRef} className="relative flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
-              <div className="p-2 space-y-1 pb-8">
+            {/* City management: one compact row above the categories */}
+            <div className="grid grid-cols-4 gap-1.5 border-b border-chrome-border p-2">
+              {(['budget', 'statistics', 'advisors', 'settings'] as const).map((panel) => (
+                <Button
+                  key={panel}
+                  variant="ghost"
+                  size="sm"
+                  className="press hud-well relative h-11 w-full px-1 text-xs text-chrome-text rounded-none"
+                  onClick={() => { onOpenPanel(panel); setShowMenu(false); }}
+                >
+                  {m(UI_LABELS[panel])}
+                  {panel === 'advisors' && advisorBadge}
+                </Button>
+              ))}
+            </div>
+            <div>
+              <div className="p-2 space-y-1">
                 {/* Category buttons */}
                 {getMapToolCategories(state.mapId).map(([category, tools]) => (
                   <div key={category}>
@@ -413,24 +440,9 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               </div>
             </div>
 
-            {/* City management and view overlays: two compact rows under the categories */}
-            <div className="flex-shrink-0 border-t border-chrome-border bg-chrome-panel p-2 space-y-2">
-              <div className="grid grid-cols-4 gap-2">
-                {(['budget', 'statistics', 'advisors', 'settings'] as const).map((panel) => (
-                  <Button
-                    key={panel}
-                    variant="ghost"
-                    size="sm"
-                    className="press hud-well relative h-11 w-full px-1 text-xs text-chrome-text rounded-none"
-                    onClick={() => { onOpenPanel(panel); setShowMenu(false); }}
-                  >
-                    {m(UI_LABELS[panel])}
-                    {panel === 'advisors' && advisorBadge}
-                  </Button>
-                ))}
-              </div>
-              {setOverlayMode && (
-                <div className="flex flex-col gap-1.5">
+            {/* View overlays: after the categories, in the same scroll */}
+            {setOverlayMode && (
+                <div className="flex flex-col gap-1.5 border-t border-chrome-border p-2">
                   <span className="hud-label shrink-0">{m(UI_LABELS.viewOverlays)}</span>
                   <div className="grid min-w-0 grid-cols-5 gap-1" role="group" aria-label={String(m(UI_LABELS.viewOverlays))}>
                     {OVERLAY_BUTTONS.filter(([mode]) => state.mapId === 'varanasi' || (mode !== 'ganga' && mode !== 'flood')).map(([mode, label, activeClass]) => (
@@ -447,10 +459,9 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
+            )}
           </div>
-        </div>
+        </>
       )}
     </>
   );

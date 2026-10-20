@@ -5,6 +5,7 @@ import { T } from 'gt-next';
 import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
+import { BottomToastPortal } from '@/components/game/BottomToastPortal';
 
 /**
  * Shown when saving the city fails (S1-T9). The same text is also pushed to
@@ -23,9 +24,9 @@ export function SaveErrorToast({
   }, [onDismiss]);
 
   return (
-    <div
+    <BottomToastPortal
       role="alert"
-      className="fixed z-[9999] bottom-[calc(132px+env(safe-area-inset-bottom))] left-3 right-3 animate-rise-in md:bottom-24 md:left-[calc(50%+112px)] md:right-auto md:-translate-x-1/2 md:w-[min(26rem,calc(100vw-40rem))]"
+      fallbackClassName="fixed z-[9999] bottom-[calc(132px+env(safe-area-inset-bottom))] left-3 right-3 md:bottom-24 md:left-[calc(50%+112px)] md:right-auto md:-translate-x-1/2 md:w-[min(26rem,calc(100vw-40rem))]"
     >
       <div className="hud-panel flex items-start gap-3 rounded-none !border-red-400/60 p-3.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none bg-red-500/15 ring-1 ring-red-400/40" aria-hidden><AlertTriangle className="w-5 h-5 text-red-700" /></span>
@@ -44,6 +45,6 @@ export function SaveErrorToast({
           <X className="w-4 h-4" />
         </button>
       </div>
-    </div>
+    </BottomToastPortal>
   );
 }
