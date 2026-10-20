@@ -50,6 +50,7 @@ import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
 import { CitizenFeed } from '@/components/game/CitizenFeed';
+import { OverlayLegendChip } from '@/components/game/OverlayLegendChip';
 import type { AdvisorNote } from '@/lib/advisors';
 import { LandmarkBulldozeDialog } from '@/components/game/LandmarkBulldozeDialog';
 import type { Notification } from '@/types/game';
@@ -351,8 +352,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
 
   // Mobile layout
   if (isMobile) {
-    // Strips that grow the fixed bars: the tool-name strip above the toolbar, the tile-info strip under the top bar.
-    const toolStripOpen = !!TOOL_INFO[state.selectedTool];
+    // The tile-info strip grows the top bar.
     const tileStripOpen = !!selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool);
     return (
       <TooltipProvider>
@@ -394,7 +394,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               touchDrawMode={touchDrawMode}
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
-            <div className={`absolute ${tileStripOpen ? 'top-[calc(112px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none`}>
+            <div className={`absolute ${tileStripOpen ? 'top-[calc(124px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none`}>
+              <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} className="self-start" />
               <TipToast
                 message={currentTip || ''}
                 isVisible={isTipVisible}
@@ -407,14 +408,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 onLocate={locateNotification}
               />
             </div>
-            <FailureOverlays bannerClassName={`absolute ${toolStripOpen ? 'bottom-[168px]' : 'bottom-[132px]'} left-3 right-3 z-30`} />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className={`absolute ${toolStripOpen ? 'bottom-[220px]' : 'bottom-[184px]'} left-3 z-20`} />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
-            <CitizenFeed
-              compact
-              onLocate={locateTile}
-              className={`absolute ${toolStripOpen ? 'bottom-[120px]' : 'bottom-[84px]'} left-3 z-20 w-[min(18rem,calc(100%-1.5rem))]`}
-            />
             
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
@@ -460,6 +454,13 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             setOverlayMode={setOverlayMode}
             drawMode={touchDrawMode}
             onDrawModeChange={setTouchDrawMode}
+            bannerSlot={
+              <>
+                <FailureOverlays bannerClassName="w-full" />
+                <FestivalEventBanner state={state} onOpen={setEventPanel} />
+              </>
+            }
+            feedSlot={<CitizenFeed compact onLocate={locateTile} />}
           />
           
           {/* Panels - render as fullscreen modals on mobile */}
@@ -529,6 +530,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             
             {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
             <div className="absolute top-3 right-4 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none">
+            <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} />
             {isMultiplayer && (
               <div className="pointer-events-auto">
                 <div className="hud-glass rounded-xl px-3 py-2 shadow-lg min-w-[120px]">

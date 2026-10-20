@@ -94,8 +94,31 @@ export function CitizenFeed({
     setUnread(0);
   };
 
+  // Mobile, closed: just an icon chip (with the unread count) so it takes almost no map.
+  if (compact && !open) {
+    return (
+      <div className={cn('pointer-events-auto', className)}>
+        <button
+          type="button"
+          onClick={toggle}
+          className="hud-glass relative flex h-11 w-11 items-center justify-center rounded-md"
+          aria-expanded={false}
+          aria-label={m(LABELS.expand)}
+          title={m(LABELS.title)}
+        >
+          <MessageCircle className="h-5 w-5 text-chrome-text" aria-hidden />
+          {unread > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-[16px] h-4 px-1 rounded-sm hud-selected text-[10px] leading-4 text-center font-semibold">
+              {unread}
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className={cn('pointer-events-auto', className)}>
+    <div className={cn('pointer-events-auto', compact && 'w-[min(18rem,calc(100vw-1.5rem))]', className)}>
       <div className="hud-glass rounded-md overflow-hidden">
         <button
           type="button"

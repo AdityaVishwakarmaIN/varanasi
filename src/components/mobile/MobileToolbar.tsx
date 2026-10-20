@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
@@ -36,8 +36,6 @@ import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 function quickToolClass(selected: boolean, extra = '') {
   return `press h-11 w-11 rounded-md ${selected ? 'hud-selected hover:text-chrome-accentText' : `text-chrome-text hover:bg-chrome-well ${extra}`}`;
 }
-
-const SECTION_LABEL = 'hud-label mb-2 flex items-center gap-1.5';
 
 // Tool category icons
 const CategoryIcons: Record<string, React.ReactNode> = {
@@ -246,6 +244,20 @@ const UI_LABELS = {
   drawOff: msg('Draw: off'),
 };
 
+/** Overlay buttons in the build sheet: mode, label and the colour of the pressed button. */
+const OVERLAY_BUTTONS: [OverlayMode, (typeof UI_LABELS)[keyof typeof UI_LABELS], string][] = [
+  ['none', UI_LABELS.none, 'hud-selected hover:text-chrome-accentText'],
+  ['power', UI_LABELS.power, 'bg-amber-700 hover:bg-amber-800 text-white'],
+  ['water', UI_LABELS.water, 'bg-blue-700 hover:bg-blue-800 text-white'],
+  ['fire', UI_LABELS.fire, 'bg-red-700 hover:bg-red-800 text-white'],
+  ['police', UI_LABELS.police, 'bg-blue-700 hover:bg-blue-800 text-white'],
+  ['health', UI_LABELS.health, 'bg-green-700 hover:bg-green-800 text-white'],
+  ['education', UI_LABELS.education, 'bg-purple-700 hover:bg-purple-800 text-white'],
+  ['subway', UI_LABELS.subway, 'bg-yellow-700 hover:bg-yellow-800 text-white'],
+  ['ganga', UI_LABELS.ganga, 'bg-cyan-700 hover:bg-cyan-800 text-white'],
+  ['flood', UI_LABELS.flood, 'bg-orange-700 hover:bg-orange-800 text-white'],
+];
+
 const toolCategories = {
   'TOOLS': ['select', 'bulldoze', 'road', 'rail', 'subway'] as Tool[],
   'ZONES': ['zone_residential', 'zone_commercial', 'zone_industrial'] as Tool[],
@@ -279,9 +291,13 @@ interface MobileToolbarProps {
   /** S1-T11: touch Draw mode (one-finger drag draws instead of pans). */
   drawMode?: boolean;
   onDrawModeChange?: (on: boolean) => void;
+  /** Floating pieces stacked (bottom to top) in one column above the toolbar, so they never overlap it or each other. */
+  bannerSlot?: React.ReactNode;
+  /** The Voices chip: sits in the same row as the Draw button. */
+  feedSlot?: React.ReactNode;
 }
 
-export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode, drawMode = false, onDrawModeChange }: MobileToolbarProps) {
+export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMode, drawMode = false, onDrawModeChange, bannerSlot, feedSlot }: MobileToolbarProps) {
   const { state, setTool, expandCity, shrinkCity, markLandmarksSeen } = useGame();
   // S5-T6: badge with the count of high and critical advisor messages
   const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
@@ -298,6 +314,16 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
   const [showMenu, setShowMenu] = useState(false);
   const [expandCityExpanded, setExpandCityExpanded] = useState(false);
   const m = useMessages();
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Scroll an opened category to the top of the list so its tools (and prices) are in view.
+  // Instant, not smooth: hit areas must not move under the finger while it settles.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !expandedCategory) return;
+    const header = list.querySelector<HTMLElement>(`[data-category="${expandedCategory}"]`);
+    if (header) list.scrollTop = Math.max(0, header.offsetTop - 4);
+  }, [expandedCategory]);
 
   const handleCategoryClick = (category: string) => {
     if (expandedCategory === category) {
@@ -325,19 +351,26 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
     <>
       {/* Bottom Toolbar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom safe-area-left safe-area-right">
-        {/* S1-T11: Draw mode toggle, only for tools that are drawn by dragging (road, rail, zones) */}
-        {onDrawModeChange && isDrawModeTool(selectedTool) && !showMenu && expandedCategory === null && (
-          <Button
-            data-testid="draw-mode-toggle"
-            variant="ghost"
-            aria-pressed={drawMode}
-            className={`press absolute bottom-full right-2 mb-2 h-11 min-w-11 px-4 gap-2 rounded-sm ${drawMode ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text'}`}
-            onClick={() => onDrawModeChange(!drawMode)}
-          >
-            <Pencil className="w-4 h-4" />
-            <span className="text-xs">{drawMode ? m(UI_LABELS.drawOn) : m(UI_LABELS.drawOff)}</span>
-          </Button>
-        )}
+        {/* One column above the toolbar for everything that floats over the map: banners, then the Voices chip
+            and the Draw button (S1-T11, only for tools that are drawn by dragging: road, rail, zones). */}
+        <div className={`pointer-events-none absolute bottom-full left-0 right-0 flex flex-col items-start gap-2 px-3 pb-2 ${showMenu ? 'hidden' : ''}`}>
+          {bannerSlot}
+          <div className="flex w-full flex-wrap items-end justify-between gap-2">
+            {feedSlot}
+            {onDrawModeChange && isDrawModeTool(selectedTool) && (
+              <Button
+                data-testid="draw-mode-toggle"
+                variant="ghost"
+                aria-pressed={drawMode}
+                className={`press pointer-events-auto ml-auto h-11 min-w-11 px-4 gap-2 rounded-sm ${drawMode ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text'}`}
+                onClick={() => onDrawModeChange(!drawMode)}
+              >
+                <Pencil className="w-4 h-4" />
+                <span className="text-xs">{drawMode ? m(UI_LABELS.drawOn) : m(UI_LABELS.drawOff)}</span>
+              </Button>
+            )}
+          </div>
+        </div>
         <div className="hud-panel rounded-t-md border-x-0 border-b-0">
           {/* Selected tool info - now above the toolbar */}
           {selectedTool && TOOL_INFO[selectedTool] && (
@@ -462,157 +495,11 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       {showMenu && (
         <div className="fixed inset-0 z-40 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn" onClick={() => setShowMenu(false)}>
           <div
-            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[70dvh] overflow-hidden rounded-md flex flex-col"
+            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(78dvh,calc(100dvh-10.5rem))] overflow-hidden rounded-md flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* City Management section at top */}
-            <div className="p-3 border-b border-chrome-border flex-shrink-0">
-              <div className={SECTION_LABEL}>
-                {m(msg('City Management'))}
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
-                  onClick={() => { onOpenPanel('budget'); setShowMenu(false); }}
-                >
-                  {m(UI_LABELS.budget)}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
-                  onClick={() => { onOpenPanel('statistics'); setShowMenu(false); }}
-                >
-                  {m(UI_LABELS.statistics)}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md relative"
-                  onClick={() => { onOpenPanel('advisors'); setShowMenu(false); }}
-                >
-                  {m(UI_LABELS.advisors)}
-                  {advisorBadge}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="press hud-well h-11 w-full px-1 text-xs text-chrome-text rounded-md"
-                  onClick={() => { onOpenPanel('settings'); setShowMenu(false); }}
-                >
-                  {m(UI_LABELS.settings)}
-                </Button>
-              </div>
-            </div>
-
-            {/* Overlay Toggle Section */}
-            {setOverlayMode && (
-              <div className="p-3 border-b border-chrome-border flex-shrink-0">
-                <div className={SECTION_LABEL}>
-                  {m(UI_LABELS.viewOverlays)}
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'none'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'none' ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('none')}
-                  >
-                    {m(UI_LABELS.none)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'power'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'power' ? 'bg-amber-700 hover:bg-amber-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('power')}
-                  >
-                    {m(UI_LABELS.power)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'water'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'water' ? 'bg-blue-700 hover:bg-blue-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('water')}
-                  >
-                    {m(UI_LABELS.water)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'fire'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'fire' ? 'bg-red-700 hover:bg-red-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('fire')}
-                  >
-                    {m(UI_LABELS.fire)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'police'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'police' ? 'bg-blue-700 hover:bg-blue-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('police')}
-                  >
-                    {m(UI_LABELS.police)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'health'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'health' ? 'bg-green-700 hover:bg-green-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('health')}
-                  >
-                    {m(UI_LABELS.health)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'education'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'education' ? 'bg-purple-700 hover:bg-purple-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('education')}
-                  >
-                    {m(UI_LABELS.education)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'subway'}
-                    className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'subway' ? 'bg-yellow-700 hover:bg-yellow-800 text-white ' : 'hud-well text-chrome-text'}`}
-                    onClick={() => setOverlayMode('subway')}
-                  >
-                    {m(UI_LABELS.subway)}
-                  </Button>
-                  {state.mapId === 'varanasi' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-pressed={overlayMode === 'ganga'}
-                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'ganga' ? 'bg-cyan-700 hover:bg-cyan-800 text-white ' : 'hud-well text-chrome-text'}`}
-                      onClick={() => setOverlayMode('ganga')}
-                    >
-                      {m(UI_LABELS.ganga)}
-                    </Button>
-                  )}
-                  {state.mapId === 'varanasi' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-pressed={overlayMode === 'flood'}
-                      className={`press h-11 w-full px-1 text-xs rounded-md ${overlayMode === 'flood' ? 'bg-orange-700 hover:bg-orange-800 text-white ' : 'hud-well text-chrome-text'}`}
-                      onClick={() => setOverlayMode('flood')}
-                    >
-                      {m(UI_LABELS.flood)}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {/* Categories first: they get the sheet's height. */}
+            <div ref={listRef} className="relative flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
               <div className="p-2 space-y-1 pb-4">
                 {/* Category buttons */}
                 {getMapToolCategories(state.mapId).map(([category, tools]) => (
@@ -663,6 +550,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
                     <Button
                       variant="ghost"
+                      data-category={category}
                       aria-expanded={expandedCategory === category}
                       className={`w-full justify-start gap-3 h-12 rounded-md ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'} ${tools.includes(selectedTool) ? 'border border-chrome-border' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
                       onClick={() => handleCategoryClick(category)}
@@ -682,7 +570,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
 
                     {/* Expanded tools */}
                     {expandedCategory === category && (
-                      <div className="grid grid-cols-3 gap-1.5 px-1 pt-1 pb-2 animate-submenu-in">
+                      <div className="grid grid-cols-3 gap-1.5 px-1 pt-1 pb-2">
                         {tools.map((tool) => {
                           if (!TOOL_INFO[tool]) return null;
                           const info = getToolDisplay(tool, TOOL_INFO[tool], state.mapId);
@@ -721,6 +609,43 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* City management and view overlays: two compact rows under the categories */}
+            <div className="flex-shrink-0 border-t border-chrome-border bg-chrome-panel p-2 space-y-2">
+              <div className="grid grid-cols-4 gap-2">
+                {(['budget', 'statistics', 'advisors', 'settings'] as const).map((panel) => (
+                  <Button
+                    key={panel}
+                    variant="ghost"
+                    size="sm"
+                    className="press hud-well relative h-11 w-full px-1 text-xs text-chrome-text rounded-md"
+                    onClick={() => { onOpenPanel(panel); setShowMenu(false); }}
+                  >
+                    {m(UI_LABELS[panel])}
+                    {panel === 'advisors' && advisorBadge}
+                  </Button>
+                ))}
+              </div>
+              {setOverlayMode && (
+                <div className="flex items-center gap-2">
+                  <span className="hud-label shrink-0">{m(UI_LABELS.viewOverlays)}</span>
+                  <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto overscroll-x-contain" role="group" aria-label={String(m(UI_LABELS.viewOverlays))}>
+                    {OVERLAY_BUTTONS.filter(([mode]) => state.mapId === 'varanasi' || (mode !== 'ganga' && mode !== 'flood')).map(([mode, label, activeClass]) => (
+                      <Button
+                        key={mode}
+                        variant="ghost"
+                        size="sm"
+                        aria-pressed={overlayMode === mode}
+                        className={`press h-11 shrink-0 px-3 text-xs rounded-md ${overlayMode === mode ? activeClass : 'hud-well text-chrome-text'}`}
+                        onClick={() => setOverlayMode(mode)}
+                      >
+                        {m(label)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
