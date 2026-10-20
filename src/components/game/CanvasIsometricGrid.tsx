@@ -4443,7 +4443,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         );
       })()}
       
-      {hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
+      {/* On phones the toolbar's tool strip names the tool and cost; this pill would sit on top of the floating column. */}
+      {!isMobile && hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
         // S1-T10: placement preview label (cost, and the reason when the tile is red)
         const isPlacementInvalid = !!placementPreview && !placementPreview.ok;
 

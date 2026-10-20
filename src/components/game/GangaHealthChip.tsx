@@ -49,7 +49,7 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
             active ? 'bg-ganga/25 ring-ganga/70' : 'bg-ganga/10 ring-ganga/25'
           }`}
         >
-          <RiverIcon size={12} className="text-ganga" />
+          <span className="text-[10px] font-semibold leading-none text-chrome-text">Ganga</span>
           <span className={`text-[10px] font-mono font-semibold tabular-nums ${colorClass}`}>{health}</span>
           <span className={`text-[10px] leading-none ${colorClass}`} aria-hidden>{GANGA_TREND_ARROW[trend]}</span>
         </span>

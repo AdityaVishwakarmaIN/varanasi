@@ -67,6 +67,11 @@ const UI_LABELS = {
   exitWithoutSaving: msg('Exit Without Saving'),
   saveAndExit: msg('Save & Exit'),
   zone: msg('Zone'),
+  cancel: msg('Cancel'),
+  landValue: msg('Land'),
+  pollution: msg('Pollution'),
+  power: msg('Power'),
+  water: msg('Water'),
   pause: msg('Pause'),
   resume: msg('Resume'),
   speed: msg('Game speed'),
@@ -106,7 +111,7 @@ function DemandBar({ label, demand, color }: { label: string; demand: number; co
   return (
     <div className="flex items-center gap-1">
       <span className={`text-[9px] font-bold ${color} w-2`}>{label}</span>
-      <div className="w-8 h-1.5 bg-chrome-border rounded-full overflow-hidden">
+      <div className="w-4 h-1.5 bg-chrome-border rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${isPositive ? color.replace('text-', 'bg-') : 'bg-red-500'}`}
           style={{ width: `${percentage}%` }}
@@ -191,36 +196,23 @@ export function MobileTopBar({
     <>
       {/* Main Top Bar */}
       <Card className="hud-panel bg-chrome-panel text-chrome-text fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-md border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
-        <div className="flex items-center justify-between px-3 py-0">
-          {/* Left: City name, date, Pop/Funds stats */}
+        <div className="flex items-center px-3 py-0">
+          {/* Left: city name, then the date and season (always shown, abbreviated); event chips share the date line and truncate first */}
           <button
-            className="flex items-center gap-2 min-w-0 min-h-11 active:opacity-70 p-0 m-0 mr-auto"
+            className="flex min-h-11 min-w-[7.5rem] flex-1 flex-col items-start justify-center overflow-hidden p-0 m-0 text-left active:opacity-70"
             onClick={() => setShowDetails(!showDetails)}
+            aria-label={cityName}
           >
-            <div className="flex min-w-0 shrink flex-col items-start overflow-hidden">
-              <div className="flex min-w-0 max-w-full items-center gap-1">
-                <span className="font-sans font-semibold text-[15px] leading-none text-chrome-text min-w-0 truncate pt-0.5">
-                  {cityName}
-                </span>
-              </div>
-              <span className="block max-w-full truncate whitespace-nowrap text-chrome-muted text-[10px] font-mono">
-                <SeasonDateLabel month={month} year={year} />
-                <FogChip weather={state.weather} hour={visualHour} className="ml-1" />
-                <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="ml-1" />
+            <span className="block max-w-full min-w-[3rem] truncate font-sans font-semibold text-[15px] leading-none text-chrome-text pt-0.5">
+              {cityName}
+            </span>
+            <span className="mt-0.5 flex max-w-full items-center gap-1 text-chrome-muted text-[10px] font-mono">
+              <span className="shrink-0"><SeasonDateLabel month={month} year={year} short /></span>
+              <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+                <FogChip weather={state.weather} hour={visualHour} className="shrink-0" />
+                <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="min-w-0 truncate whitespace-nowrap" />
               </span>
-            </div>
-            <div className="flex shrink-0 flex-col items-start border-l border-chrome-border pl-2">
-              <span className="whitespace-nowrap text-[13px] font-mono font-semibold text-chrome-text">
-                {formatPopulation(stats.population)}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.pop)}</span>
-            </div>
-            <div className="flex shrink-0 flex-col items-start border-l border-chrome-border pl-2">
-              <span className={`whitespace-nowrap text-[13px] font-mono font-semibold ${stats.money < 0 ? 'text-red-700' : stats.money < 1000 ? 'text-amber-700' : 'text-chrome-text'}`}>
-                {formatINR(stats.money)}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.funds)}</span>
-            </div>
+            </span>
           </button>
 
           {/* Speed controls and exit button. S1-T11: every button is a 44×44 px touch target;
@@ -270,7 +262,7 @@ export function MobileTopBar({
             {onExit && (
               <button
                 onClick={() => setShowExitDialog(true)}
-                className="h-11 w-11 p-0 m-0 flex items-center justify-center text-chrome-muted hover:text-chrome-text"
+                className="h-11 w-11 p-0 m-0 ml-2 border-l border-chrome-border flex items-center justify-center text-chrome-muted hover:text-chrome-text"
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
               >
@@ -289,8 +281,26 @@ export function MobileTopBar({
         </div>
 
         {/* Demand indicators row */}
-        <div className="flex items-center justify-between px-3 py-1 border-t border-chrome-border bg-chrome-well">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 px-3 py-1 border-t border-chrome-border bg-chrome-well">
+          <span
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-mono font-semibold text-chrome-text"
+            title={String(m(UI_LABELS.population))}
+            aria-label={`${m(UI_LABELS.population)} ${formatPopulation(stats.population)}`}
+          >
+            <PopulationIcon size={11} className="text-chrome-muted" />
+            {formatPopulation(stats.population)}
+          </span>
+          <span
+            className={`flex shrink-0 items-baseline gap-1 whitespace-nowrap text-[11px] font-mono font-semibold ${stats.money < 0 ? 'text-red-700' : stats.money < 1000 ? 'text-amber-700' : 'text-chrome-text'}`}
+            title={String(m(UI_LABELS.funds))}
+            aria-label={`${m(UI_LABELS.funds)} ${formatINR(stats.money)}`}
+          >
+            {formatINR(stats.money)}
+            <span className={`hidden min-[430px]:inline text-[10px] font-normal ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+              {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
+            </span>
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
             <DemandBar label="R" demand={stats.demand.residential} color="text-green-700" />
             <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-700" />
             <DemandBar label="I" demand={stats.demand.industrial} color="text-amber-700" />
@@ -322,7 +332,7 @@ export function MobileTopBar({
           })}
 
           <button
-            className="flex items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-2 -my-3"
+            className="flex shrink-0 items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-1 -my-3"
             onClick={() => {
               const newShowTaxSlider = !showTaxSlider;
               setShowTaxSlider(newShowTaxSlider);
@@ -334,12 +344,6 @@ export function MobileTopBar({
             <span className="text-[9px] text-chrome-muted">{m(UI_LABELS.tax)}</span>
             <span className="text-[10px] font-mono text-chrome-text">{taxRate}%</span>
           </button>
-
-          <div className="flex items-center gap-1">
-            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-              {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
-            </span>
-          </div>
         </div>
 
         {/* Tax Slider Row */}
@@ -364,69 +368,51 @@ export function MobileTopBar({
           </div>
         )}
 
-        {/* Tile Info Row - Mobile Only */}
+        {/* Tile Info Row - Mobile Only: labelled stats that wrap; the close button is pinned and never clipped */}
         {selectedTile && (
-          <div className="border-t border-chrome-border bg-chrome-well px-3 py-0.5 flex items-center gap-2 text-[10px]">
-            {/* Name */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div className={`w-2 h-2 rounded-full ${
-                selectedTile.zone === 'residential' ? 'bg-green-500' :
-                selectedTile.zone === 'commercial' ? 'bg-blue-500' :
-                selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-chrome-border'
-              }`} />
-              <span className="text-xs font-medium text-chrome-text capitalize">
-                {selectedTile.building.type === 'empty' 
-                  ? (selectedTile.zone === 'none' ? m(UI_LABELS.emptyLot) : `${selectedTile.zone} ${m(UI_LABELS.zone)}`)
-                  : selectedTile.building.type.replace(/_/g, ' ')}
-              </span>
-            </div>
-            
-            {/* Population & Jobs */}
-            {selectedTile.building.population > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                <PopulationIcon size={10} className="text-chrome-muted" />
-                <span className="text-chrome-text font-mono">{formatPopulation(selectedTile.building.population)}</span>
-              </div>
-            )}
-            {selectedTile.building.jobs > 0 && (
-              <span className="text-chrome-text font-mono shrink-0">{formatPopulation(selectedTile.building.jobs)} {m(UI_LABELS.jobsLower)}</span>
-            )}
-            
-            {/* Utilities */}
-            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-amber-800' : 'text-chrome-muted'}`}>
-              {selectedTile.building.powered ? m(UI_LABELS.hasPower) : m(UI_LABELS.noPower)}
-            </span>
-            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-800' : 'text-chrome-muted'}`}>
-              {selectedTile.building.watered ? m(UI_LABELS.hasWater) : m(UI_LABELS.noWater)}
-            </span>
-            
-            {/* Land value */}
-            <div className="flex items-center gap-1 text-chrome-muted shrink-0">
-              <MoneyIcon size={10} />
-              <span className="font-mono text-chrome-text">{selectedTile.landValue}</span>
-            </div>
-            
-            {/* Pollution */}
-            {selectedTile.pollution > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  selectedTile.pollution > 50 ? 'bg-red-500' : 
-                  selectedTile.pollution > 25 ? 'bg-amber-500' : 'bg-green-500'
+          <div className="border-t border-chrome-border bg-chrome-well pl-3 pr-1 flex items-start gap-1 text-[11px]">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <div className={`w-2 h-2 rounded-full ${
+                  selectedTile.zone === 'residential' ? 'bg-green-500' :
+                  selectedTile.zone === 'commercial' ? 'bg-blue-500' :
+                  selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-chrome-border'
                 }`} />
-                <span className={`font-mono ${
-                  selectedTile.pollution > 50 ? 'text-red-800' : 
-                  selectedTile.pollution > 25 ? 'text-amber-800' : 'text-green-800'
-                }`}>{Math.round(selectedTile.pollution)}%</span>
+                <span className="text-xs font-medium text-chrome-text capitalize">
+                  {selectedTile.building.type === 'empty'
+                    ? (selectedTile.zone === 'none' ? m(UI_LABELS.emptyLot) : `${selectedTile.zone} ${m(UI_LABELS.zone)}`)
+                    : selectedTile.building.type.replace(/_/g, ' ')}
+                </span>
               </div>
-            )}
-            
-            {/* Spacer to push close button right */}
-            <div className="flex-1" />
-            
-            {/* Close button */}
-            <button 
-              onClick={onCloseTile} 
-              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
+
+              {selectedTile.building.population > 0 && (
+                <span className="text-chrome-muted">{m(UI_LABELS.pop)} <span className="font-mono text-chrome-text">{formatPopulation(selectedTile.building.population)}</span></span>
+              )}
+              {selectedTile.building.jobs > 0 && (
+                <span className="text-chrome-muted">{m(UI_LABELS.jobs)} <span className="font-mono text-chrome-text">{formatPopulation(selectedTile.building.jobs)}</span></span>
+              )}
+
+              {/* Utilities: green when served, red when missing */}
+              <span className={selectedTile.building.powered ? 'text-green-800' : 'text-red-800'}>
+                {selectedTile.building.powered ? `✓ ${m(UI_LABELS.power)}` : m(UI_LABELS.noPower)}
+              </span>
+              <span className={selectedTile.building.watered ? 'text-green-800' : 'text-red-800'}>
+                {selectedTile.building.watered ? `✓ ${m(UI_LABELS.water)}` : m(UI_LABELS.noWater)}
+              </span>
+
+              <span className="text-chrome-muted">{m(UI_LABELS.landValue)} <span className="font-mono text-chrome-text">{selectedTile.landValue}</span></span>
+
+              {selectedTile.pollution > 0 && (
+                <span className={selectedTile.pollution > 50 ? 'text-red-800' : selectedTile.pollution > 25 ? 'text-amber-800' : 'text-green-800'}>
+                  {m(UI_LABELS.pollution)} <span className="font-mono">{Math.round(selectedTile.pollution)}%</span>
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={onCloseTile}
+              aria-label="Close"
+              className="h-11 w-11 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
             >
               <CloseIcon size={12} />
             </button>
@@ -568,7 +554,7 @@ export function MobileTopBar({
               onClick={() => setShowExitDialog(false)}
               className="w-full sm:w-auto h-11"
             >
-              Cancel
+              {m(UI_LABELS.cancel)}
             </Button>
             <Button
               variant="outline"

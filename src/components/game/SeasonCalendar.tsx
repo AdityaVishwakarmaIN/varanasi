@@ -50,12 +50,12 @@ const SEASON_TEXT_CLASS: Record<Season, string> = {
 };
 
 /** "Jul 2026 · Monsoon": the date with its season, for both top bars. */
-export function SeasonDateLabel({ month, year }: { month: number; year: number }) {
+export function SeasonDateLabel({ month, year, short = false }: { month: number; year: number; short?: boolean }) {
   const m = useMessages();
   const season = getSeason(month);
   return (
-    <span className="inline-flex items-center gap-1">
-      <span>{MONTH_ABBR[month - 1]} {year}</span>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <span>{MONTH_ABBR[month - 1]} {short ? `'${String(year % 100).padStart(2, '0')}` : year}</span>
       <span aria-hidden>·</span>
       <span className={SEASON_TEXT_CLASS[season]}>{m(SEASON_NAMES[season])}</span>
     </span>

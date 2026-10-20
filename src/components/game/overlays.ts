@@ -260,6 +260,31 @@ const GANGA_HURTS = 'rgba(220, 38, 38, 0.45)';
 /** Ganga overlay: riverside greenery and homes whose sewage is treated. */
 const GANGA_CLEANS = 'rgba(34, 197, 94, 0.4)';
 
+/** One legend stop for the on-map overlay chip: a swatch colour (null = untinted tile) and a short label. */
+export type OverlayLegendStop = { color: string | null; label: string };
+
+/** Legend per overlay, ordered good, ok, bad. Colours match what `getOverlayFillStyle` paints. */
+export const OVERLAY_LEGEND: Record<OverlayMode, OverlayLegendStop[]> = {
+  none: [],
+  power: [{ color: null, label: 'Powered' }, { color: UNCOVERED_WARNING, label: 'No power' }],
+  water: [{ color: null, label: 'Has water' }, { color: UNCOVERED_WARNING, label: 'No water' }],
+  fire: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No fire cover' }],
+  police: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No police cover' }],
+  health: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No clinic cover' }],
+  education: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No school cover' }],
+  subway: [{ color: 'rgba(245, 158, 11, 0.7)', label: 'Subway' }, { color: 'rgba(40, 30, 20, 0.4)', label: 'None' }],
+  ganga: [
+    { color: GANGA_CLEANS, label: 'Cleans' },
+    { color: null, label: 'No effect' },
+    { color: GANGA_HURTS, label: 'Pollutes' },
+  ],
+  flood: [
+    { color: FLOOD_RISK_FILL[3], label: 'Heavy rain' },
+    { color: FLOOD_RISK_FILL[2], label: 'Normal' },
+    { color: FLOOD_RISK_FILL[1], label: 'Any monsoon' },
+  ],
+};
+
 /**
  * Get the overlay mode that should be shown for a given tool.
  * Returns 'none' if the tool doesn't have an associated overlay.
