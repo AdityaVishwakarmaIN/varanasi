@@ -194,6 +194,10 @@ const LIGHTING_OFF_HOUR = 12;
  */
 const STATIC_OVERSCAN_PX = 160;
 const STATIC_OVERSCAN_MOBILE_PX = 96;
+/** PERF: smaller margin while the simulation runs (every grid update redraws in full), enough for
+ * drag moves between ticks to shift instead of redraw. */
+const STATIC_OVERSCAN_RUNNING_PX = 64;
+const STATIC_OVERSCAN_RUNNING_MOBILE_PX = 40;
 /** PERF: redraw full detail this long after the camera stops, when the transformed layers are scaled,
  * off the device-pixel grid, or close to running out of overscan. */
 const STATIC_SETTLE_MS = 200;
@@ -409,9 +413,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const gpuEnabled = graphics.renderer === 'gpu';
   // GPU mode keeps viewport-sized static layers (its retained layers are drawn with `offset`)
   // While the simulation runs the static layers are redrawn with every grid update anyway (as before), so
-  // they skip the overscan margin (it would make each of those redraws ~1.75x larger)
+  // they use a smaller margin (the full one would make each of those redraws ~1.75x larger)
   const simRunning = speed !== 0;
-  const staticOverscanCss = gpuEnabled || simRunning ? 0 : isMobile ? STATIC_OVERSCAN_MOBILE_PX : STATIC_OVERSCAN_PX;
+  const staticOverscanCss = gpuEnabled ? 0
+    : simRunning ? (isMobile ? STATIC_OVERSCAN_RUNNING_MOBILE_PX : STATIC_OVERSCAN_RUNNING_PX)
+    : isMobile ? STATIC_OVERSCAN_MOBILE_PX : STATIC_OVERSCAN_PX;
   const gpuEnabledRef = useRef(gpuEnabled);
   useEffect(() => {
     gpuEnabledRef.current = gpuEnabled;
