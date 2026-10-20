@@ -6,6 +6,7 @@ import { useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Card } from '@/components/ui/card';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/components/game/types';
+import { getGridVisualVersion } from '@/components/game/visualSignature';
 
 // Service buildings for minimap color mapping
 const SERVICE_BUILDINGS = new Set([
@@ -47,12 +48,12 @@ const MINIMAP_LABEL = msg('Minimap');
 
 export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubscribe, viewport }: MiniMapProps) {
   const { state } = useGame();
-  const { grid, gridSize, tick, structureVersion } = state;
+  const { grid, gridSize, tick } = state;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [subscribedViewport, setSubscribedViewport] = useState<MiniMapViewport | null>(null);
   const gridImageRef = useRef<ImageData | null>(null);
   const lastGridRenderTickRef = useRef(-1);
-  const lastStructureVersionRef = useRef(-1);
+  const lastVisualVersionRef = useRef(-1);
   const m = useMessages();
   
   // Pre-compute color map for faster lookups
@@ -80,18 +81,15 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
     const size = 140;
     const scale = size / gridSize;
     
-    // Track if structure version changed (indicates building/zone/terrain changes)
-    const currentStructureVersion = structureVersion ?? 0;
-    const structureVersionChanged = lastStructureVersionRef.current !== currentStructureVersion;
-    
-    // Re-render grid portion every 10 ticks OR when grid changes (building placed, etc.)
-    // This ensures immediate updates when user places buildings while keeping CPU usage low
-    const shouldRenderGrid = lastGridRenderTickRef.current === -1 || 
-                             tick - lastGridRenderTickRef.current >= 10 ||
-                             structureVersionChanged;
+    // PERF: redraw the grid portion only when something it shows (type, zone, fire) changed: the grid's
+    // visual version covers all of those, so ticks that only change stats reuse the cached image.
+    const visualVersion = getGridVisualVersion(grid, gridSize);
+    const shouldRenderGrid = lastGridRenderTickRef.current === -1 ||
+                             lastVisualVersionRef.current !== visualVersion ||
+                             !gridImageRef.current;
     
     if (shouldRenderGrid) {
-      lastStructureVersionRef.current = currentStructureVersion;
+      lastVisualVersionRef.current = visualVersion;
       lastGridRenderTickRef.current = tick;
       
       ctx.fillStyle = '#0b1723';
@@ -159,7 +157,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       ctx.closePath();
       ctx.stroke();
     }
-  }, [grid, gridSize, tick, structureVersion, subscribedViewport, serviceBuildings, parkBuildings]);
+  }, [grid, gridSize, tick, subscribedViewport, serviceBuildings, parkBuildings]);
 
   const [isDragging, setIsDragging] = useState(false);
   

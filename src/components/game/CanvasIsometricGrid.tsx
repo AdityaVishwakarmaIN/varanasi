@@ -45,6 +45,7 @@ import {
   WATER_ASSET_PATH,
   AIRPLANE_SPRITE_SRC,
   TRAIN_MIN_ZOOM,
+  TRAFFIC_LIGHT_MIN_ZOOM,
 } from '@/components/game/constants';
 import { DEFAULT_CLOUD_WEATHER_MODE } from '@/components/game/cloudWeatherConfig';
 import { CLOUD_SPRITE_SHEET_SRC } from '@/components/game/cloudSpriteConfig';
@@ -107,7 +108,9 @@ import {
 } from '@/components/game/windSystem';
 import {
   analyzeMergedRoad,
+  getTrafficLightState,
 } from '@/components/game/trafficSystem';
+import { getGridVisualChangesSince, getGridVisualVersion } from '@/components/game/visualSignature';
 import { drawRoad, RoadDrawingOptions } from '@/components/game/roadDrawing';
 import {
   drawBridgeTile,
@@ -183,10 +186,121 @@ import { getInitialFocusTile } from '@/lib/mapConfig';
 const LIGHTING_GRID_RESEND_MS = 3000;
 /** Hour sent to the lighting pass when night lighting is off (daylight: nothing is drawn). */
 const LIGHTING_OFF_HOUR = 12;
-/** PERF: during a drag-pan, shift the static layers by CSS up to this fraction of the view, then redraw. */
-const PAN_LAYER_SHIFT_MAX_FRACTION = 0.25;
-/** PERF: ...and at most this long, so the strip uncovered by the shift is filled in promptly. */
-const PAN_LAYER_REDRAW_MS = 300;
+/**
+ * PERF: the static layers (terrain + buildings canvases) are drawn this many CSS px larger than the view
+ * on every side. A camera move (drag, glide, keys, wheel zoom) then moves and scales the drawn canvases
+ * with a CSS transform and redraws only when the view would leave the drawn area, so the shift reveals
+ * real map instead of empty background.
+ */
+const STATIC_OVERSCAN_PX = 160;
+const STATIC_OVERSCAN_MOBILE_PX = 96;
+/** PERF: redraw full detail this long after the camera stops, when the transformed layers are scaled,
+ * off the device-pixel grid, or close to running out of overscan. */
+const STATIC_SETTLE_MS = 200;
+/** PERF: zooming in further than this through the CSS transform redraws (the bitmap gets too blurry). */
+const STATIC_MAX_CSS_SCALE = 1.6;
+/** PERF: a partial redraw handles at most this many changed tiles (and at most this share of the canvas). */
+const STATIC_PARTIAL_MAX_TILES = 256;
+const STATIC_PARTIAL_MAX_AREA = 0.5;
+/** Cell size (device px) of the coverage grid a partial redraw region is built on. */
+const PARTIAL_CELL_PX = 32;
+
+/**
+ * Screen area (device px rects on a coarse cell grid) to redraw around changed tiles, plus the world
+ * window whose tiles must be drawn to fill it: anything that can reach into a rect (multi-tile footprints up
+ * to 4x4, sprites up to 5 tile widths tall, neighbours whose road/shore joins change). Null when the area is
+ * too large for a partial redraw to pay off.
+ */
+function buildPartialRegion(
+  tiles: ArrayLike<number>,
+  grid: Tile[][],
+  gridSize: number,
+  zoom: number,
+  drawOffset: { x: number; y: number },
+  dpr: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): { rects: { x: number; y: number; w: number; h: number }[]; left: number; top: number; right: number; bottom: number } | null {
+  const spriteTop = TILE_WIDTH * 5;
+  const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < tiles.length; i++) {
+    const raw = tiles[i];
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    // ~index: the building type changed, so the old sprite may have been larger than the new one
+    const major = raw < 0;
+    const idx = major ? ~raw : raw;
+    const x = idx % gridSize;
+    const y = (idx - x) / gridSize;
+    const sx = (x - y) * (TILE_WIDTH / 2);
+    const sy = (x + y) * (TILE_HEIGHT / 2);
+    // A small building that keeps its type (the usual per-tick change: construction phase, level-up) gets a
+    // tight box around the tile, its joins with neighbours and a sprite up to 2.5 tile widths tall; any
+    // other change the generous one
+    const size = getBuildingSize(grid[y]?.[x]?.building.type ?? 'grass');
+    const small = !major && size.width <= 1 && size.height <= 1;
+    const left = small ? TILE_WIDTH * 1.5 : TILE_WIDTH * 2;
+    const right = small ? TILE_WIDTH * 2.5 : TILE_WIDTH * 3;
+    const top = small ? TILE_WIDTH * 2.5 : spriteTop;
+    const bottom = small ? TILE_HEIGHT * 3 : TILE_HEIGHT * 5;
+    const x0 = Math.max(0, Math.floor(((sx - left) * zoom + drawOffset.x) * dpr));
+    const x1 = Math.min(canvasWidth, Math.ceil(((sx + right) * zoom + drawOffset.x) * dpr));
+    const y0 = Math.max(0, Math.floor(((sy - top) * zoom + drawOffset.y) * dpr));
+    const y1 = Math.min(canvasHeight, Math.ceil(((sy + bottom) * zoom + drawOffset.y) * dpr));
+    if (x1 > x0 && y1 > y0) rects.push({ x0, y0, x1, y1 });
+  }
+  if (rects.length === 0) return { rects: [], left: 0, top: 0, right: -1, bottom: -1 };
+  // Union of the rects on a coarse cell grid (merging overlapping rects into their bounding box would
+  // cover far more than needed once a few changes are scattered around the view)
+  const cell = PARTIAL_CELL_PX;
+  const cols = Math.ceil(canvasWidth / cell);
+  const rows = Math.ceil(canvasHeight / cell);
+  const covered = new Uint8Array(cols * rows);
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const r of rects) {
+    const c0 = Math.floor(r.x0 / cell), c1 = Math.ceil(r.x1 / cell);
+    const r0 = Math.floor(r.y0 / cell), r1 = Math.ceil(r.y1 / cell);
+    for (let row = r0; row < r1; row++) covered.fill(1, row * cols + c0, row * cols + c1);
+    bx0 = Math.min(bx0, c0 * cell); by0 = Math.min(by0, r0 * cell);
+    bx1 = Math.max(bx1, c1 * cell); by1 = Math.max(by1, r1 * cell);
+  }
+  let coveredCells = 0;
+  for (let i = 0; i < covered.length; i++) coveredCells += covered[i];
+  if (coveredCells > cols * rows * STATIC_PARTIAL_MAX_AREA) return null;
+  // Horizontal runs per cell row, stacked where consecutive rows repeat the same run
+  const out: { x: number; y: number; w: number; h: number }[] = [];
+  let open = new Map<number, { x: number; y: number; w: number; h: number }>();
+  for (let row = 0; row < rows; row++) {
+    const next = new Map<number, { x: number; y: number; w: number; h: number }>();
+    let c = 0;
+    while (c < cols) {
+      if (!covered[row * cols + c]) { c++; continue; }
+      const start = c;
+      while (c < cols && covered[row * cols + c]) c++;
+      const key = start * 65536 + c;
+      const prev = open.get(key);
+      if (prev) {
+        prev.h += cell;
+        next.set(key, prev);
+      } else {
+        const rect = { x: start * cell, y: row * cell, w: (c - start) * cell, h: cell };
+        out.push(rect);
+        next.set(key, rect);
+      }
+    }
+    open = next;
+  }
+  const toWorldX = (v: number) => (v / dpr - drawOffset.x) / zoom;
+  const toWorldY = (v: number) => (v / dpr - drawOffset.y) / zoom;
+  return {
+    rects: out,
+    left: toWorldX(bx0) - TILE_WIDTH * 2,
+    right: toWorldX(bx1) + TILE_WIDTH * 2,
+    top: toWorldY(by0) - TILE_WIDTH * 2,
+    bottom: toWorldY(by1) + spriteTop,
+  };
+}
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -293,6 +407,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const graphics = useGraphicsSettings();
   const qualityPreset = QUALITY_PRESETS[graphics.qualityLevel];
   const gpuEnabled = graphics.renderer === 'gpu';
+  // GPU mode keeps viewport-sized static layers (its retained layers are drawn with `offset`)
+  // While the simulation runs the static layers are redrawn with every grid update anyway (as before), so
+  // they skip the overscan margin (it would make each of those redraws ~1.75x larger)
+  const simRunning = speed !== 0;
+  const staticOverscanCss = gpuEnabled || simRunning ? 0 : isMobile ? STATIC_OVERSCAN_MOBILE_PX : STATIC_OVERSCAN_PX;
   const gpuEnabledRef = useRef(gpuEnabled);
   useEffect(() => {
     gpuEnabledRef.current = gpuEnabled;
@@ -329,11 +448,24 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const containerRef = useRef<HTMLDivElement>(null);
   const renderPendingRef = useRef<number | null>(null); // PERF: Track pending render frame
   const lastMainRenderTimeRef = useRef<number>(0); // PERF: Throttle main renders at high speed
-  // PERF (cheap pan path): what the static layers (terrain + buildings canvases) were last fully
-  // drawn with. While a drag-pan only moves the camera, those canvases are shifted with a CSS
-  // transform instead of being redrawn and re-uploaded every frame; full detail is redrawn when the
-  // pan settles, when the shift gets large, or when anything else in the scene changes.
-  const staticLayerRenderRef = useRef<{ offset: { x: number; y: number }; deps: unknown[]; shifted: boolean; at: number } | null>(null);
+  // PERF (static layer cache): what the static layers (terrain + buildings canvases) were last fully
+  // drawn with. Renders whose scene key is unchanged skip the redraw; camera-only changes move and
+  // scale the drawn (overscanned) canvases with a CSS transform while they still cover the view, and
+  // full detail is redrawn when the camera settles or the view leaves the drawn area.
+  const staticLayerRenderRef = useRef<{
+    offset: { x: number; y: number };
+    zoom: number;
+    deps: unknown[];
+    /** Grid visual version (no overlay) or the grid itself (per-tile overlays). */
+    contentKey: unknown;
+    lightKey: string | null;
+    crossingKey: string;
+    transformed: boolean;
+    /** Mobile skips traffic lights while panning/pinching: redraw them once the gesture ends. */
+    lightsSkipped: boolean;
+  } | null>(null);
+  // Overscan of the static layers in device px (0 until the canvases are sized, and in GPU mode)
+  const [staticOverscanDev, setStaticOverscanDev] = useState(0);
   const staticRedrawRef = useRef<((forceFull: boolean) => void) | null>(null); // latest main render
   const staticRedrawTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
@@ -460,6 +592,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lightningIdRef = useRef(0);
   const windStateRef = useRef(createDefaultWindVisualState());
   const visibleWindTreesRef = useRef<WindTreeRenderItem[]>([]);
+  // Tile key and draw depth of each entry in visibleWindTreesRef (for partial redraws)
+  const visibleWindTreeTilesRef = useRef<{ key: number; depth: number }[]>([]);
 
   // Traffic light system timer (cumulative time for cycling through states)
   const trafficLightTimerRef = useRef(0);
@@ -1193,9 +1327,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const dpr = getRenderDpr();
         const rect = containerRef.current.getBoundingClientRect();
         
-        // Set display size
-        canvasRef.current.style.width = `${rect.width}px`;
-        canvasRef.current.style.height = `${rect.height}px`;
         if (hoverCanvasRef.current) {
           hoverCanvasRef.current.style.width = `${rect.width}px`;
           hoverCanvasRef.current.style.height = `${rect.height}px`;
@@ -1204,10 +1335,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           carsCanvasRef.current.style.width = `${rect.width}px`;
           carsCanvasRef.current.style.height = `${rect.height}px`;
         }
-        if (buildingsCanvasRef.current) {
-          buildingsCanvasRef.current.style.width = `${rect.width}px`;
-          buildingsCanvasRef.current.style.height = `${rect.height}px`;
+        // Static layers: overscanned on every side and positioned at -margin (see STATIC_OVERSCAN_PX)
+        const overscanDev = Math.round(staticOverscanCss * dpr);
+        const margin = overscanDev / dpr;
+        for (const layer of [canvasRef.current, buildingsCanvasRef.current]) {
+          if (!layer) continue;
+          layer.style.width = `${rect.width + 2 * margin}px`;
+          layer.style.height = `${rect.height + 2 * margin}px`;
+          layer.style.left = `${-margin}px`;
+          layer.style.top = `${-margin}px`;
+          layer.style.transformOrigin = `${margin}px ${margin}px`;
         }
+        setStaticOverscanDev(overscanDev);
         if (airCanvasRef.current) {
           airCanvasRef.current.style.width = `${rect.width}px`;
           airCanvasRef.current.style.height = `${rect.height}px`;
@@ -1228,7 +1367,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
     // S1-T7: re-run when the quality preset changes the device-pixel-ratio cap
-  }, [qualityPreset.dprCap]);
+  }, [qualityPreset.dprCap, staticOverscanCss]);
 
   useEffect(() => {
     if (lightingCanvasTransferredRef.current) return;
@@ -1357,65 +1496,186 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // PERF: Defer render to next animation frame - batches multiple state updates into one render
     const renderFrame = (forceFull: boolean) => {
       renderPendingRef.current = null;
-      
+
+      const buildingsLayer = buildingsCanvasRef.current;
+      const dpr = getRenderDpr();
+      const margin = staticOverscanDev / dpr; // overscan of the static layers, CSS px
+      const lightsSkipped = isMobile && (isPanningRef.current || isPinchZoomingRef.current);
+      // Scene key, in three parts:
+      // - content: the grid. Without a per-tile overlay it enters through its visual version, so ticks that
+      //   change only stats do not redraw, and ticks that change a few tiles redraw only around them. Per-tile
+      //   overlays key on the grid itself and so follow the simulation (React sync, about 2 Hz).
+      // - animation: traffic light phase and railroad crossings, redrawn around those tiles only.
+      // - everything else (camera excluded): any change redraws in full.
+      const tileOverlay = overlayMode !== 'none';
+      // While the simulation runs: redraw in full on every grid update, as before (no partial redraws)
+      const keyOnGrid = tileOverlay || simRunning;
+      const visualVersion = keyOnGrid ? -1 : getGridVisualVersion(grid, gridSize);
+      const contentKey: unknown = keyOnGrid ? grid : visualVersion;
+      let crossingKey = '';
+      const crossings = crossingPositionsRef.current;
+      if (crossings.length > 0) {
+        const gateAngles = crossingGateAnglesRef.current;
+        let angleSum = 0;
+        let anyActive = false;
+        for (let i = 0; i < crossings.length; i++) {
+          const { x: cx, y: cy } = crossings[i];
+          angleSum += Math.round(gateAngles.get(cy * gridSize + cx) ?? 0);
+          if (!anyActive && getCrossingStateForTile(trainsRef.current, cx, cy) !== 'open') anyActive = true;
+        }
+        crossingKey = `${angleSum}|${anyActive ? Math.floor(crossingFlashTimerRef.current * 2) : -1}`;
+      }
+      const lightKey = zoom >= TRAFFIC_LIGHT_MIN_ZOOM ? getTrafficLightState(trafficLightTimerRef.current) : null;
+      const sceneDeps: unknown[] = [
+        tileOverlay ? state.services : null,
+        tileOverlay ? state.stats.gangaHealth : null,
+        gridSize, overlayMode, imageLoadVersion, canvasSize.width, canvasSize.height, staticOverscanDev, dpr,
+        dragStartTile, dragEndTile, currentSpritePack, waterBodies, showsDragGrid, isMobile,
+        state.mapId, qualityPreset, floodMask, siltMask, gpuEnabled,
+      ];
+      const lastStatic = staticLayerRenderRef.current;
+      const clearSettleTimer = () => {
+        if (staticRedrawTimerRef.current !== null) {
+          window.clearTimeout(staticRedrawTimerRef.current);
+          staticRedrawTimerRef.current = null;
+        }
+      };
+      const sceneSame = !forceFull && lastStatic !== null && !(lastStatic.lightsSkipped && !lightsSkipped) &&
+        lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i]);
+      const cameraSame = lastStatic !== null && zoom === lastStatic.zoom &&
+        offset.x === lastStatic.offset.x && offset.y === lastStatic.offset.y;
+      // (getTileMetadata is derived from building types only: a new instance under the same content key
+      // describes the same map, so it is not part of the key)
+      const contentSame = lastStatic !== null && contentKey === lastStatic.contentKey;
+      // (while the simulation runs, lights and crossings are picked up by the next grid redraw, as before)
+      const animSame = simRunning ||
+        (lastStatic !== null && lightKey === lastStatic.lightKey && crossingKey === lastStatic.crossingKey);
+      // While the camera moves, light/crossing changes wait for the settle redraw
+      if (sceneSame && lastStatic && contentSame && (animSame || !cameraSame)) {
+        const scale = zoom / lastStatic.zoom;
+        const tx = offset.x - scale * lastStatic.offset.x;
+        const ty = offset.y - scale * lastStatic.offset.y;
+        if (scale === 1 && tx === 0 && ty === 0) {
+          // Nothing visible changed (a tick that touched only stats, or the camera came back)
+          if (lastStatic.transformed) {
+            canvas.style.transform = '';
+            if (buildingsLayer) buildingsLayer.style.transform = '';
+            lastStatic.transformed = false;
+          }
+          clearSettleTimer();
+          return;
+        }
+        // Camera-only change: move/scale the drawn layers if they still cover the whole view
+        const viewW = canvasSize.width / dpr;
+        const viewH = canvasSize.height / dpr;
+        const covers = margin > 0 && scale <= STATIC_MAX_CSS_SCALE &&
+          tx - scale * margin <= 0.01 && ty - scale * margin <= 0.01 &&
+          tx + scale * (viewW + margin) >= viewW - 0.01 && ty + scale * (viewH + margin) >= viewH - 0.01;
+        if (covers) {
+          const transform = scale === 1
+            ? `translate3d(${tx}px, ${ty}px, 0)`
+            : `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
+          canvas.style.transform = transform;
+          if (buildingsLayer) buildingsLayer.style.transform = transform;
+          lastStatic.transformed = true;
+          // A whole-device-pixel shift shows exactly what a redraw would; otherwise (or when little
+          // overscan is left for the next move, or lights/crossings changed meanwhile) redraw once the
+          // camera has rested.
+          const onPixelGrid = (v: number) => Math.abs(v * dpr - Math.round(v * dpr)) < 0.01;
+          const needsSettle = scale !== 1 || !onPixelGrid(tx) || !onPixelGrid(ty) || !animSame ||
+            Math.max(Math.abs(tx), Math.abs(ty)) > margin / 2;
+          clearSettleTimer();
+          if (needsSettle) {
+            staticRedrawTimerRef.current = window.setTimeout(() => {
+              staticRedrawTimerRef.current = null;
+              requestAnimationFrame(() => staticRedrawRef.current?.(true));
+            }, STATIC_SETTLE_MS);
+          }
+          return;
+        }
+      }
+
       // PERF: Throttle main renders at 3x speed to reduce dropped frames
       // At high speed, we can skip some renders since simulation ticks are frequent
       const currentSpeed = worldStateRef.current.speed;
       const now = performance.now();
       const timeSinceLastRender = now - lastMainRenderTimeRef.current;
-      const minRenderInterval = currentSpeed === 3 ? 50 : 0; // Skip renders within 50ms at 3x speed
-      
+      const minRenderInterval = currentSpeed === 3 && !forceFull ? 50 : 0; // Skip renders within 50ms at 3x speed
+
       if (timeSinceLastRender < minRenderInterval) {
         return; // Skip this render, next tick will trigger a new one
       }
       lastMainRenderTimeRef.current = now;
 
-      const buildingsLayer = buildingsCanvasRef.current;
-      const sceneDeps: unknown[] = [grid, gridSize, zoom, overlayMode, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask];
-      const lastStatic = staticLayerRenderRef.current;
-      if (!forceFull && isPanning && lastStatic && now - lastStatic.at < PAN_LAYER_REDRAW_MS && lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i])) {
-        const dx = offset.x - lastStatic.offset.x;
-        const dy = offset.y - lastStatic.offset.y;
-        const cssWidth = canvas.clientWidth || canvas.width;
-        const cssHeight = canvas.clientHeight || canvas.height;
-        if (Math.abs(dx) <= cssWidth * PAN_LAYER_SHIFT_MAX_FRACTION && Math.abs(dy) <= cssHeight * PAN_LAYER_SHIFT_MAX_FRACTION) {
-          const transform = `translate3d(${dx}px, ${dy}px, 0)`;
-          canvas.style.transform = transform;
-          if (buildingsLayer) buildingsLayer.style.transform = transform;
-          lastStatic.shifted = true;
-          if (staticRedrawTimerRef.current === null) {
-            staticRedrawTimerRef.current = window.setTimeout(() => {
-              staticRedrawTimerRef.current = null;
-              requestAnimationFrame(() => staticRedrawRef.current?.(true));
-            }, Math.max(0, PAN_LAYER_REDRAW_MS - (now - lastStatic.at)));
+      // Static layers are drawn shifted by the overscan margin (the GPU path below keeps `offset`)
+      const drawOffset = { x: offset.x + margin, y: offset.y + margin };
+      const fullWidth = canvasSize.width + 2 * staticOverscanDev;
+      const fullHeight = canvasSize.height + 2 * staticOverscanDev;
+
+      // PERF (partial redraw): when only some tiles changed (a growing city changes a handful per tick),
+      // the camera has not moved and nothing else in the scene changed, redraw just the screen area around
+      // those tiles. Everything that overlaps that area is drawn again in the usual order under a clip, so
+      // the result matches a full redraw.
+      let partial: { rects: { x: number; y: number; w: number; h: number }[]; left: number; top: number; right: number; bottom: number } | null = null;
+      if (sceneSame && lastStatic && cameraSame && !lastStatic.transformed && !gpuEnabled && !keyOnGrid &&
+          canvas.width === fullWidth && canvas.height === fullHeight) {
+        let tiles: ArrayLike<number> | null = contentKey === lastStatic.contentKey
+          ? new Int32Array(0)
+          : getGridVisualChangesSince(lastStatic.contentKey as number);
+        if (tiles && lightKey !== lastStatic.lightKey && lightKey !== null) {
+          // Traffic lights stand on 3- and 4-way road junctions
+          const junctions: number[] = Array.from(tiles);
+          for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+              if (grid[y][x].building.type === 'road' && (getTileMetadata(x, y)?.roadConnectionCount ?? 0) >= 3) junctions.push(y * gridSize + x);
+            }
           }
-          return;
+          tiles = junctions;
+        }
+        if (tiles && crossingKey !== lastStatic.crossingKey) {
+          const withCrossings: number[] = Array.from(tiles);
+          for (let i = 0; i < crossings.length; i++) withCrossings.push(crossings[i].y * gridSize + crossings[i].x);
+          tiles = withCrossings;
+        }
+        if (tiles && tiles.length <= STATIC_PARTIAL_MAX_TILES) {
+          partial = buildPartialRegion(tiles, grid, gridSize, zoom, drawOffset, dpr, fullWidth, fullHeight);
         }
       }
-      if (staticRedrawTimerRef.current !== null) {
-        window.clearTimeout(staticRedrawTimerRef.current);
-        staticRedrawTimerRef.current = null;
-      }
-      if (lastStatic?.shifted) {
+
+      clearSettleTimer();
+      if (lastStatic?.transformed) {
         canvas.style.transform = '';
         if (buildingsLayer) buildingsLayer.style.transform = '';
       }
-      staticLayerRenderRef.current = { offset: { x: offset.x, y: offset.y }, deps: sceneDeps, shifted: false, at: now };
-      
-      const dpr = getRenderDpr();
+      staticLayerRenderRef.current = {
+        offset: { x: offset.x, y: offset.y }, zoom, deps: sceneDeps, contentKey, lightKey, crossingKey,
+        transformed: false, lightsSkipped,
+      };
+      if (canvas.width !== fullWidth) canvas.width = fullWidth;
+      if (canvas.height !== fullHeight) canvas.height = fullHeight;
+      // Clip both static layers to the partial region (device px, identity transform); restored at the end
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.save();
+      if (partial) {
+        ctx.beginPath();
+        for (const r of partial.rects) ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+      }
     
       // Disable image smoothing for crisp pixel art
       ctx.imageSmoothingEnabled = false;
     
       // PERF: Clear canvas with cached gradient background - only recreate when canvas height changes
       const bgCache = bgGradientCacheRef.current;
-      if (!bgCache.gradient || bgCache.height !== canvas.height) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      // The gradient spans the view (not the overscan), so the background looks as it did before overscan
+      const bgKey = canvasSize.height * 100000 + staticOverscanDev;
+      if (!bgCache.gradient || bgCache.height !== bgKey) {
+        const gradient = ctx.createLinearGradient(0, staticOverscanDev, 0, staticOverscanDev + canvasSize.height);
         gradient.addColorStop(0, '#0f1419');
         gradient.addColorStop(0.5, '#141c24');
         gradient.addColorStop(1, '#1a2a1f');
         bgCache.gradient = gradient;
-        bgCache.height = canvas.height;
+        bgCache.height = bgKey;
       }
       ctx.fillStyle = bgCache.gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1423,16 +1683,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.save();
       // Scale for device pixel ratio first, then apply zoom
       ctx.scale(dpr * zoom, dpr * zoom);
-      ctx.translate(offset.x / zoom, offset.y / zoom);
-    
+      ctx.translate(drawOffset.x / zoom, drawOffset.y / zoom);
+
     // Calculate visible tile range for culling (account for DPR in canvas size)
     const viewWidth = canvas.width / (dpr * zoom);
     const viewHeight = canvas.height / (dpr * zoom);
-    const viewLeft = -offset.x / zoom - TILE_WIDTH;
-    const viewTop = -offset.y / zoom - TILE_HEIGHT * 2;
-    const viewRight = viewWidth - offset.x / zoom + TILE_WIDTH;
-    const viewBottom = viewHeight - offset.y / zoom + TILE_HEIGHT * 2;
-    
+    const viewLeft = partial ? partial.left : -drawOffset.x / zoom - TILE_WIDTH;
+    const viewTop = partial ? partial.top : -drawOffset.y / zoom - TILE_HEIGHT * 2;
+    const viewRight = partial ? partial.right : viewWidth - drawOffset.x / zoom + TILE_WIDTH;
+    const viewBottom = partial ? partial.bottom : viewHeight - drawOffset.y / zoom + TILE_HEIGHT * 2;
+    // Tiles a partial redraw goes through (their wind-tree entries are replaced, the rest kept)
+    const partialTiles = partial ? new Set<number>() : null;
+        
     // PERF: Pre-compute visible diagonal range to skip entire rows of tiles
     // In isometric rendering, screenY = (x + y) * (TILE_HEIGHT / 2), so sum = x + y = screenY * 2 / TILE_HEIGHT
     // Add padding for tall buildings that may extend above their tile position
@@ -2155,7 +2417,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             screenY + TILE_HEIGHT * 4 < viewTop || screenY > viewBottom) {
           continue;
         }
-        
+        partialTiles?.add(y * gridSize + x);
+
         const tile = grid[y][x];
         
         // PERF: Hover and selection highlights are now rendered on a separate canvas layer
@@ -2462,32 +2725,54 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     if (buildingsCanvas) {
       // Set canvas size in memory (scaled for DPI). PERF: only when it changed - assigning
       // width/height reallocates (and clears) the backing store even when the value is the same.
-      if (buildingsCanvas.width !== canvasSize.width) buildingsCanvas.width = canvasSize.width;
-      if (buildingsCanvas.height !== canvasSize.height) buildingsCanvas.height = canvasSize.height;
+      if (buildingsCanvas.width !== canvas.width) buildingsCanvas.width = canvas.width;
+      if (buildingsCanvas.height !== canvas.height) buildingsCanvas.height = canvas.height;
       
       const buildingsCtx = buildingsCanvas.getContext('2d');
       if (buildingsCtx) {
-        // Clear buildings canvas
+        // Clear buildings canvas (only the partial region, when there is one)
         buildingsCtx.setTransform(1, 0, 0, 1, 0, 0);
+        buildingsCtx.save();
+        if (partial) {
+          buildingsCtx.beginPath();
+          for (const r of partial.rects) buildingsCtx.rect(r.x, r.y, r.w, r.h);
+          buildingsCtx.clip();
+        }
         buildingsCtx.clearRect(0, 0, buildingsCanvas.width, buildingsCanvas.height);
         
         // Apply same transform as main canvas
         buildingsCtx.scale(dpr, dpr);
-        buildingsCtx.translate(offset.x, offset.y);
+        buildingsCtx.translate(drawOffset.x, drawOffset.y);
         buildingsCtx.scale(zoom, zoom);
         
         // Disable image smoothing for crisp pixel art
         buildingsCtx.imageSmoothingEnabled = false;
 
         const nextVisibleWindTrees = visibleWindTreesRef.current;
-        nextVisibleWindTrees.length = 0;
+        const windTreeTiles = visibleWindTreeTilesRef.current;
+        if (partialTiles) {
+          // Keep the trees outside the redrawn tiles; the ones inside are added again below
+          let kept = 0;
+          for (let i = 0; i < nextVisibleWindTrees.length; i++) {
+            if (partialTiles.has(windTreeTiles[i].key)) continue;
+            nextVisibleWindTrees[kept] = nextVisibleWindTrees[i];
+            windTreeTiles[kept] = windTreeTiles[i];
+            kept++;
+          }
+          nextVisibleWindTrees.length = kept;
+          windTreeTiles.length = kept;
+        } else {
+          nextVisibleWindTrees.length = 0;
+          windTreeTiles.length = 0;
+        }
+        const keptWindTrees = nextVisibleWindTrees.length;
         // Code-drawn Indian trees: one cached canvas per (variant, resolution tier)
         const treeArtTilePx = pickArtTilePx(TILE_WIDTH * zoom * getRenderDpr());
         
         // Draw buildings on the buildings canvas
         // PERF: Use for loop instead of forEach
         for (let i = 0; i < buildingQueue.length; i++) {
-          const { tile, screenX, screenY } = buildingQueue[i];
+          const { tile, screenX, screenY, depth } = buildingQueue[i];
           // S1-T7: with tree sway off (quality preset) trees are drawn here once, like other sprites
           if (tile.building.type === 'tree' && treeSway) {
             try {
@@ -2508,6 +2793,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
               if (treeRenderItem) {
                 nextVisibleWindTrees.push(treeRenderItem);
+                windTreeTiles.push({ key: tile.y * gridSize + tile.x, depth });
                 if (tile.building.onFire) {
                   drawTileFireEffect(buildingsCtx, screenX, screenY);
                 }
@@ -2520,7 +2806,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
           drawBuilding(buildingsCtx, screenX, screenY, tile);
         }
-        
+        if (partialTiles && keptWindTrees > 0 && nextVisibleWindTrees.length > keptWindTrees) {
+          // Back into depth order (the wind layer draws them in list order)
+          const order = windTreeTiles.map((_, i) => i).sort((p, q) => windTreeTiles[p].depth - windTreeTiles[q].depth || p - q);
+          const trees = order.map((i) => nextVisibleWindTrees[i]);
+          const tiles = order.map((i) => windTreeTiles[i]);
+          for (let i = 0; i < order.length; i++) {
+            nextVisibleWindTrees[i] = trees[i];
+            windTreeTiles[i] = tiles[i];
+          }
+        }
+
         // Draw suspension bridge towers ON TOP of buildings
         // These need to appear above nearby buildings for proper visual layering
         for (let i = 0; i < bridgeQueue.length; i++) {
@@ -2642,6 +2938,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         
         buildingsCtx.setTransform(1, 0, 0, 1, 0, 0);
+        buildingsCtx.restore();
       }
     }
     
@@ -2656,12 +2953,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.textBaseline = 'middle';
       
       // Use same viewport calculation as main rendering (accounting for DPR)
-      const viewWidth = canvasSize.width / (dpr * zoom);
-      const viewHeight = canvasSize.height / (dpr * zoom);
-      const viewLeft = -offset.x / zoom - TILE_WIDTH;
-      const viewTop = -offset.y / zoom - TILE_HEIGHT * 2;
-      const viewRight = viewWidth - offset.x / zoom + TILE_WIDTH;
-      const viewBottom = viewHeight - offset.y / zoom + TILE_HEIGHT * 2;
+      const viewWidth = canvas.width / (dpr * zoom);
+      const viewHeight = canvas.height / (dpr * zoom);
+      const viewLeft = -drawOffset.x / zoom - TILE_WIDTH;
+      const viewTop = -drawOffset.y / zoom - TILE_HEIGHT * 2;
+      const viewRight = viewWidth - drawOffset.x / zoom + TILE_WIDTH;
+      const viewBottom = viewHeight - drawOffset.y / zoom + TILE_HEIGHT * 2;
       
       for (const waterBody of waterBodies) {
         if (waterBody.tiles.length === 0) continue;
@@ -2870,6 +3167,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
 
     ctx.restore();
+    ctx.restore(); // partial-region clip
     }; // End renderFrame
     staticRedrawRef.current = renderFrame;
     renderPendingRef.current = requestAnimationFrame(() => renderFrame(false));
@@ -2882,7 +3180,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning, staticOverscanDev, simRunning]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   // The tile a placement just succeeded on (mouse-up or tap). The hovered tile is now built, so the
@@ -4270,8 +4568,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     >
       <canvas
         ref={canvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
+        width={canvasSize.width + 2 * staticOverscanDev}
+        height={canvasSize.height + 2 * staticOverscanDev}
         className="absolute top-0 left-0"
       />
       {/* PERF: Separate canvas for hover/selection highlights - avoids full redraw on mouse move */}
@@ -4289,8 +4587,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       />
       <canvas
         ref={buildingsCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
+        width={canvasSize.width + 2 * staticOverscanDev}
+        height={canvasSize.height + 2 * staticOverscanDev}
         className="absolute top-0 left-0 pointer-events-none"
       />
       <canvas
