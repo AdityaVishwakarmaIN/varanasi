@@ -18,24 +18,27 @@ function note(advisor: AdvisorId, kind: string, priority: AdvisorPriority, probl
 }
 
 describe('advisors', () => {
-  it('five advisors with their roles', () => {
+  it('six advisors with their roles', () => {
     expect(ADVISOR_IDS.map((id) => ADVISORS[id].title)).toEqual([
       'Treasury Officer',
       'City Engineer',
       'River Officer',
-      'Health Officer',
+      'Health and Education Officer',
       'Police Commissioner',
+      'Fire Chief',
     ]);
   });
 
   it('routes topics to the right advisor', () => {
     expect(getAdvisorForTopic('bankruptcy')).toBe('treasury');
     expect(getAdvisorForTopic('power')).toBe('engineer');
-    expect(getAdvisorForTopic('collapse')).toBe('engineer');
+    expect(getAdvisorForTopic('collapse')).toBe('fire');
     expect(getAdvisorForTopic('flood')).toBe('river');
     expect(getAdvisorForTopic('tourism')).toBe('river');
     expect(getAdvisorForTopic('heatwave')).toBe('health');
     expect(getAdvisorForTopic('festival')).toBe('police');
+    expect(getAdvisorForTopic('fire')).toBe('fire');
+    expect(getAdvisorForTopic('education')).toBe('health');
     for (const a of Object.values(ADVISOR_TOPICS)) expect(ADVISOR_IDS).toContain(a);
   });
 

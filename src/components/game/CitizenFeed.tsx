@@ -7,7 +7,7 @@ import { useGame } from '@/context/GameContext';
 import { absoluteDay } from '@/lib/seasons';
 import { createRng } from '@/lib/rng';
 import { computeProblemIconsForState } from '@/lib/problemIcons';
-import { isFeedDue, nextCitizenFeedEntry, pushFeedEntry, type CitizenFeedEntry } from '@/lib/citizenFeed';
+import { isFeedDue, nextCitizenFeedEntry, pushFeedEntry, resolveFeedText, type CitizenFeedEntry } from '@/lib/citizenFeed';
 import { cn } from '@/lib/utils';
 
 const LABELS = {
@@ -133,7 +133,7 @@ export function CitizenFeed({
                       )}
                     >
                       <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.positive ? 'bg-green-700' : 'bg-chrome-accent')} />
-                      <span className="flex-1 text-chrome-text">{e.text}</span>
+                      <span className="flex-1 text-chrome-text">{resolveFeedText(e.text, state.cityName)}</span>
                       {canLocate && <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-chrome-muted" />}
                     </button>
                   </li>

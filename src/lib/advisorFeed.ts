@@ -32,6 +32,8 @@ export const ADVISOR_FEED_CONFIG = {
   recentNotifications: 12,
   /** Share of population in informal housing that makes the settlement message medium priority. */
   informalMediumCount: 5,
+  /** Below this population, warnings about crime, pollution, health and schooling are held back (a new city has no services yet). */
+  minPopulationForServiceWarnings: 100,
 } as const;
 
 /** Fields of GameState the advisors read. */
@@ -169,11 +171,14 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
       'Check demand: zone less of what is oversupplied, and fix power, water and pollution nearby.', { ...first.abandoned }));
   }
   if (scan.informal > 0 && scan.informalAt) {
-    const area = getInformalAreaName(scan.informalAt.x, scan.informalAt.y, state.gridSize, state.mapId);
+    const where = varanasi
+      ? `, including one in ${getInformalAreaName(scan.informalAt.x, scan.informalAt.y, state.gridSize, state.mapId)}`
+      : '';
     notes.push(createAdvisorNote('informal_settlement', 'informal', scan.informal >= ADVISOR_FEED_CONFIG.informalMediumCount ? 'medium' : 'low',
-      `${scan.informal} informal settlement${scan.informal === 1 ? '' : 's'}, e.g. in ${area}.`,
+      `${scan.informal} informal settlement${scan.informal === 1 ? '' : 's'}${where}.`,
       'Formalise them: zone residential and bring road, power and water.', { ...scan.informalAt }));
   }
+  const matured = stats.population >= ADVISOR_FEED_CONFIG.minPopulationForServiceWarnings;
   const jobRatio = stats.jobs / (stats.population || 1);
   if (stats.population > 100 && jobRatio < 0.8) {
     notes.push(createAdvisorNote('zoning', 'jobs', jobRatio < 0.5 ? 'high' : 'medium', 'There are not enough jobs.',
@@ -199,7 +204,7 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
       `Ganga Health is ${Math.round(ganga)}.`, 'Build Sewage Treatment Plants near homes and keep industry away from the river.',
       { overlay: 'ganga' }));
   }
-  if (stats.environment < 40) {
+  if (matured && stats.environment < 40) {
     notes.push(createAdvisorNote('pollution', 'pollution', stats.environment < 20 ? 'high' : 'medium', 'Pollution is high.',
       'Plant trees and parks, and move factories away from homes.'));
   }
@@ -223,22 +228,22 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
     notes.push(createAdvisorNote('heatwave', 'heatwave', 'high', 'A heatwave is forecast.',
       'Plant trees and parks for shade and make sure power and water can keep up.'));
   }
-  if (stats.health < 50 && stats.population > 0) {
+  if (matured && stats.health < 50) {
     notes.push(createAdvisorNote('health', 'health_low', stats.health < 30 ? 'high' : 'medium', 'Health care is lacking.',
       'Build hospitals where people live.', { overlay: 'health' }));
   }
-  if (stats.education < 50 && stats.population > 0) {
+  if (matured && stats.education < 50) {
     notes.push(createAdvisorNote('education', 'education_low', stats.education < 30 ? 'high' : 'medium', 'Education levels are low.',
-      'Build schools and a university.', { overlay: 'education' }));
+      'Build schools and a college.', { overlay: 'education' }));
   }
 
-  // ---- Police Commissioner ----
+  // ---- Fire Chief ----
   if (c && c.fire > 0) {
     notes.push(createAdvisorNote('fire', 'fire', c.fire > 3 ? 'critical' : 'high',
       `${c.fire} building${c.fire === 1 ? ' is' : 's are'} on fire.`, 'Build fire stations so every block is covered.',
       { ...first.fire, overlay: 'fire' }));
   }
-  if (stats.safety < 40 && stats.population > 0) {
+  if (matured && stats.safety < 40) {
     notes.push(createAdvisorNote('crime', 'crime', stats.safety < 20 ? 'critical' : 'high', 'Crime is rising.',
       'Build police stations where people live.', { overlay: 'police' }));
   }

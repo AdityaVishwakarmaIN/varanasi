@@ -14,6 +14,7 @@
 import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
 import { getGhatPlacement, isWaterWorksPlacementValid } from '@/lib/ganga';
+import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { canPlaceLandmark, getLandmarkPlacementContext, isLandmarkType } from '@/lib/landmarks';
 import {
@@ -52,7 +53,8 @@ export const PLACEMENT_REASONS = {
   notWater: msg('Only works on water'),
   outsideMap: msg('Outside the map'),
   needsRoad: msg('Needs road access to grow'),
-  ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
+  ghatWestBank: msg("Ghats must be on the Ganga's west bank, the side with the city"),
+  ghatWaterEdge: msg("Ghats must go right at the river's edge"),
   waterWorksNearGanga: msg('Jal Sansthan Water Works must be within 3 tiles of the Ganga'),
   embankmentNearGanga: msg('Embankments must be on land within 4 tiles of the Ganga'),
   embankmentOnGhat: msg("Embankments can't be built on ghats"),
@@ -154,7 +156,8 @@ function explainRefusal(state: GameState, tool: Tool, building: BuildingType | n
     }
     if (x + size.width > state.gridSize || y + size.height > state.gridSize) return PLACEMENT_REASONS.outOfBounds;
     if (building === 'ghat' && !getGhatPlacement(state.grid, x, y, state.gridSize, state.mapId)) {
-      return PLACEMENT_REASONS.ghatWestBank;
+      const zone = getRiverZone(x, y, state.gridSize, state.mapId);
+      return zone === 'westRiverfront' || zone === 'westBank' ? PLACEMENT_REASONS.ghatWaterEdge : PLACEMENT_REASONS.ghatWestBank;
     }
     if (building === 'jal_sansthan_water_works') {
       if (footprintTouchesWater(state, x, y, size.width, size.height)) return PLACEMENT_REASONS.water;

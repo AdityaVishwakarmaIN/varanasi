@@ -19,7 +19,7 @@ import {
 } from '@/lib/problemIcons';
 import { getFeederBounds } from '@/lib/feederZones';
 
-const RING: Record<ProblemKind, string> = {
+export const RING: Record<ProblemKind, string> = {
   fire: '#ef4444',
   flood: '#3b82f6',
   disease: '#a3e635',

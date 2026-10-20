@@ -5,9 +5,10 @@
  * panel with the live readiness checklist. Clicking a failing requirement jumps to the event area with its overlay.
  */
 import React from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { GameState } from '@/types/game';
 import type { OverlayMode } from '@/components/game/types';
 import { FESTIVALS, getActiveFestivals, type FestivalId } from '@/lib/festivals';
@@ -16,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 const TEXT = {
   today: msg('today'),
-  ready: msg('ready'),
+  close: msg('Close'),
   intro: msg('Huge crowds are coming. Meet all five requirements in the event area for a triumph; three or four is a success.'),
   noArea: msg('There are no ghats yet. Build ghats on the riverfront to host the festival.'),
   showMe: msg('Show me'),
@@ -61,6 +62,7 @@ export function FestivalChip({
 /** Small banner over the map while a management event is announced or running; opens the Event panel. */
 export function FestivalEventBanner({ state, onOpen, className }: { state: GameState; onOpen: (id: FestivalId) => void; className?: string }) {
   const m = useMessages();
+  const gt = useGT();
   if (state.mapId !== 'varanasi') return null;
   const upcoming = getUpcomingManagementEvent(state.month, state.day);
   if (!upcoming) return null;
@@ -78,10 +80,12 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
       <span className="ornament text-chrome-accent animate-diya" aria-hidden />
       <span className="font-semibold text-chrome-accent">{f.chip}</span>
       <span className="text-chrome-muted">
+        {' '}
+        {upcoming.daysUntil === 0
+          ? m(TEXT.today)
+          : gt(upcoming.daysUntil === 1 ? 'in {days} day' : 'in {days} days', { days: upcoming.daysUntil })}
         {' · '}
-        {upcoming.daysUntil === 0 ? m(TEXT.today) : `${upcoming.daysUntil}d`}
-        {' · '}
-        {passed}/{checklist.length} {m(TEXT.ready)}
+        {gt('{done} of {total} preparations', { done: passed, total: checklist.length })}
       </span>
     </button>
   );
@@ -100,6 +104,7 @@ export function FestivalEventPanel({
   onLocate: (x: number, y: number, overlay: OverlayMode | undefined) => void;
 }) {
   const m = useMessages();
+  const gt = useGT();
   const readiness = festivalId ? getEventReadiness(state, festivalId) : null;
   const f = festivalId ? FESTIVALS[festivalId] : null;
   const center = readiness?.area.center ?? null;
@@ -110,7 +115,7 @@ export function FestivalEventPanel({
           <>
             <DialogHeader>
               <DialogTitle>
-                {f.chip} · {readiness.passed}/{readiness.checklist.length}
+                {f.chip} · {gt('{done} of {total} preparations', { done: readiness.passed, total: readiness.checklist.length })}
               </DialogTitle>
               <DialogDescription>{m(center ? TEXT.intro : TEXT.noArea)}</DialogDescription>
             </DialogHeader>
@@ -148,6 +153,9 @@ export function FestivalEventPanel({
                 );
               })}
             </ul>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full">{m(TEXT.close)}</Button>
+            </DialogClose>
           </>
         )}
       </DialogContent>

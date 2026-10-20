@@ -27,10 +27,11 @@ const UI_LABELS = {
 
 const ADVISOR_LABELS: Record<AdvisorId, { title: string; covers: string }> = {
   treasury: { title: msg('Treasury Officer'), covers: msg('Money, taxes, loans, bankruptcy risk') },
-  engineer: { title: msg('City Engineer'), covers: msg('Power, water, roads, traffic, collapses') },
+  engineer: { title: msg('City Engineer'), covers: msg('Power, water, roads, traffic, housing') },
   river: { title: msg('River Officer'), covers: msg('Ganga Health, floods, embankments, ghats, tourism') },
-  health: { title: msg('Health Officer'), covers: msg('Health, disease, heatwaves') },
+  health: { title: msg('Health and Education Officer'), covers: msg('Health, education, disease, heatwaves') },
   police: { title: msg('Police Commissioner'), covers: msg('Safety, crime, festivals and crowds') },
+  fire: { title: msg('Fire Chief'), covers: msg('Fires, fire stations, collapses') },
 };
 
 const PRIORITY_LABELS = {
@@ -46,6 +47,7 @@ const AVATAR_COLORS: Record<AdvisorId, { bg: string; accent: string }> = {
   river: { bg: '#0e7490', accent: '#67e8f9' },
   health: { bg: '#047857', accent: '#f8fafc' },
   police: { bg: '#334155', accent: '#e2e8f0' },
+  fire: { bg: '#b91c1c', accent: '#fdba74' },
 };
 
 /** Simple illustrated avatar: a face on a coloured disc, with one prop per role. */
@@ -79,6 +81,12 @@ export function AdvisorAvatar({ advisor, size = 32 }: { advisor: AdvisorId; size
           <path d="M10 10 Q16 5 22 10 Z" fill="#1f2937" />
           <rect x="22.5" y="21" width="6" height="6" rx="1" fill={accent} />
           <path d="M25.5 22.2 V25.8 M23.7 24 H27.3" stroke="#dc2626" strokeWidth="1.2" />
+        </>
+      )}
+      {advisor === 'fire' && (
+        <>
+          <path d="M9.5 11 Q16 3 22.5 11 L23.5 12 L8.5 12 Z" fill={accent} />
+          <path d="M16 5 Q18 7.5 16 9.5 Q14 7.5 16 5 Z" fill="#b91c1c" />
         </>
       )}
       {advisor === 'police' && (

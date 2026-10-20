@@ -39,7 +39,7 @@ interface MenuItem {
 const MENU_CATEGORIES = [
   { key: 'tools', label: msg('Tools') },
   { key: 'zones', label: msg('Zones') },
-  { key: 'zoning', label: msg('Zoning') },
+  { key: 'zoning', label: msg('Land tools') },
   { key: 'riverfront', label: msg('Riverfront') },
   { key: 'landmarks', label: msg('Landmarks') },
   { key: 'services', label: msg('Services') },
