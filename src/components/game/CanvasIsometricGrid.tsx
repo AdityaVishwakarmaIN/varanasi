@@ -4420,7 +4420,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
         return (
-          <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
+          <div data-testid="placement-label" className={`pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 md:text-center px-4 py-2 rounded-md text-sm ${
             isPlacementInvalid
               ? 'border bg-red-700 border-red-900 text-white'
               : 'hud-panel text-chrome-text'

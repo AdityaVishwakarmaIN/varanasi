@@ -482,7 +482,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
       <div className="w-full h-full min-h-[560px] overflow-hidden bg-background flex">
         <Sidebar onExit={onExit} />
         
-        <div className="flex-1 flex flex-col ml-56">
+        <div className="flex-1 min-w-0 flex flex-col ml-56">
           <TopBar
             showOverlayPanel={showOverlayPanel}
             showMinimap={showMinimap}
@@ -510,13 +510,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <NotificationToasts
               notifications={state.notifications}
               onLocate={locateNotification}
-              className="absolute top-3 left-4 xl:left-1/2 xl:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
+              className="absolute top-3 left-4 min-[1440px]:left-1/2 min-[1440px]:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
             />
             {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
             <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed
+              compact
               onLocate={locateTile}
               className={`absolute left-4 z-20 w-72 ${showOverlayPanel ? 'bottom-24' : 'bottom-4'}`}
             />

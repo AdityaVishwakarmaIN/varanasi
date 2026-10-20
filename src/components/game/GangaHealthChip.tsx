@@ -70,11 +70,11 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
           aria-pressed={active}
         >
           <HudIconBadge tint="ganga"><RiverIcon size={16} /></HudIconBadge>
-          <span className="flex flex-col items-start leading-none">
+          <span className="flex min-w-0 flex-col items-start leading-none">
             <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>
               {health} <span aria-hidden className="text-xs">{GANGA_TREND_ARROW[trend]}</span>
             </span>
-            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">Ganga</span>
+            <span className="mt-1 max-w-full truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted max-[1439px]:tracking-[0.06em]">Ganga</span>
           </span>
         </button>
       </TooltipTrigger>

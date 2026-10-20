@@ -50,7 +50,7 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
+        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
           {f.chip}
         </span>
       ))}

@@ -26,7 +26,7 @@ export const HUD_VALUE_TONE = {
 } as const;
 
 /** Shared chip frame for desktop HUD stats and the clickable Ganga / utility chips. */
-export const HUD_CHIP_CLASS = 'hud-well flex items-center gap-2 rounded-md h-11 pl-1.5 pr-3 max-[1535px]:pl-3';
+export const HUD_CHIP_CLASS = 'hud-well flex min-w-0 shrink items-center gap-2 rounded-md h-11 pl-1.5 pr-3 max-[1535px]:pl-3 max-[1439px]:gap-1.5 max-[1439px]:px-2';
 
 export function HudIconBadge({ tint, children, size = 'md' }: { tint: HudTint; children: React.ReactNode; size?: 'sm' | 'md' }) {
   return (
@@ -57,9 +57,9 @@ export function HudStat({ icon, tint, label, value, tone = 'default', className 
   return (
     <div className={cn(HUD_CHIP_CLASS, className)}>
       <HudIconBadge tint={tint}>{icon}</HudIconBadge>
-      <div className="flex flex-col leading-none">
+      <div className="flex min-w-0 flex-col leading-none">
         <span className={cn('whitespace-nowrap text-[15px] font-semibold font-mono', HUD_VALUE_TONE[tone])}>{value}</span>
-        <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{label}</span>
+        <span className="mt-1 truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted max-[1439px]:tracking-[0.06em]">{label}</span>
       </div>
     </div>
   );

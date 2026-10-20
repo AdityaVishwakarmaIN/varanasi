@@ -1915,7 +1915,7 @@ export function GameProvider({
   return (
     <GameContext.Provider value={value}>
       {isStateReady ? children : (
-        <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/60">
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/90 text-base font-medium">
           <T>Loading city...</T>
         </div>
       )}

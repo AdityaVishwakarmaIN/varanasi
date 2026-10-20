@@ -126,17 +126,6 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
   );
 }
 
-function NewGameResetButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="min-h-11 py-2 text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
-    >
-      <T>New Game</T>
-    </button>
-  );
-}
-
 function NewGameDialog({
   open,
   onOpenChange,
@@ -169,9 +158,15 @@ function NewGameDialog({
           placeholder={DEFAULT_CITY_NAMES[mapId]}
           aria-label="City name"
           maxLength={40}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              onConfirm({ mapId, name });
+            }
+          }}
         />
         {hasSaved && (
-          <p className="text-xs text-amber-300/90">
+          <p className="text-xs text-amber-900">
             <T>This replaces your current autosave. Cities saved from Settings are kept.</T>
           </p>
         )}
@@ -209,7 +204,6 @@ export default function HomePage() {
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
-  const hasResettableProgress = hasSaved;
   // Co-op cities live in a remote room; hide them while co-op is off (the index entries are kept).
   const visibleSavedCities = FEATURES.coop ? savedCities : savedCities.filter(c => !c.roomCode);
 
@@ -374,7 +368,7 @@ export default function HomePage() {
   if (isChecking) {
     return (
       <main className="theme-dark min-h-screen bg-background title-jaali flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sandstone/70">
+        <div className="flex items-center gap-2 text-sandstone/90">
           <span className="title-lotus text-marigold animate-diya" aria-hidden />
           <T>Loading...</T>
         </div>
@@ -441,6 +435,16 @@ export default function HomePage() {
         {hasSaved ? <T>Continue</T> : <T>New Game</T>}
       </Button>
 
+      {hasSaved && (
+        <Button
+          onClick={() => setShowResetDialog(true)}
+          variant="outline"
+          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_11%/0.78)] border-gold/35 text-sandstone hover:bg-[hsl(233_40%_15%/0.9)] hover:text-foreground"
+        >
+          <T>New Game</T>
+        </Button>
+      )}
+
       {FEATURES.coop && (
         <Button
           onClick={() => setShowCoopModal(true)}
@@ -479,11 +483,6 @@ export default function HomePage() {
         </div>
         <LanguageSelector variant="ghost" className="shrink-0 text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
       </div>
-      {hasResettableProgress && (
-        <div className="flex justify-end">
-          <NewGameResetButton onClick={() => setShowResetDialog(true)} />
-        </div>
-      )}
     </div>
   );
 

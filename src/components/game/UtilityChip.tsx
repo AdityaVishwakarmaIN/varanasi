@@ -90,9 +90,9 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
           aria-pressed={active}
         >
           <HudIconBadge tint={kind}><Icon size={16} /></HudIconBadge>
-          <span className="flex flex-col items-start leading-none">
+          <span className="flex min-w-0 flex-col items-start leading-none">
             <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>{percent}%</span>
-            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{label}</span>
+            <span className="mt-1 max-w-full truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted max-[1439px]:tracking-[0.06em]">{label}</span>
           </span>
         </button>
       </TooltipTrigger>

@@ -123,14 +123,16 @@ interface DemandIndicatorProps {
   label: string;
   demand: number;
   color: string;
+  /** Plain-words name for the tooltip, e.g. "Residential demand". */
+  title?: string;
 }
 
-export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) {
+export function DemandIndicator({ label, demand, color, title }: DemandIndicatorProps) {
   const height = Math.abs(demand) / 2;
   const isPositive = demand >= 0;
   
-  return (
-    <div className="flex flex-col items-center gap-1">
+  const indicator = (
+    <div className="flex flex-col items-center gap-1" role="img" aria-label={title}>
       <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
       <div className="w-2.5 h-7 bg-chrome-well border border-chrome-border relative rounded-sm overflow-hidden">
         <div className="absolute left-0 right-0 top-1/2 h-px bg-chrome-border" />
@@ -143,6 +145,15 @@ export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) 
         />
       </div>
     </div>
+  );
+  if (!title) return indicator;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{indicator}</TooltipTrigger>
+      <TooltipContent>
+        <p>{title}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -237,13 +248,18 @@ export const TopBar = React.memo(function TopBar({
   const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
 
   return (
-    <div className="relative z-20 h-16 flex items-center justify-between gap-3 px-4 border-b border-chrome-border bg-chrome-panel">
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="min-w-0 shrink-0">
+    <div className="relative z-20 h-16 flex items-center gap-2 px-3 min-[1440px]:gap-3 min-[1440px]:px-4 border-b border-chrome-border bg-chrome-panel">
+      <div className="flex shrink-0 items-center gap-3 min-[1440px]:gap-4">
+        {/* Fixed-width slot: festival / fog chips clip inside it instead of pushing the speed buttons sideways. */}
+        <div className="w-36 min-[1440px]:w-44 shrink-0">
           <div className="flex items-center gap-1.5">
-            <h1 className="font-sans font-semibold text-chrome-text text-[19px] leading-none truncate max-w-[180px]">{cityName}</h1>
+            <h1 className="min-w-0 shrink font-sans font-semibold text-chrome-text text-[19px] leading-none truncate" title={cityName}>{cityName}</h1>
+            <span className="flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap">
+              <FogChip weather={state.weather} hour={visualHour} />
+              <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
+            </span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-chrome-muted text-[11px] font-mono">
+          <div className="mt-1 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-chrome-muted text-[11px] font-mono">
             <Tooltip>
               <TooltipTrigger asChild>
                 <span><SeasonDateLabel month={month} year={year} /></span>
@@ -253,10 +269,8 @@ export const TopBar = React.memo(function TopBar({
               </TooltipContent>
             </Tooltip>
             <TimeOfDayIcon hour={visualHour} />
-            <FogChip weather={state.weather} hour={visualHour} />
-            <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
           </div>
-          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-[160px]" />
+          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-full" />
         </div>
         
         <div className="hud-well flex items-center gap-0.5 rounded-md p-1" role="group" aria-label="Game speed">
@@ -290,7 +304,7 @@ export const TopBar = React.memo(function TopBar({
         </div>
       </div>
       
-      <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex flex-1 min-w-0 items-center justify-center gap-1.5 max-[1439px]:gap-1">
         <HudStat
           icon={<PopulationIcon size={16} />}
           tint="sandstone"
@@ -343,14 +357,14 @@ export const TopBar = React.memo(function TopBar({
         })}
       </div>
       
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex items-center gap-2 min-[1440px]:gap-2.5 shrink-0">
         <div className="flex items-center gap-1.5" role="group" aria-label="Zone demand">
-          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-700" />
-          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-700" />
-          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-700" />
+          <DemandIndicator label="R" title="Residential demand" demand={stats.demand.residential} color="text-green-700" />
+          <DemandIndicator label="C" title="Commercial demand" demand={stats.demand.commercial} color="text-blue-700" />
+          <DemandIndicator label="I" title="Industrial demand" demand={stats.demand.industrial} color="text-amber-700" />
         </div>
         
-        <div className="hud-well flex items-center gap-2 rounded-md h-11 px-3">
+        <div className="hud-well flex items-center gap-2 rounded-md h-11 px-2 min-[1440px]:px-3">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted">{m(UI_LABELS.tax)}</span>
           <Slider
             value={[taxRate]}
@@ -358,7 +372,7 @@ export const TopBar = React.memo(function TopBar({
             min={0}
             max={100}
             step={1}
-            className="w-14"
+            className="w-12 min-[1440px]:w-14"
             aria-label={String(m(UI_LABELS.tax))}
           />
           <span className="text-chrome-text text-xs font-mono font-semibold w-7">{taxRate}%</span>
@@ -366,7 +380,7 @@ export const TopBar = React.memo(function TopBar({
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-3 rounded-md border border-chrome-border text-chrome-text hover:bg-chrome-well">
+            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-md border border-chrome-border text-chrome-text hover:bg-chrome-well">
               <span className="text-xs">Options</span>
               <span className="text-xs text-chrome-muted" aria-hidden>▾</span>
             </Button>

@@ -60,7 +60,8 @@ import type { MapId } from '@/games/isocity/maps/varanasi';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 
 /** Shared look for a sidebar category row. */
-const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md';
+// On short screens (768 px laptops) rows shrink to 36 px so Tools, Zones and the first building groups all fit.
+const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-md';
 const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text';
 const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-md overflow-hidden animate-submenu-in';
 
@@ -287,6 +288,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                       {m(info.name)}
                     </span>
                     <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : status?.locked || status?.built ? 'text-chrome-muted' : canAfford ? 'text-chrome-text' : 'text-red-700'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                    <span className={`line-clamp-2 w-full whitespace-normal text-left text-[11px] font-normal leading-snug ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{m(info.description)}</span>
                   </span>
                 </Button>
               );
@@ -577,6 +579,12 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   // Submenu categories (hover to expand) - includes all new assets from main
   const mapId = state.mapId;
   const submenuCategories = useMemo(() => [
+    // Utilities come first: zones stay empty without power and water, so new players must find them.
+    { 
+      key: 'utilities', 
+      label: CATEGORY_LABELS.utilities, 
+      tools: ['power_plant', 'water_tower', 'subway_station', 'rail_station'] as Tool[],
+    },
     ...(mapId === 'varanasi'
       ? [
           { key: 'riverfront', label: CATEGORY_LABELS.riverfront, tools: [...RIVERFRONT_TOOLS] as Tool[], forceOpenUpward: false },
@@ -607,12 +615,6 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
       key: 'community', 
       label: CATEGORY_LABELS.community, 
       tools: ['community_center', 'animal_pens_farm', 'office_building_small'] as Tool[]
-    },
-    { 
-      key: 'utilities', 
-      label: CATEGORY_LABELS.utilities, 
-      tools: ['power_plant', 'water_tower', 'subway_station', 'rail_station'] as Tool[],
-      forceOpenUpward: true
     },
     { 
       key: 'special', 
@@ -697,7 +699,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         </div>
       </div>
       
-      <ScrollArea className="flex-1 py-2">
+      {/* type="always": a visible scrollbar tells players there are more groups below. */}
+      <ScrollArea type="always" className="flex-1 py-2">
         {/* Direct categories (TOOLS, ZONES) */}
         {Object.entries(directCategories).map(([category, tools]) => (
           <div key={category} className="mb-1">
@@ -718,7 +721,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     disabled={!canAfford && info.cost > 0}
                     variant="ghost"
                     aria-pressed={isSelected}
-                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md ${
+                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-md ${
                       isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
