@@ -185,6 +185,8 @@ const LIGHTING_GRID_RESEND_MS = 3000;
 const LIGHTING_OFF_HOUR = 12;
 /** PERF: during a drag-pan, shift the static layers by CSS up to this fraction of the view, then redraw. */
 const PAN_LAYER_SHIFT_MAX_FRACTION = 0.25;
+/** PERF: ...and at most this long, so the strip uncovered by the shift is filled in promptly. */
+const PAN_LAYER_REDRAW_MS = 300;
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -331,7 +333,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // drawn with. While a drag-pan only moves the camera, those canvases are shifted with a CSS
   // transform instead of being redrawn and re-uploaded every frame; full detail is redrawn when the
   // pan settles, when the shift gets large, or when anything else in the scene changes.
-  const staticLayerRenderRef = useRef<{ offset: { x: number; y: number }; deps: unknown[]; shifted: boolean } | null>(null);
+  const staticLayerRenderRef = useRef<{ offset: { x: number; y: number }; deps: unknown[]; shifted: boolean; at: number } | null>(null);
+  const staticRedrawRef = useRef<((forceFull: boolean) => void) | null>(null); // latest main render
+  const staticRedrawTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (staticRedrawTimerRef.current !== null) window.clearTimeout(staticRedrawTimerRef.current);
+    staticRedrawRef.current = null;
+  }, []);
   const [offset, setOffset] = useState({ x: isMobile ? 200 : 620, y: isMobile ? 100 : 160 });
   // Latest offset for the smooth camera move (S4-T4), which must not restart on every frame
   const offsetRef = useRef(offset);
@@ -1347,7 +1355,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
     
     // PERF: Defer render to next animation frame - batches multiple state updates into one render
-    renderPendingRef.current = requestAnimationFrame(() => {
+    const renderFrame = (forceFull: boolean) => {
       renderPendingRef.current = null;
       
       // PERF: Throttle main renders at 3x speed to reduce dropped frames
@@ -1365,7 +1373,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const buildingsLayer = buildingsCanvasRef.current;
       const sceneDeps: unknown[] = [grid, gridSize, zoom, overlayMode, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask];
       const lastStatic = staticLayerRenderRef.current;
-      if (isPanning && lastStatic && lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i])) {
+      if (!forceFull && isPanning && lastStatic && now - lastStatic.at < PAN_LAYER_REDRAW_MS && lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i])) {
         const dx = offset.x - lastStatic.offset.x;
         const dy = offset.y - lastStatic.offset.y;
         const cssWidth = canvas.clientWidth || canvas.width;
@@ -1375,14 +1383,24 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           canvas.style.transform = transform;
           if (buildingsLayer) buildingsLayer.style.transform = transform;
           lastStatic.shifted = true;
+          if (staticRedrawTimerRef.current === null) {
+            staticRedrawTimerRef.current = window.setTimeout(() => {
+              staticRedrawTimerRef.current = null;
+              requestAnimationFrame(() => staticRedrawRef.current?.(true));
+            }, Math.max(0, PAN_LAYER_REDRAW_MS - (now - lastStatic.at)));
+          }
           return;
         }
+      }
+      if (staticRedrawTimerRef.current !== null) {
+        window.clearTimeout(staticRedrawTimerRef.current);
+        staticRedrawTimerRef.current = null;
       }
       if (lastStatic?.shifted) {
         canvas.style.transform = '';
         if (buildingsLayer) buildingsLayer.style.transform = '';
       }
-      staticLayerRenderRef.current = { offset: { x: offset.x, y: offset.y }, deps: sceneDeps, shifted: false };
+      staticLayerRenderRef.current = { offset: { x: offset.x, y: offset.y }, deps: sceneDeps, shifted: false, at: now };
       
       const dpr = getRenderDpr();
     
@@ -2852,7 +2870,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
 
     ctx.restore();
-    }); // End requestAnimationFrame callback
+    }; // End renderFrame
+    staticRedrawRef.current = renderFrame;
+    renderPendingRef.current = requestAnimationFrame(() => renderFrame(false));
     
     // PERF: Cleanup - cancel pending render on unmount or deps change
     return () => {
