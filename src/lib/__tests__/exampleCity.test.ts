@@ -1,16 +1,23 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { EXAMPLE_START_GANGA_HEALTH, EXAMPLE_TYPE_MAP, localizeExampleState, varanasiExampleState } from '@/lib/exampleCity';
-import { getBuildingSize, simulateTick } from '@/lib/simulation';
+import { EXAMPLE_DRY_WATERFRONT_MAP, EXAMPLE_START_GANGA_HEALTH, EXAMPLE_TYPE_MAP, localizeExampleState, varanasiExampleState } from '@/lib/exampleCity';
+import { getBuildingSize, getWaterAdjacency, simulateTick } from '@/lib/simulation';
 import { getVaranasiLayout, LAYOUT_WATER } from '@/games/isocity/maps/varanasiLayout';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import { isToolVisible } from '@/games/isocity/maps/varanasiCatalog';
+import { describeGangaCauses } from '@/lib/ganga';
 import type { GameState } from '@/types/game';
 
 const loadExample = () => JSON.parse(readFileSync(join(process.cwd(), 'public/example-states/example_state_9.json'), 'utf8')) as GameState;
 
 describe('EXAMPLE_TYPE_MAP', () => {
+  it('dry waterfront replacements keep the footprint', () => {
+    for (const [from, to] of Object.entries(EXAMPLE_DRY_WATERFRONT_MAP)) {
+      expect(getBuildingSize(to!)).toEqual(getBuildingSize(from as never));
+    }
+  });
+
   it('maps only Varanasi-hidden types, to visible types of the same footprint', () => {
     for (const [from, to] of Object.entries(EXAMPLE_TYPE_MAP)) {
       expect(isToolVisible(from as never, 'varanasi')).toBe(false);
@@ -33,7 +40,7 @@ describe('localizeExampleState', () => {
     for (let y = 0; y < s.gridSize; y++) {
       for (let x = 0; x < s.gridSize; x++) {
         const isRiver = layout.water[y * s.gridSize + x] !== LAYOUT_WATER.none;
-        if (isRiver) expect(s.grid[y][x].building.type).toBe('water');
+        if (isRiver) expect(['water', 'bridge']).toContain(s.grid[y][x].building.type);
         if (isRiver) expect(getRiverZone(x, y, s.gridSize, s.mapId)).toBe('river');
       }
     }
@@ -43,12 +50,13 @@ describe('localizeExampleState', () => {
     expect(ganga!.tiles.length).toBeGreaterThan(50);
     // Every water body tile is water; no sea is left, the lakes keep Indian names.
     for (const w of s.waterBodies) {
-      for (const t of w.tiles) expect(s.grid[t.y][t.x].building.type).toBe('water');
+      for (const t of w.tiles) expect(['water', 'bridge']).toContain(s.grid[t.y][t.x].building.type);
       if (w.type !== 'river') expect(w.type).toBe('lake');
     }
     expect(s.waterBodies.some((w) => w.type === 'lake')).toBe(true);
     const waterTiles = s.grid.flat().filter((t) => t.building.type === 'water').length;
-    expect(waterTiles).toBe(s.waterBodies.reduce((n, w) => n + w.tiles.length, 0));
+    const bridgeTiles = s.grid.flat().filter((t) => t.building.type === 'bridge').length;
+    expect(waterTiles + bridgeTiles).toBe(s.waterBodies.reduce((n, w) => n + w.tiles.length, 0));
     expect(s.stats.gangaHealth).toBe(EXAMPLE_START_GANGA_HEALTH);
     expect(s.stats.gangaHealthTarget).toBeGreaterThanOrEqual(0);
     expect(s.stats.gangaHealthTarget).toBeLessThanOrEqual(100);
@@ -79,6 +87,38 @@ describe('localizeExampleState', () => {
         }
       }
     }
+  });
+
+  it('turns road crossings into bridges, keeps the city hall and services, and leaves no dry jetty', () => {
+    const raw = loadExample();
+    const count = (g: GameState['grid'], type: string) => g.flat().filter((t) => t.building.type === type).length;
+    const s = localizeExampleState(raw);
+    expect(count(s.grid, 'bridge')).toBeGreaterThan(0);
+    for (const t of s.grid.flat().filter((t) => t.building.type === 'bridge')) {
+      expect(['road', 'rail']).toContain(t.building.bridgeTrackType);
+    }
+    // The services the river's course cleared are put back (the grid has room for them).
+    for (const type of ['city_hall', 'hospital', 'university', 'power_plant', 'amusement_park']) {
+      expect(count(s.grid, type)).toBe(count(raw.grid, type));
+    }
+    for (const type of ['marina_docks_small', 'pier_large'] as const) {
+      for (let y = 0; y < s.gridSize; y++) {
+        for (let x = 0; x < s.gridSize; x++) {
+          if (s.grid[y][x].building.type !== type) continue;
+          const w = getBuildingSize(type).width;
+          expect(getWaterAdjacency(s.grid, x, y, w, w, s.gridSize).hasWater).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('shows the Ganga load and its causes from the first frame', () => {
+    const s = localizeExampleState(loadExample());
+    expect(s.stats.gangaLoad).toBeDefined();
+    expect(s.stats.gangaHealth! - s.stats.gangaHealthTarget!).toBeGreaterThan(2);
+    const causes = describeGangaCauses(s.stats.gangaLoad!, (n) => String(n));
+    expect(causes.length).toBeGreaterThan(0);
+    expect(causes.join(' ')).toMatch(/Sewage Treatment Plant|Factories/);
   });
 
   it('does not change the input, and leaves a save that has a mapId alone', () => {
