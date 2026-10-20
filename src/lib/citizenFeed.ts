@@ -5,6 +5,7 @@
 import type { GameState, Notification } from '@/types/game';
 import type { Rng } from '@/lib/rng';
 import {
+  CITIZEN_VOICES,
   CITIZEN_VOICE_CONFIG,
   VARANASI_MOHALLAS,
   formatCitizenVoice,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/citizenVoices';
 import type { ProblemIconSet } from '@/lib/problemIcons';
 import { getFeederBounds } from '@/lib/feederZones';
-import { absoluteDay } from '@/lib/seasons';
+import { absoluteDay, CALENDAR } from '@/lib/seasons';
 import { isHeatwaveActive } from '@/lib/heatwave';
 import { getUpcomingFestivals } from '@/lib/festivals';
 import { isLandmarkType } from '@/lib/landmarks';
@@ -23,6 +24,10 @@ import { getInformalAreaName } from '@/lib/informalSim';
 export const CITIZEN_FEED_CONFIG = {
   /** Entries kept in the feed. */
   maxEntries: 8,
+  /** In-game days an entry stays in the feed (3 months of CALENDAR.daysPerMonth days). */
+  lifetimeDays: 3 * CALENDAR.daysPerMonth,
+  /** In-game days a resolved problem stays (dimmed) before it is removed. */
+  resolvedGraceDays: 14,
   trafficHigh: 60,
   trafficLow: 20,
   gangaClean: 80,
@@ -49,6 +54,10 @@ export interface CitizenFeedEntry {
   positive: boolean;
   x?: number;
   y?: number;
+  /** The problem that caused this entry is gone (shown dimmed). Missing in old saves. */
+  resolved?: boolean;
+  /** Absolute day it was marked resolved; the entry is removed `resolvedGraceDays` later. */
+  resolvedDay?: number;
 }
 
 export type CitizenFeedState = Pick<
@@ -204,11 +213,13 @@ export function nextCitizenFeedEntry(
   entries: readonly CitizenFeedEntry[],
   state: CitizenFeedState,
   problems: ProblemIconSet | null,
-  rng: Rng
+  rng: Rng,
+  /** Pass the result of getActiveVoiceConditions when the caller already has it (saves a grid scan). */
+  activeConditions?: readonly ActiveVoiceCondition[]
 ): CitizenFeedEntry | null {
   const today = absoluteDay(state.year, state.month, state.day);
   if (!isFeedDue(entries[0]?.day, today)) return null;
-  const active = getActiveVoiceConditions(state, problems);
+  const active = activeConditions ?? getActiveVoiceConditions(state, problems);
   if (active.length === 0) return null;
   const recent = entries.slice(0, CITIZEN_VOICE_CONFIG.recentMemory).map((e) => e.voiceId).reverse();
   const voice = pickCitizenVoice(active.map((a) => a.condition), rng, recent);
@@ -222,4 +233,96 @@ export function nextCitizenFeedEntry(
 /** Adds an entry to the front, keeping at most CITIZEN_FEED_CONFIG.maxEntries. */
 export function pushFeedEntry(entries: readonly CitizenFeedEntry[], entry: CitizenFeedEntry): CitizenFeedEntry[] {
   return [entry, ...entries.filter((e) => e.id !== entry.id)].slice(0, CITIZEN_FEED_CONFIG.maxEntries);
+}
+
+const VOICE_CONDITION = new Map<string, VoiceCondition>(CITIZEN_VOICES.map((v) => [v.id, v.condition]));
+
+const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/**
+ * Cleans a stored feed (old or hand-edited saves): drops unusable entries, fills missing fields, sorts newest first and
+ * keeps at most CITIZEN_FEED_CONFIG.maxEntries. Never throws.
+ */
+export function normalizeFeedEntries(raw: unknown): CitizenFeedEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CitizenFeedEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const e = item as Partial<CitizenFeedEntry>;
+    if (typeof e.text !== 'string' || !isNum(e.day)) continue;
+    const voiceId = typeof e.voiceId === 'string' ? e.voiceId : '';
+    out.push({
+      id: typeof e.id === 'string' && e.id ? e.id : `${e.day}-${voiceId}`,
+      day: e.day,
+      voiceId,
+      text: e.text,
+      positive: e.positive === true,
+      ...(isNum(e.x) && isNum(e.y) ? { x: e.x, y: e.y } : {}),
+      ...(e.resolved === true ? { resolved: true, ...(isNum(e.resolvedDay) ? { resolvedDay: e.resolvedDay } : {}) } : {}),
+    });
+  }
+  return out.sort((a, b) => b.day - a.day).slice(0, CITIZEN_FEED_CONFIG.maxEntries);
+}
+
+/**
+ * Expires and resolves feed entries (run once per in-game day, not per frame):
+ * - entries older than `lifetimeDays` (or dated in the future, e.g. after loading an older save) are removed;
+ * - a problem entry (negative voice) whose condition is no longer in `active` is marked resolved, and removed
+ *   `resolvedGraceDays` later; if the condition comes back before that, it is un-resolved;
+ * - the list is capped at `maxEntries`.
+ * Positive entries and entries of unknown voices only age out. Returns the same array when nothing changed.
+ * @param active the current getActiveVoiceConditions result, or null to skip the resolve check
+ */
+export function pruneFeedEntries(
+  entries: readonly CitizenFeedEntry[],
+  today: number,
+  active: readonly ActiveVoiceCondition[] | null
+): readonly CitizenFeedEntry[] {
+  const cfg = CITIZEN_FEED_CONFIG;
+  const live = active ? new Set(active.map((a) => a.condition)) : null;
+  let changed = entries.length > cfg.maxEntries;
+  const out: CitizenFeedEntry[] = [];
+  for (const e of entries) {
+    if (e.day > today || today - e.day >= cfg.lifetimeDays) {
+      changed = true;
+      continue;
+    }
+    let next = e;
+    const condition = VOICE_CONDITION.get(e.voiceId);
+    if (live && condition && !e.positive) {
+      if (live.has(condition)) {
+        if (e.resolved) {
+          const { resolved: _resolved, resolvedDay: _resolvedDay, ...rest } = e;
+          next = rest;
+        }
+      } else if (!e.resolved) {
+        next = { ...e, resolved: true, resolvedDay: today };
+      } else if (e.resolvedDay === undefined) {
+        next = { ...e, resolvedDay: today };
+      } else if (today - e.resolvedDay >= cfg.resolvedGraceDays) {
+        changed = true;
+        continue;
+      }
+    }
+    if (next !== e) changed = true;
+    out.push(next);
+  }
+  return changed ? out.slice(0, cfg.maxEntries) : entries;
+}
+
+/**
+ * The daily feed step: prunes/resolves the entries, then posts the next message when one is due.
+ * One grid scan. Returns the same `entries` array when nothing changed.
+ */
+export function advanceCitizenFeed(
+  entries: readonly CitizenFeedEntry[],
+  state: CitizenFeedState,
+  problems: ProblemIconSet | null,
+  rng: Rng
+): { entries: readonly CitizenFeedEntry[]; posted: boolean } {
+  const today = absoluteDay(state.year, state.month, state.day);
+  const active = getActiveVoiceConditions(state, problems);
+  const pruned = pruneFeedEntries(entries, today, active);
+  const entry = nextCitizenFeedEntry(pruned, state, problems, rng, active);
+  return entry ? { entries: pushFeedEntry(pruned, entry), posted: true } : { entries: pruned, posted: false };
 }

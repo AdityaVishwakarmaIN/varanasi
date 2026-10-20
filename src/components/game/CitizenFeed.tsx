@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { ChevronDown, ChevronUp, MapPin, MessageCircle } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { absoluteDay } from '@/lib/seasons';
 import { createRng } from '@/lib/rng';
 import { computeProblemIconsForState } from '@/lib/problemIcons';
-import { isFeedDue, nextCitizenFeedEntry, pushFeedEntry, resolveFeedText, type CitizenFeedEntry } from '@/lib/citizenFeed';
+import { advanceCitizenFeed, normalizeFeedEntries, resolveFeedText, type CitizenFeedEntry } from '@/lib/citizenFeed';
 import { cn } from '@/lib/utils';
 
 const LABELS = {
@@ -16,6 +16,7 @@ const LABELS = {
   expand: msg('Show citizen voices'),
   collapse: msg('Hide citizen voices'),
   locate: msg('Show on map'),
+  resolved: msg('Resolved'),
 };
 
 const STORAGE_PREFIX = 'isocity-citizen-feed-';
@@ -32,14 +33,13 @@ function hashString(s: string): number {
 function loadEntries(cityId: string): CitizenFeedEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + cityId);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as CitizenFeedEntry[]) : [];
+    return normalizeFeedEntries(raw ? JSON.parse(raw) : []);
   } catch {
     return [];
   }
 }
 
-function saveEntries(cityId: string, entries: CitizenFeedEntry[]): void {
+function saveEntries(cityId: string, entries: readonly CitizenFeedEntry[]): void {
   try {
     localStorage.setItem(STORAGE_PREFIX + cityId, JSON.stringify(entries));
   } catch {
@@ -64,7 +64,7 @@ export function CitizenFeed({
   const { state } = useGame();
   const m = useMessages();
   const [open, setOpen] = useState(!compact);
-  const [feed, setFeed] = useState<{ cityId: string; entries: CitizenFeedEntry[] }>({ cityId: '', entries: [] });
+  const [feed, setFeed] = useState<{ cityId: string; entries: readonly CitizenFeedEntry[] }>({ cityId: '', entries: [] });
   const [unread, setUnread] = useState(0);
   const today = absoluteDay(state.year, state.month, state.day);
   const cityId = state.id;
@@ -74,16 +74,18 @@ export function CitizenFeed({
     setFeed({ cityId, entries: loadEntries(cityId) });
   }, [cityId]);
 
-  // Once per in-game day, post a message if a week has passed since the last one.
+  // Once per in-game day: expire old entries, mark solved problems as resolved, and post a message if a week has passed.
+  const lastRun = useRef('');
   useEffect(() => {
     if (feed.cityId !== cityId) return;
-    if (!isFeedDue(feed.entries[0]?.day, today)) return;
-    const entry = nextCitizenFeedEntry(feed.entries, state, computeProblemIconsForState(state), createRng(hashString(cityId) ^ today));
-    if (!entry) return;
-    const entries = pushFeedEntry(feed.entries, entry);
-    saveEntries(cityId, entries);
-    setFeed({ cityId, entries });
-    setUnread((u) => u + 1);
+    const key = `${cityId}|${today}`;
+    if (lastRun.current === key) return;
+    lastRun.current = key;
+    const next = advanceCitizenFeed(feed.entries, state, computeProblemIconsForState(state), createRng(hashString(cityId) ^ today));
+    if (next.entries === feed.entries) return;
+    saveEntries(cityId, next.entries);
+    setFeed({ cityId, entries: next.entries });
+    if (next.posted) setUnread((u) => u + 1);
     // `state` is read at the day boundary only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, cityId, feed]);
@@ -153,10 +155,12 @@ export function CitizenFeed({
                       className={cn(
                         'flex w-full items-start gap-2 px-3 py-2 text-left text-xs leading-snug',
                         canLocate ? 'hover:bg-chrome-well cursor-pointer' : 'cursor-default',
+                        e.resolved && 'opacity-60',
                       )}
                     >
-                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.positive ? 'bg-green-700' : 'bg-chrome-accent')} />
+                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.resolved ? 'bg-chrome-muted' : e.positive ? 'bg-green-700' : 'bg-chrome-accent')} />
                       <span className="flex-1 text-chrome-text">{resolveFeedText(e.text, state.cityName)}</span>
+                      {e.resolved && <span className="shrink-0 text-[10px] uppercase tracking-wide text-chrome-muted">{m(LABELS.resolved)}</span>}
                       {canLocate && <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-chrome-muted" />}
                     </button>
                   </li>
