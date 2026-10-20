@@ -5,6 +5,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { msg, useMessages } from 'gt-next';
 import { useLocale, useSetLocale } from 'gt-next/client';
 import { useGame } from '@/context/GameContext';
@@ -199,7 +200,7 @@ export const TopBar = React.memo(function TopBar({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-none border border-chrome-border text-chrome-text hover:bg-chrome-well">
               <span className="text-xs">Options</span>
-              <span className="text-xs text-chrome-muted" aria-hidden>▾</span>
+              <ChevronDown size={14} strokeWidth={1.75} className="text-chrome-muted" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 p-2">

@@ -507,7 +507,7 @@ export function SettingsPanel() {
                       <div className="font-medium text-sm truncate">{pack.name}</div>
                     </div>
                     {currentSpritePack.id === pack.id && (
-                      <div className="w-2 h-2 rounded-full bg-chrome-accent flex-shrink-0" />
+                      <div className="w-2 h-2 rounded-none bg-chrome-accent flex-shrink-0" />
                     )}
                   </button>
                 ))}

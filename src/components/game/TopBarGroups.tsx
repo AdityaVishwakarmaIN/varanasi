@@ -14,7 +14,7 @@
  * dismisses it, so closing never places a building on the map.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Landmark, Wallet } from 'lucide-react';
+import { ChevronDown, Landmark, Wallet } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -236,9 +236,9 @@ function GroupIcon({ id, size }: { id: GroupId; size: number }) {
       return <PopulationIcon size={size} />;
     case 'money':
       // The value already carries ₹, so the icon is a wallet rather than a second rupee sign.
-      return <Wallet width={size} height={size} strokeWidth={2} />;
+      return <Wallet width={size} height={size} strokeWidth={1.75} />;
     case 'services':
-      return <Landmark width={size} height={size} strokeWidth={2} />;
+      return <Landmark width={size} height={size} strokeWidth={1.75} />;
     default:
       return <RiverIcon size={size} />;
   }
@@ -344,10 +344,10 @@ function DemandRow({ label, short, demand, bar }: { label: string; short: string
   const pct = Math.min(100, Math.abs(demand));
   const positive = demand >= 0;
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-sm" role="img" aria-label={`${label} demand ${Math.round(demand)}`}>
+    <div className="grid grid-cols-[1.25rem_6rem_1fr_auto] items-center gap-2 px-3 py-1 text-sm" role="img" aria-label={`${label} demand ${Math.round(demand)}`}>
       <span className="w-4 text-center text-[11px] font-bold text-chrome-text" aria-hidden>{short}</span>
-      <span className="w-[4.5rem] shrink-0 text-chrome-muted">{label}</span>
-      <span className="relative h-1.5 flex-1 overflow-hidden rounded-none bg-chrome-border" aria-hidden>
+      <span className="truncate text-chrome-muted">{label}</span>
+      <span className="relative h-1.5 min-w-0 overflow-hidden rounded-none bg-chrome-border" aria-hidden>
         <span className="absolute inset-y-0 left-1/2 w-px bg-chrome-text/50" />
         <span
           className={cn('absolute inset-y-0 rounded-none', positive ? bar : 'bg-red-700')}
@@ -465,7 +465,7 @@ function UtilityRow({
     <div className="px-3 py-1">
       <div className="flex items-center gap-2 text-sm">
         <span className="text-chrome-muted"><Icon size={14} /></span>
-        <span className="w-[4.5rem] shrink-0 text-chrome-muted">{label}</span>
+        <span className="truncate text-chrome-muted">{label}</span>
         <span className={cn('flex-1 font-mono font-semibold tabular-nums', LEVEL_TEXT[level])}>{getSupplyLabel(supply)}</span>
         {onToggle && <OverlayButton active={active} onClick={onToggle} label={label.toLowerCase()} variant={variant} />}
       </div>
@@ -633,7 +633,7 @@ function GroupChip({
             open && '!border-chrome-accent'
           )}
         >
-          <span className={cn('truncate text-[9px] font-semibold uppercase tracking-[0.06em]', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
+          <span className={cn('truncate text-[10px] font-semibold uppercase tracking-[0.04em]', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
             {caption}
           </span>
           <span className={cn('mt-[2px] truncate font-mono text-[12px] font-semibold tabular-nums', VALUE_TEXT[summary.level])}>
@@ -649,7 +649,6 @@ function GroupChip({
       {...common}
       className={cn(
         'hud-well press relative flex h-11 min-w-0 shrink items-center gap-2 overflow-hidden rounded-none pl-3.5 pr-2.5 text-left max-[1439px]:pl-3',
-        LEVEL_FRAME[summary.level],
         open && '!border-chrome-accent'
       )}
     >
@@ -660,11 +659,11 @@ function GroupChip({
         <span className={cn('truncate font-mono text-[15px] font-semibold tabular-nums', VALUE_TEXT[summary.level])}>
           {summary.value}
         </span>
-        <span className={cn('mt-1 truncate text-[9px] font-semibold uppercase tracking-[0.14em] max-[1439px]:tracking-[0.06em]', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
+        <span className={cn('mt-1 truncate text-[10px] font-semibold uppercase tracking-[0.04em]', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
           {caption}
         </span>
       </span>
-      <span className={cn('shrink-0 text-xs text-chrome-muted transition-transform max-[1439px]:hidden', open && 'rotate-180')} aria-hidden>▾</span>
+      <ChevronDown size={14} strokeWidth={1.75} className={cn('shrink-0 text-chrome-muted transition-transform max-[1439px]:hidden', open && 'rotate-180')} aria-hidden />
     </button>
   );
 }
