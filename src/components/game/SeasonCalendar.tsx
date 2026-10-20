@@ -147,7 +147,7 @@ export function FogChip({ weather, hour, className = '' }: { weather: SimWeather
   if (!isFogActive(weather, hour)) return null;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none bg-chrome-well ring-1 ring-chrome-border px-1.5 text-[10px] leading-4 text-chrome-muted ${className}`}
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none border border-chrome-border bg-chrome-well px-1.5 text-[10px] font-medium leading-4 text-chrome-text ${className}`}
       title={m(FOG_TOOLTIP)}
     >
       ☁ {m(FOG_LABEL)}
