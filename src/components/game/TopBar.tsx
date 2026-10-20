@@ -149,8 +149,11 @@ export const TopBar = React.memo(function TopBar({
             <CalendarPanelBody onEventClick={handleCalendarEvent} />
           </TopBarPanelShell>
         </div>
+      </div>
 
-        <div className="hud-well flex items-center gap-0.5 rounded-none p-1" role="group" aria-label="Game speed">
+      {/* Everything but the city name sits on the right; the gap in the middle keeps the name readable. */}
+      <div className="ml-auto flex min-w-0 items-center gap-2 min-[1440px]:gap-3">
+        <div className="hud-well flex shrink-0 items-center gap-0.5 rounded-none p-1" role="group" aria-label="Game speed">
           {[0, 1, 2, 3].map(s => (
             <button
               key={s}
@@ -179,9 +182,8 @@ export const TopBar = React.memo(function TopBar({
             </button>
           ))}
         </div>
-      </div>
-      
-      <TopBarGroups
+
+        <TopBarGroups
         variant="desktop"
         openId={openId}
         onOpenChange={setOpenId}
@@ -192,7 +194,7 @@ export const TopBar = React.memo(function TopBar({
         onToggleWaterOverlay={onToggleWaterOverlay}
       />
 
-      <div className="ml-auto flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-none border border-chrome-border text-chrome-text hover:bg-chrome-well">
@@ -233,6 +235,7 @@ export const TopBar = React.memo(function TopBar({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
     </div>
   );

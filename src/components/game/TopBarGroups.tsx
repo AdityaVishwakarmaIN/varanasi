@@ -14,7 +14,7 @@
  * dismisses it, so closing never places a building on the map.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Landmark } from 'lucide-react';
+import { Landmark, Wallet } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -235,7 +235,8 @@ function GroupIcon({ id, size }: { id: GroupId; size: number }) {
     case 'people':
       return <PopulationIcon size={size} />;
     case 'money':
-      return <span className="font-bold leading-none" style={{ fontSize: size }}>₹</span>;
+      // The value already carries ₹, so the icon is a wallet rather than a second rupee sign.
+      return <Wallet width={size} height={size} strokeWidth={2} />;
     case 'services':
       return <Landmark width={size} height={size} strokeWidth={2} />;
     default:
@@ -295,7 +296,9 @@ export function TopBarPanelShell({
         }}
         className={cn(
           'hud-panel animate-rise-in z-30 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-none border-chrome-accent text-chrome-text',
-          variant === 'desktop' ? 'absolute left-0 top-full mt-2 w-[19rem]' : 'absolute inset-x-2 top-full mt-1 max-h-[calc(100dvh-10rem)]',
+          variant === 'desktop'
+            // The chips sit at the right of the bar, so the later panels open leftwards to stay on screen.
+            ? cn('absolute top-full mt-2 w-[19rem]', id === 'services' || id === 'river' ? 'right-0' : 'left-0') : 'absolute inset-x-2 top-full mt-1 max-h-[calc(100dvh-10rem)]',
           className
         )}
       >
