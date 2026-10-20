@@ -100,9 +100,9 @@ export function AdvisorAvatar({ advisor, size = 32 }: { advisor: AdvisorId; size
 }
 
 const PRIORITY_BORDER: Record<AdvisorNote['priority'], string> = {
-  critical: 'border-l-2 border-l-red-700',
-  high: 'border-l-2 border-l-amber-700',
-  medium: 'border-l-2 border-l-yellow-700',
+  critical: 'border-l-2 border-l-red-800',
+  high: 'border-l-2 border-l-amber-800',
+  medium: 'border-l-2 border-l-amber-800',
   low: '',
 };
 
@@ -130,7 +130,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
         </DialogHeader>
 
         <div className="space-y-4 min-h-0">
-          <Card className=" flex items-center gap-4 p-4 bg-transparent hud-well">
+          <Card className=" flex items-center gap-4 p-4 bg-chrome-well">
             <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-none ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}
             </div>
@@ -143,7 +143,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
           <ScrollArea className="h-[min(420px,55vh)]">
             <div className="space-y-3 pr-2">
               {notes.length === 0 ? (
-                <Card className="text-center py-8 text-chrome-muted hud-well bg-transparent">
+                <Card className="text-center py-8 text-chrome-muted bg-chrome-well">
                   <AdvisorIcon size={32} className="mx-auto mb-3 opacity-50" />
                   <div className="text-sm">{m(UI_LABELS.noUrgentIssues)}</div>
                   <div className="text-xs mt-1">{m(UI_LABELS.cityRunningSmoothly)}</div>
@@ -153,7 +153,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                   const labels = ADVISOR_LABELS[note.advisor];
                   const canShow = (note.x !== undefined && note.y !== undefined) || !!note.overlay;
                   return (
-                    <Card key={note.id} className={`p-3 hud-well bg-transparent ${PRIORITY_BORDER[note.priority]}`}>
+                    <Card key={note.id} className={`p-3 bg-chrome-well ${PRIORITY_BORDER[note.priority]}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <AdvisorAvatar advisor={note.advisor} size={28} />
                         <span className="text-chrome-text font-medium text-sm">{m(labels.title)}</span>

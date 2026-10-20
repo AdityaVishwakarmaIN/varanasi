@@ -30,7 +30,7 @@ import { DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 // Translatable UI labels
 const UI_LABELS = {
   settings: msg('Settings'),
-  gameSettings: msg('Game Settings'),
+  gameSettings: msg('Game settings'),
   disasters: msg('Crises'),
   disastersDesc: msg('Enable random fires and disasters'),
   pauseOnCrisis: msg('Pause when a crisis starts'),
@@ -40,22 +40,22 @@ const UI_LABELS = {
   resetTips: msg('Reset tips'),
   resetTipsDesc: msg('Show every tip again the next time it applies'),
   tipsReset: msg('Tips reset'),
-  spritePack: msg('Sprite Pack'),
+  spritePack: msg('Sprite pack'),
   spritePackDesc: msg('Choose building artwork style'),
   language: msg('Language'),
   languageDesc: msg('Choose your preferred language'),
-  cityInformation: msg('City Information'),
-  cityName: msg('City Name'),
-  gridSize: msg('Grid Size'),
+  cityInformation: msg('City information'),
+  cityName: msg('City name'),
+  gridSize: msg('Grid size'),
   autoSave: msg('Auto-Save'),
   enabled: msg('Enabled'),
   expandCity: msg('Expand City (+30x30)'),
   expandCityDesc: msg('Add 15 tiles on each side. Land edges extend as land, water edges extend as water.'),
   shrinkCity: msg('Shrink City (-30x30)'),
   shrinkCityDesc: msg('Remove 15 tiles from each edge. Buildings on edges will be deleted.'),
-  savedCities: msg('Saved Cities'),
-  savedCitiesDesc: msg('Save multiple cities and switch between them'),
-  citySaved: msg('City Saved!'),
+  savedCities: msg('Saved cities'),
+  savedCitiesDesc: msg('Save multiple cities and switch between them.'),
+  citySaved: msg('City saved!'),
   save: msg('Save'),
   newCityName: msg('New city name...'),
   cancel: msg('Cancel'),
@@ -69,26 +69,26 @@ const UI_LABELS = {
   noSavedCities: msg('No saved cities yet.'),
   restore: msg('Restore'),
   citySavedBeforeViewing: msg('Your city was saved before viewing a shared city'),
-  startNewGame: msg('Start New Game'),
+  startNewGame: msg('Start new game'),
   confirmReset: msg('Are you sure? This will reset all progress.'),
   reset: msg('Reset'),
-  exportGame: msg('Export Game'),
+  exportGame: msg('Export game'),
   exportGameDesc: msg('Copy your game state to share or backup'),
   copied: msg('Copied!'),
-  copyGameState: msg('Copy Game State'),
-  importGame: msg('Import Game'),
+  copyGameState: msg('Copy game state'),
+  importGame: msg('Import game'),
   importGameDesc: msg('Paste a game state to load it'),
   pasteGameState: msg('Paste game state here...'),
   invalidGameState: msg('Invalid game state. Please check and try again.'),
   gameLoadedSuccess: msg('Game loaded successfully!'),
-  loadGameState: msg('Load Game State'),
-  developerTools: msg('Developer Tools'),
-  openSpriteTestView: msg('Open Sprite Test View'),
-  loadExampleState: msg('Load Example State'),
+  loadGameState: msg('Load game state'),
+  developerTools: msg('Developer tools'),
+  openSpriteTestView: msg('Open sprite test view'),
+  loadExampleState: msg('Load example state'),
   benchmarkMedium: msg('Benchmark: Medium (120)'),
   benchmarkLarge: msg('Benchmark: Large (160)'),
   benchmarkDesc: msg('Fixed test city for performance checks. It is never auto-saved: reload the page to get your own city back.'),
-  dayNightMode: msg('Day/Night Mode'),
+  dayNightMode: msg('Day/Night mode'),
   dayNightModeDesc: msg('Override the time-of-day appearance without affecting time progression'),
   auto: msg('Auto'),
   day: msg('Day'),
@@ -267,7 +267,7 @@ export function SettingsPanel() {
         <div className="space-y-6">
           {/* Saved Cities Section */}
           <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
             <p className="text-chrome-muted text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)} {m(UI_LABELS.saveShortcut)}</p>
             
             {/* Save Current City Button */}
@@ -428,7 +428,7 @@ export function SettingsPanel() {
           <Separator />
 
           <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
             
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
@@ -530,7 +530,7 @@ export function SettingsPanel() {
           </div>
 
           <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-chrome-muted">
                 <span>{m(UI_LABELS.cityName)}</span>
@@ -542,7 +542,7 @@ export function SettingsPanel() {
               </div>
               <div className="flex justify-between text-chrome-muted">
                 <span>{m(UI_LABELS.autoSave)}</span>
-                <span className="text-green-700">{m(UI_LABELS.enabled)}</span>
+                <span className="text-green-800">{m(UI_LABELS.enabled)}</span>
               </div>
             </div>
             
@@ -572,7 +572,7 @@ export function SettingsPanel() {
           <Separator />
           
           <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
             <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.exportGameDesc)}</p>
             <Button
               variant="outline"
@@ -584,7 +584,7 @@ export function SettingsPanel() {
           </div>
           
           <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
             <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
             <textarea
               className="w-full h-20 bg-chrome-panel border border-chrome-border rounded-none p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
@@ -597,10 +597,10 @@ export function SettingsPanel() {
               }}
             />
             {importError && (
-              <p className="text-red-700 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
+              <p className="text-red-800 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
             )}
             {importSuccess && (
-              <p className="text-green-700 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
+              <p className="text-green-800 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
             )}
             <Button
               variant="outline"
@@ -615,7 +615,7 @@ export function SettingsPanel() {
           <div>
             {/* S5-T12: developer tools only with ?dev=1 */}
             {devMode && (<>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
             <Button
               variant="outline"
               className="w-full"
@@ -691,7 +691,7 @@ export function SettingsPanel() {
 
           {/* Danger zone: actions that reshape or reset the city, away from Save */}
           <div className="space-y-3 rounded-none border border-destructive/40 p-3">
-            <div className="text-[10px] text-destructive uppercase tracking-wider">{m(UI_LABELS.dangerZone)}</div>
+            <div className="text-[10px] font-semibold text-red-800 uppercase tracking-wider">{m(UI_LABELS.dangerZone)}</div>
             <div className="space-y-3">
               <div>
                 <Button

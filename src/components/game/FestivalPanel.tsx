@@ -51,7 +51,7 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-none bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
+        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-none border border-amber-800/40 bg-amber-800/10 px-1.5 text-[10px] font-medium leading-4 text-amber-800', className)}>
           {f.chip}
         </span>
       ))}
@@ -73,7 +73,7 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
       type="button"
       onClick={() => onOpen(upcoming.id)}
       className={cn(
-        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-none !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold shadow-[0_0_20px_-8px_hsl(var(--marigold)/0.7)]',
+        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-none !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold',
         className
       )}
     >
@@ -119,13 +119,13 @@ export function FestivalEventPanel({
               </DialogTitle>
               <DialogDescription>{m(center ? TEXT.intro : TEXT.noArea)}</DialogDescription>
             </DialogHeader>
-            {readiness.area.scale < 1 && <p className="text-xs text-amber-700">{m(TEXT.halfScale)}</p>}
+            {readiness.area.scale < 1 && <p className="text-xs text-amber-800">{m(TEXT.halfScale)}</p>}
             <ul className="flex flex-col gap-1.5">
               {readiness.checklist.map((r) => {
                 const Icon = r.passed ? CheckCircle2 : XCircle;
                 const content = (
                   <>
-                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-emerald-700' : 'text-red-700')} aria-hidden />
+                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-green-800' : 'text-red-800')} aria-hidden />
                     <span className="flex-1 text-left">
                       <span className="font-medium">{r.label}</span>
                       {!r.passed && <span className="block text-xs text-chrome-muted">{r.hint}</span>}

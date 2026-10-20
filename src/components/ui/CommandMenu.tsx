@@ -499,7 +499,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent 
-        className="p-0 gap-0 max-w-lg overflow-hidden bg-sidebar border-sidebar-border shadow-2xl"
+        className="p-0 gap-0 max-w-lg overflow-hidden bg-chrome-panel border-chrome-border shadow-[0_1px_2px_rgb(60_40_20/0.18)]"
         onKeyDown={handleKeyDown}
       >
         <VisuallyHidden.Root>
@@ -507,14 +507,14 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
         </VisuallyHidden.Root>
         
         {/* Search input */}
-        <div className="flex items-center border-b border-sidebar-border px-3">
+        <div className="flex items-center border-b border-chrome-border px-3">
           <svg 
-            className="w-4 h-4 text-muted-foreground shrink-0" 
+            className="w-4 h-4 text-chrome-muted shrink-0" 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <Input
             ref={inputRef}
@@ -523,7 +523,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
             placeholder="Search tools, buildings, panels, commands..."
             className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-12 text-sm"
           />
-          <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded-none border border-sidebar-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+          <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded-none border border-chrome-border bg-chrome-well px-1.5 font-mono text-[10px] font-medium text-chrome-muted">
             ESC
           </kbd>
         </div>
@@ -532,7 +532,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
         <ScrollArea className="max-h-[360px]">
           <div ref={listRef} className="p-2">
             {flatItems.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
+              <div className="py-6 text-center text-sm text-chrome-muted">
                 No results found.
               </div>
             ) : (
@@ -542,7 +542,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
 
                 return (
                   <div key={category.key} className="mb-2">
-                    <div className="px-2 py-1.5 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+                    <div className="px-2 py-1.5 text-[10px] font-bold tracking-widest text-chrome-muted uppercase">
                       {m(category.label as Parameters<typeof m>[0])}
                     </div>
                     <div className="flex flex-col gap-0.5">
@@ -565,7 +565,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
                               'flex items-center justify-between gap-2 px-3 py-2 rounded-none text-sm transition-colors text-left w-full',
                               isSelected 
                                 ? 'bg-primary text-primary-foreground' 
-                                : 'hover:bg-muted/60',
+                                : 'hover:bg-chrome-well',
                               !canAfford && 'opacity-50 cursor-not-allowed'
                             )}
                           >
@@ -573,17 +573,17 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
                               <span className="font-medium truncate">{m(item.name as Parameters<typeof m>[0])}</span>
                               <span className={cn(
                                 'text-xs truncate',
-                                isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                                isSelected ? 'text-primary-foreground/70' : 'text-chrome-muted'
                               )}>
                                 {m(item.description as Parameters<typeof m>[0])}
                               </span>
                             </div>
                             {statusNote ? (
-                              <span className="text-xs shrink-0 text-muted-foreground">{statusNote}</span>
+                              <span className="text-xs shrink-0 text-chrome-muted">{statusNote}</span>
                             ) : item.cost !== undefined && item.cost > 0 && (
                               <span className={cn(
                                 'text-xs shrink-0',
-                                isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                                isSelected ? 'text-primary-foreground/70' : 'text-chrome-muted'
                               )}>
                                 {formatINR(item.cost)}
                               </span>
@@ -600,21 +600,21 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
         </ScrollArea>
 
         {/* Footer hint */}
-        <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-chrome-border px-3 py-2 text-xs text-chrome-muted">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↑</kbd>
-              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↓</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-chrome-border bg-chrome-well px-1 font-mono text-[10px]">↑</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-chrome-border bg-chrome-well px-1 font-mono text-[10px]">↓</kbd>
               <span>navigate</span>
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↵</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-chrome-border bg-chrome-well px-1 font-mono text-[10px]">↵</kbd>
               <span>select</span>
             </span>
           </div>
           <span className="flex items-center gap-1">
-            <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">{isMacPlatform() ? '⌘' : 'Ctrl'}</kbd>
-            <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">K</kbd>
+            <kbd className="inline-flex h-4 items-center rounded-none border border-chrome-border bg-chrome-well px-1 font-mono text-[10px]">{isMacPlatform() ? '⌘' : 'Ctrl'}</kbd>
+            <kbd className="inline-flex h-4 items-center rounded-none border border-chrome-border bg-chrome-well px-1 font-mono text-[10px]">K</kbd>
             <span>to toggle</span>
           </span>
         </div>

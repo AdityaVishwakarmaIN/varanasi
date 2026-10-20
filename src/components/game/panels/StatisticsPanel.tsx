@@ -145,19 +145,19 @@ export function StatisticsPanel() {
         
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+            <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.population)}</div>
               <div className="font-mono tabular-nums font-semibold text-green-800 text-sm sm:text-base truncate">{formatPopulation(stats.population)}</div>
             </Card>
-            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+            <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.jobs)}</div>
-              <div className="font-mono tabular-nums font-semibold text-cyan-800 text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
+              <div className="font-mono tabular-nums font-semibold text-blue-800 text-sm sm:text-base truncate">{formatPopulation(stats.jobs)}</div>
             </Card>
-            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+            <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.treasury)}</div>
               <div className="font-mono tabular-nums font-semibold text-chrome-text text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
             </Card>
-            <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
+            <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.netPerMonth)}</div>
               <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
                 {formatINRPerMonth(stats.income - stats.expenses, true)}
@@ -231,8 +231,8 @@ function GangaHealthCard({
   const trend = getGangaTrend(gangaHealth, target);
   const colorClass = GANGA_LEVEL_CLASS[getGangaHealthLevel(gangaHealth)];
   return (
-    <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3 flex items-center gap-3">
-      <RiverIcon size={20} className="text-cyan-800 shrink-0" />
+    <Card className="bg-chrome-well p-2 sm:p-3 flex items-center gap-3">
+      <RiverIcon size={20} className="text-blue-800 shrink-0" />
       <div className="min-w-0">
         <div className="hud-label mb-1.5">{label}</div>
         <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base ${colorClass}`}>

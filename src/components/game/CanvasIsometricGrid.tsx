@@ -4337,10 +4337,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             onMouseMove={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-1 rounded-none hud-panel p-1 pl-3 shadow-lg">
+            <div className="flex items-center gap-1 rounded-none hud-panel p-1 pl-3">
               <span className="text-xs font-medium text-chrome-text whitespace-nowrap">
                 {m(getToolDisplay(tool, TOOL_INFO[tool], state.mapId).name)}{' '}
-                <span className="font-mono text-amber-700">{formatINR(cost)}</span>
+                <span className="font-mono text-amber-800">{formatINR(cost)}</span>
               </span>
               <Button size="icon" className="h-11 w-11 rounded-none" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
                 <Check className="w-5 h-5" />
@@ -4435,7 +4435,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         return (
           <div data-testid="placement-label" className={`pointer-events-none absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 text-center px-4 py-2 rounded-none text-sm z-10 ${
             isPlacementInvalid
-              ? 'border bg-red-700 border-red-900 text-white'
+              ? 'border border-red-800 bg-chrome-panel text-red-800 font-medium'
               : 'hud-panel text-chrome-text'
           }`}>
             {isDragging && dragStartTile && dragEndTile && showsDragGrid ? (
@@ -4463,7 +4463,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
                 {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
                 {placementPreview?.warning && (
-                  <span className="text-amber-700">{' - '}{m(placementPreview.warning)}</span>
+                  <span className="text-amber-800">{' - '}{m(placementPreview.warning)}</span>
                 )}
                 {showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to zone' : ' - Drag to zone area')}
                 {supportsDragPlace && !showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to place' : ' - Drag to place')}
@@ -4491,15 +4491,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             className="fixed pointer-events-none z-[100]"
             style={{ left, top: hoveredIncident.screenY - 8 }}
           >
-            <div className="bg-sidebar border border-sidebar-border rounded-none shadow-lg px-3 py-2 w-[220px]">
+            <div className="bg-chrome-panel border border-chrome-border rounded-none shadow-[0_1px_2px_rgb(60_40_20/0.18)] px-3 py-2 w-[220px]">
               {/* Header */}
               <div className="flex gap-2 items-center mb-1">
                 {hoveredIncident.type === 'fire' ? (
-                  <FireIcon size={14} className="text-red-400" />
+                  <FireIcon size={14} className="text-red-800" />
                 ) : (
-                  <SafetyIcon size={14} className="text-blue-400" />
+                  <SafetyIcon size={14} className="text-blue-800" />
                 )}
-                <span className="text-xs font-semibold text-sidebar-foreground">
+                <span className="text-xs font-semibold text-chrome-text">
                   {hoveredIncident.type === 'fire'
                     ? getFireNameForTile(hoveredIncident.x, hoveredIncident.y)
                     : hoveredIncident.crimeType
@@ -4509,7 +4509,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </div>
               
               {/* Description */}
-              <p className="text-[11px] text-muted-foreground leading-tight">
+              <p className="text-[11px] text-chrome-muted leading-tight">
                 {hoveredIncident.type === 'fire'
                   ? getFireDescriptionForTile(hoveredIncident.x, hoveredIncident.y)
                   : hoveredIncident.crimeType
@@ -4518,7 +4518,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </p>
               
               {/* Location */}
-              <div className="mt-1.5 pt-1.5 border-t border-sidebar-border/50 text-[10px] text-muted-foreground/60 font-mono">
+              <div className="mt-1.5 pt-1.5 border-t border-chrome-border text-[10px] text-chrome-muted font-mono">
                 ({hoveredIncident.x}, {hoveredIncident.y})
               </div>
             </div>

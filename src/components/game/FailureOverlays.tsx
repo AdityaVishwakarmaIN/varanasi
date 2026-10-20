@@ -76,29 +76,29 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
       {(inDebt || lowHappiness) && (
         <div className={cn('pointer-events-none flex flex-col gap-2', bannerClassName)} role="status" aria-live="polite">
           {inDebt && (
-            <div className="flex items-start gap-2 rounded-none border border-red-500/80 bg-red-950/90 px-3 py-2 text-red-50 shadow-lg">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" aria-hidden />
+            <div className="flex items-start gap-2 rounded-none border border-chrome-border border-l-4 border-l-red-800 bg-chrome-panel px-3 py-2 text-chrome-text">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-800" aria-hidden />
               <div className="min-w-0">
                 <p className="text-sm font-semibold">{m(LABELS.treasuryEmpty)}</p>
-                {debtDetail && <p className="text-xs text-red-200">{debtDetail}</p>}
+                {debtDetail && <p className="text-xs text-chrome-muted">{debtDetail}</p>}
               </div>
             </div>
           )}
           {lowHappiness && failure && (
             <div
               className={cn(
-                'flex items-start gap-2 rounded-none border px-3 py-2 shadow-lg',
-                failure.exodusActive ? 'border-red-500/80 bg-red-950/90 text-red-50' : 'border-amber-500/80 bg-amber-950/90 text-amber-50'
+                'flex items-start gap-2 rounded-none border border-chrome-border border-l-4 bg-chrome-panel px-3 py-2 text-chrome-text',
+                failure.exodusActive ? 'border-l-red-800' : 'border-l-amber-800'
               )}
             >
-              <Users className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <Users className={cn('mt-0.5 h-4 w-4 shrink-0', failure.exodusActive ? 'text-red-800' : 'text-amber-800')} aria-hidden />
               <div className="min-w-0">
                 {failure.exodusActive && <p className="text-sm font-semibold">{m(LABELS.peopleLeaving)}</p>}
-                <p className={cn(failure.exodusActive ? 'text-xs opacity-80' : 'text-sm font-medium')}>
+                <p className={cn(failure.exodusActive ? 'text-xs text-chrome-muted' : 'text-sm font-medium')}>
                   {gt(failure.lowHappinessMonths === 1 ? 'Happiness has been critical for {months} month' : 'Happiness has been critical for {months} months', { months: failure.lowHappinessMonths })}
                 </p>
                 {!failure.exodusActive && (
-                  <p className="text-xs opacity-80">
+                  <p className="text-xs text-chrome-muted">
                     {gt(monthsToExodus === 1 ? '{months} month until people start leaving' : '{months} months until people start leaving', {
                       months: monthsToExodus,
                     })}
@@ -144,7 +144,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
           {gameOver && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-red-700">
+                <DialogTitle className="text-red-800">
                   {m(gameOver.reason === 'bankruptcy' ? LABELS.gameOverBankrupt : LABELS.gameOverExodus)}
                 </DialogTitle>
                 <DialogDescription className="text-base font-medium text-chrome-text">{state.cityName}</DialogDescription>
@@ -161,7 +161,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
                   </>
                 )}
               </dl>
-              <div className="rounded-none border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              <div className="rounded-none border border-red-800/50 bg-red-800/10 px-3 py-2 text-sm text-chrome-text">
                 <span className="font-medium">{m(LABELS.whatWentWrong)}: </span>
                 {m(FAILING_LINES[gameOver.failingStat])}
               </div>

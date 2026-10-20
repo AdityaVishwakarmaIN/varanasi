@@ -25,7 +25,7 @@ export function PausedIndicator({ className }: { className?: string }) {
     <div
       role="status"
       className={cn(
-        'pointer-events-auto flex items-center gap-2 rounded-none border border-chrome-border bg-chrome-panel py-1 pl-3 pr-1 text-sm text-chrome-text shadow-md',
+        'pointer-events-auto flex items-center gap-2 rounded-none border border-chrome-border bg-chrome-panel py-1 pl-3 pr-1 text-sm text-chrome-text',
         className,
       )}
     >

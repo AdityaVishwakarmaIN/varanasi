@@ -10,7 +10,7 @@ import type { GangaLoadStats } from '@/types/game';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const LEVEL_TEXT_CLASS = {
-  good: 'text-emerald-800',
+  good: 'text-green-800',
   fair: 'text-amber-800',
   poor: 'text-red-800',
 } as const;
@@ -72,7 +72,7 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, gangaLoad, act
           type="button"
           onClick={onClick}
           className={`${HUD_CHIP_CLASS} press ${
-            active ? '!border-ganga/70 !bg-ganga/15 shadow-[0_0_16px_-4px_hsl(var(--ganga)/0.6)]' : 'hover:!border-ganga/40'
+            active ? '!border-ganga/70 !bg-ganga/15' : 'hover:!border-ganga/40'
           }`}
           aria-label={ariaLabel}
           aria-pressed={active}

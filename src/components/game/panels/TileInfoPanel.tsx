@@ -132,8 +132,8 @@ export function TileInfoPanel({
     >
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-sans">Tile ({x}, {y})</CardTitle>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
-          <CloseIcon size={14} />
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close" className="h-8 w-8 text-chrome-text hover:bg-chrome-well">
+          <CloseIcon size={16} />
         </Button>
       </CardHeader>
       
@@ -147,14 +147,10 @@ export function TileInfoPanel({
         {!isWater && isZoned && (
         <div className="flex justify-between">
           <span className="text-chrome-muted">Zone</span>
-          <Badge variant={
-            tile.zone === 'residential' ? 'default' :
-            tile.zone === 'commercial' ? 'secondary' :
-            tile.zone === 'industrial' ? 'outline' : 'secondary'
-          } className={
-            tile.zone === 'residential' ? 'bg-green-500/20 text-green-800' :
-            tile.zone === 'commercial' ? 'bg-blue-500/20 text-blue-800' :
-            tile.zone === 'industrial' ? 'bg-amber-500/20 text-amber-800' : ''
+          <Badge variant="outline" className={
+            tile.zone === 'residential' ? 'border-green-800/40 bg-green-800/15 text-green-800' :
+            tile.zone === 'commercial' ? 'border-blue-800/40 bg-blue-800/15 text-blue-800' :
+            tile.zone === 'industrial' ? 'border-amber-800/40 bg-amber-800/15 text-amber-800' : 'border-chrome-border bg-chrome-well text-chrome-text'
           }>
             {tile.zone === 'none' ? 'Unzoned' : tile.zone}
           </Badge>
@@ -192,13 +188,13 @@ export function TileInfoPanel({
         
         <div className="flex justify-between">
           <span className="text-chrome-muted">Power</span>
-          <Badge variant={tile.building.powered ? 'default' : 'destructive'}>
+          <Badge variant="outline" className={tile.building.powered ? 'border-green-800/40 bg-green-800/15 text-green-800 hover:bg-green-800/15' : 'border-red-800/40 bg-red-800/15 text-red-800 hover:bg-red-800/15'}>
             {tile.building.powered ? 'Connected' : 'No Power'}
           </Badge>
         </div>
         <div className="flex justify-between">
           <span className="text-chrome-muted">Water</span>
-          <Badge variant={tile.building.watered ? 'default' : 'destructive'} className={tile.building.watered ? 'bg-cyan-500/20 text-cyan-800' : ''}>
+          <Badge variant="outline" className={tile.building.watered ? 'border-green-800/40 bg-green-800/15 text-green-800 hover:bg-green-800/15' : 'border-red-800/40 bg-red-800/15 text-red-800 hover:bg-red-800/15'}>
             {tile.building.watered ? 'Connected' : 'No Water'}
           </Badge>
         </div>
@@ -238,7 +234,7 @@ export function TileInfoPanel({
         )}
         
         {isInformal && (
-          <div className="flex flex-col gap-1 rounded-none bg-amber-500/10 p-2 text-xs">
+          <div className="flex flex-col gap-1 rounded-none bg-amber-800/10 p-2 text-xs">
             <span className="text-amber-800">{INFORMAL_CONFIG.tileInfoHint}</span>
             <span className="text-chrome-muted">
               {formaliseDays > 0

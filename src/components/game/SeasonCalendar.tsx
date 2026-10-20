@@ -44,7 +44,7 @@ export interface CalendarEvent {
 /** Label text colours with 4.5:1+ contrast on the sandstone chrome (SEASON_COLORS are swatch fills). */
 const SEASON_TEXT_CLASS: Record<Season, string> = {
   summer: 'text-orange-800',
-  monsoon: 'text-slate-700',
+  monsoon: 'text-slate-800',
   postMonsoon: 'text-yellow-800',
   winter: 'text-sky-800',
 };
@@ -105,7 +105,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
               title={label}
             >
               {full && (
-                <span className="text-[10px] font-medium text-black/75 truncate px-1">
+                <span className="text-[10px] font-medium text-chrome-text truncate px-1">
                   {MONTH_ABBR[cm.month - 1]} · {m(SEASON_NAMES[cm.season])}
                 </span>
               )}
@@ -147,7 +147,7 @@ export function FogChip({ weather, hour, className = '' }: { weather: SimWeather
   if (!isFogActive(weather, hour)) return null;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none bg-chrome-well ring-1 ring-chrome-border px-1.5 text-[10px] leading-4 text-chrome-muted ${className}`}
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none border border-chrome-border bg-chrome-well px-1.5 text-[10px] font-medium leading-4 text-chrome-text ${className}`}
       title={m(FOG_TOOLTIP)}
     >
       ☁ {m(FOG_LABEL)}

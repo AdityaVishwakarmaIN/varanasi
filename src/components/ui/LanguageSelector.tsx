@@ -40,7 +40,7 @@ function GlobeIcon({ size = 16 }: { size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.75"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -60,7 +60,7 @@ function CheckIcon({ size = 16 }: { size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.75"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -106,7 +106,7 @@ export function LanguageSelector({
       <>
         <button
           onClick={() => setIsOpen(true)}
-          className={`h-11 w-11 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ${className}`}
+          className={`h-11 w-11 p-0 m-0 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors ${className}`}
           title="Change Language"
         >
           <GlobeIcon size={iconSize} />
@@ -115,18 +115,18 @@ export function LanguageSelector({
         {isOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)}>
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-[hsl(234_50%_4%/0.72)]" />
             {/* Drawer */}
             <div
-              className="absolute bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-none animate-in slide-in-from-bottom duration-200 pb-24"
+              className="absolute bottom-0 left-0 right-0 bg-chrome-panel border-t border-chrome-border rounded-t-none animate-in slide-in-from-bottom duration-200 pb-24"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Drag handle */}
               <div className="flex justify-center pt-3 pb-1">
-                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+                <div className="w-10 h-1 bg-chrome-border rounded-full" />
               </div>
               <div className="p-4 pt-2">
-                <div className="text-sm font-medium text-foreground mb-3">
+                <div className="text-sm font-medium text-chrome-text mb-3">
                   <T>Select Language</T>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -157,7 +157,7 @@ export function LanguageSelector({
       <DropdownMenuTrigger asChild>
         {iconOnly ? (
           <button
-            className={`h-6 w-6 p-0 m-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ${className}`}
+            className={`h-6 w-6 p-0 m-0 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors ${className}`}
             title="Change Language"
           >
             <GlobeIcon size={iconSize} />
