@@ -54,6 +54,8 @@ import {
 } from '@/components/game/utils';
 import {
   drawGreenBaseTile,
+  drawZoneLotMarks,
+  ZONE_LOT_STYLES,
   drawGreyBaseTile,
   drawBeachOnWater,
   drawFoundationPlot,
@@ -1569,27 +1571,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Skip if skipGreyBase is true (will be drawn later after water)
         topColor = '#6b7280';
         strokeColor = '#374151';
-      } else if (tile.zone === 'residential') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#3d7c3f';
-        } else {
-          topColor = '#2d5a2d';
-        }
-        strokeColor = '#22c55e';
-      } else if (tile.zone === 'commercial') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#3a5c7c';
-        } else {
-          topColor = '#2a4a6a';
-        }
-        strokeColor = '#3b82f6';
-      } else if (tile.zone === 'industrial') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#7c5c3a';
-        } else {
-          topColor = '#6a4a2a';
-        }
-        strokeColor = '#f59e0b';
+      } else if (tile.zone !== 'none') {
+        // Empty zoned lots: strong fill (outline + letter drawn below). Developed tiles: subtler hint.
+        const zoneStyle = ZONE_LOT_STYLES[tile.zone]!;
+        const isEmptyLot = tile.building.type === 'grass' || tile.building.type === 'empty';
+        topColor = isEmptyLot ? zoneStyle.fill : showsDragGrid ? zoneStyle.builtStrong : zoneStyle.built;
+        strokeColor = zoneStyle.line;
       }
       if (floodplainSand && !isPark && !hasGreyBase) {
         const sand = floodplainSandScheme(tile);
@@ -1623,16 +1610,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           ctx.stroke();
         }
         
-        // Draw zone border with dashed line (hide when zoomed out, only on grass/empty tiles - not on roads or buildings)
-        if (tile.zone !== 'none' && 
-            currentZoom >= 0.95 &&
-            (tile.building.type === 'grass' || tile.building.type === 'empty')) {
-          ctx.strokeStyle = tile.zone === 'residential' ? '#22c55e' : 
-                            tile.zone === 'commercial' ? '#3b82f6' : '#f59e0b';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 2]);
-          ctx.stroke();
-          ctx.setLineDash([]);
+        // Crisp inset outline + R/C/I letter on empty zoned lots only (not on roads or buildings)
+        if (tile.zone !== 'none' && (tile.building.type === 'grass' || tile.building.type === 'empty')) {
+          drawZoneLotMarks(ctx, x, y, tile.zone, currentZoom, showsDragGrid);
         }
       }
       
@@ -2291,7 +2271,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     insertionSortByDepth(greenBaseTileQueue);
     for (let i = 0; i < greenBaseTileQueue.length; i++) {
       const { tile, screenX, screenY } = greenBaseTileQueue[i];
-      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
+      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile), showsDragGrid);
     }
     
     // Draw roads (above water, needs full redraw including base tile)
@@ -2697,7 +2677,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
           for (let i = 0; i < greenBaseTileQueue.length; i++) {
             const { tile, screenX, screenY } = greenBaseTileQueue[i];
-            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
+            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile), showsDragGrid);
           }
           for (let i = 0; i < roadQueue.length; i++) {
             const { tile, screenX, screenY } = roadQueue[i];
