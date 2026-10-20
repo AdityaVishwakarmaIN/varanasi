@@ -227,11 +227,12 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
         aria-expanded={isOpen}
         className={`${CATEGORY_ROW} group ${
           hasSelectedTool ? 'hud-selected hover:text-chrome-accentText' : isOpen ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'
-        } ${glow ? 'ring-2 ring-chrome-text/50 animate-pulse' : ''}`}
+        }`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
           {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-transparent border-transparent text-chrome-accentText' : ''}`} aria-hidden>{icon}</span>}
           <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
+          {glow && <span className="shrink-0 border border-chrome-text px-1 text-[10px] font-semibold uppercase leading-[14px] tracking-[0.04em] text-chrome-text">New</span>}
         </span>
         <ChevronRight size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
       </Button>
@@ -720,7 +721,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     disabled={!canAfford && info.cost > 0}
                     variant="ghost"
                     aria-pressed={isSelected}
-                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
+                    className={`press w-full justify-start gap-2.5 whitespace-normal pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
                       isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}${TOOL_KEY_HINTS[tool] ? ` (${TOOL_KEY_HINTS[tool]})` : ''}`}

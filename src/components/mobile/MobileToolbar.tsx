@@ -293,10 +293,11 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               aria-label={showMenu ? gt('Close build menu') : gt('Open build menu')}
               aria-expanded={showMenu}
               data-testid="mobile-build-menu"
-              className={`press h-11 w-11 relative rounded-none ${showMenu ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'} ${landmarksGlow && !showMenu ? 'ring-2 ring-chrome-text/50 animate-pulse' : ''}`}
+              className={`press h-11 w-11 relative rounded-none ${showMenu ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
               onClick={() => setShowMenu(!showMenu)}
             >
               {!showMenu && advisorBadge}
+              {!showMenu && landmarksGlow && <span className="absolute left-1 top-1 h-2 w-2 bg-chrome-text" aria-hidden />}
               {showMenu ? (
                 <CloseIcon size={20} />
               ) : (
@@ -360,11 +361,12 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       data-category={category}
                       aria-expanded={expandedCategory === category}
-                      className={`w-full justify-start gap-3 h-12 rounded-none focus-visible:ring-chrome-text ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-chrome-text/50 animate-pulse' : ''}`}
+                      className={`w-full justify-start gap-3 h-12 rounded-none focus-visible:ring-chrome-text ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'}`}
                       onClick={() => handleCategoryClick(category)}
                     >
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
                       <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}</span>
+                      {category === 'LANDMARKS' && landmarksGlow && <span className="shrink-0 border border-chrome-text px-1 text-[10px] font-semibold uppercase leading-[14px] tracking-[0.04em] text-chrome-text">New</span>}
                       <ChevronDown size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 opacity-60 transition-transform ${expandedCategory === category ? 'rotate-180' : ''}`} />
                     </Button>
 

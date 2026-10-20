@@ -19,6 +19,7 @@ import { isDevModeSearch } from '@/lib/devMode';
 import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
 import { LocaleSelector } from 'gt-next';
+import { ChevronDown } from 'lucide-react';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
@@ -518,7 +519,10 @@ export function SettingsPanel() {
             <div className="py-2">
               <Label>{m(UI_LABELS.language)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
-              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-none px-2 py-1" />
+              <div className="relative inline-flex">
+                <LocaleSelector className="h-9 min-w-36 appearance-none bg-chrome-well border border-chrome-border text-chrome-text rounded-none pl-2.5 pr-8 text-sm" />
+                <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-chrome-muted" />
+              </div>
             </div>
 
             <GraphicsSettings />
