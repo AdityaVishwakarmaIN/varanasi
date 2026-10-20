@@ -30,6 +30,9 @@ export type ControlAction =
   | 'cancel'
   | 'cycleOverlay'
   | 'showHelp'
+  | 'commandMenu'
+  | 'save'
+  | 'undo'
   | 'perfHud';
 
 export interface KeyBinding {
@@ -78,6 +81,12 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   },
   { action: 'cycleOverlay', keys: ['Tab'], keyLabel: 'Tab / Shift+Tab', label: msg('Cycle overlays') },
   { action: 'showHelp', keys: ['?'], keyLabel: '?', label: msg('Show this controls panel') },
+  // Ctrl/Cmd combos are documentation-only here: matchKeyBinding ignores modified keys, and
+  // Ctrl+K (CommandMenu), Ctrl+S (useKeyboardControls) and Ctrl+Z (undo) are handled by their owners.
+  // 'Ctrl' is shown as the Command symbol on Mac (see formatKeyLabel).
+  { action: 'commandMenu', keys: [], keyLabel: 'Ctrl+K', label: msg('Search tools, buildings and commands'), handledElsewhere: true },
+  { action: 'save', keys: [], keyLabel: 'Ctrl+S', label: msg('Save the city'), handledElsewhere: true },
+  { action: 'undo', keys: [], keyLabel: 'Ctrl+Z', label: msg('Undo the last placement'), handledElsewhere: true },
   // F3 is documentation-only here: the Performance HUD component (S1-T2, PerfHud) registers its own
   // F3 listener. Handling it in useKeyboardControls as well would toggle the HUD twice per press.
   { action: 'perfHud', keys: ['F3'], keyLabel: 'F3', label: msg('Performance HUD'), handledElsewhere: true },
@@ -168,15 +177,26 @@ export function matchKeyBinding(e: KeyEventLike): KeyBinding | null {
   return bindingByKey.get(e.key.toLowerCase()) ?? null;
 }
 
+/** True on Apple platforms, where shortcuts use the Command key. Client-only; false during SSR. */
+export function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+}
+
+/** Shortcut text for this platform: "Ctrl+K" on Windows/Linux, "⌘K" on Mac. */
+export function formatKeyLabel(label: string): string {
+  return isMacPlatform() ? label.replace(/Ctrl\+/g, '⌘') : label;
+}
+
 /**
- * True when keyboard shortcuts must be ignored because the user is typing
- * (text inputs, textareas, selects, contenteditable).
+ * True when keyboard shortcuts must be ignored because the user is typing or adjusting a control
+ * (text inputs incl. range inputs, textareas, selects, sliders, contenteditable).
  */
 export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el || typeof el.closest !== 'function') return false;
   if (el.isContentEditable) return true;
-  return !!el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+  return !!el.closest('input, textarea, select, [role="slider"], [contenteditable="true"], [contenteditable=""]');
 }
 
 /** True when focus is inside an open modal/menu, which owns its own keys (Esc, Tab, Space). */

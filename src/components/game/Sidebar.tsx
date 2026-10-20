@@ -58,6 +58,16 @@ import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '
 import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS, type LandmarkMenuStatus } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
+import { formatKeyLabel } from '@/lib/controlsConfig';
+
+/** Keyboard shortcut of a sidebar tool (see KEY_BINDINGS), shown in its tooltip. */
+const TOOL_KEY_HINTS: Partial<Record<Tool, string>> = {
+  zone_residential: 'R',
+  zone_commercial: 'C',
+  zone_industrial: 'I',
+  road: 'X',
+  bulldoze: 'B',
+};
 
 /** Shared look for a sidebar category row. */
 const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md';
@@ -182,6 +192,16 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
     }, 100);
   }, [clearCloseTimeout]);
   
+  // Esc closes the open flyout
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
+
   // Clean up timeout on unmount
   useEffect(() => {
     return () => {
@@ -494,6 +514,13 @@ function ExitDialog({
         </DialogHeader>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="w-full sm:w-auto"
+          >
+            Cancel
+          </Button>
+          <Button
             variant="outline"
             onClick={onExitWithoutSaving}
             className="w-full sm:w-auto"
@@ -514,7 +541,7 @@ function ExitDialog({
 
 // Memoized Sidebar Component
 export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => void }) {
-  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity, markLandmarksSeen } = useGame();
+  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity, markLandmarksSeen, discardUnsavedChanges } = useGame();
   // S5-T6: badge with the count of high and critical advisor messages
   const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
   const { selectedTool, stats, activePanel } = state;
@@ -541,9 +568,10 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   }, [saveCity, onExit]);
   
   const handleExitWithoutSaving = useCallback(() => {
+    discardUnsavedChanges(); // no autosave on the way out, so Continue restores the last save
     setShowExitDialog(false);
     onExit?.();
-  }, [onExit]);
+  }, [discardUnsavedChanges, onExit]);
   
   // Direct tool categories (shown inline)
   const directCategories = useMemo(() => ({
@@ -647,8 +675,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               variant="ghost"
               size="icon-sm"
               onClick={openCommandMenu}
-              title="Search (⌘K)"
-              aria-label="Search (⌘K)"
+              title={`Search (${formatKeyLabel('Ctrl+K')})`}
+              aria-label={`Search (${formatKeyLabel('Ctrl+K')})`}
               className="h-9 w-9 rounded-md text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
             >
               <svg 
@@ -721,7 +749,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-md ${
                       isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
-                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
+                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}${TOOL_KEY_HINTS[tool] ? ` (${TOOL_KEY_HINTS[tool]})` : ''}`}
                   >
                     <ToolGlyph tool={tool} size={28} selected={isSelected} />
                     <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>

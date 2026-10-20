@@ -108,6 +108,14 @@ type GameContextValue = {
   gridBufferRef: React.RefObject<IsoCityGridBuffer | null>;
   setTool: (tool: Tool) => void;
   setSpeed: (speed: 0 | 1 | 2 | 3) => void;
+  /** Speed to return to when the player resumes (the last non-zero speed the player chose). */
+  lastRunSpeed: 1 | 2 | 3;
+  /** Why the city is paused when the game paused itself (e.g. a crisis); null for a player pause or while running. */
+  pauseReason: string | null;
+  /** Resume at the last running speed. */
+  resumeGame: () => void;
+  /** "Exit Without Saving": drop changes since the last save by skipping every further autosave. */
+  discardUnsavedChanges: () => void;
   setTaxRate: (rate: number) => void;
   setActivePanel: (panel: GameState['activePanel']) => void;
   setBudgetFunding: (key: keyof Budget, funding: number) => void;
@@ -254,6 +262,11 @@ function normalizeGameStateVersions(state: GameState): GameState {
     structureVersion: state.structureVersion ?? 0,
     roadNetworkVersion: state.roadNetworkVersion ?? 0,
   };
+}
+
+/** A loaded city never starts faster than Normal (a save made on Very Fast must not jump ahead); a paused save stays paused. */
+function withCalmSpeed<T extends { speed: 0 | 1 | 2 | 3 }>(state: T): T {
+  return state.speed > 1 ? { ...state, speed: 1 } : state;
 }
 
 // Load the autosave from IndexedDB (S1-T9)
@@ -647,6 +660,11 @@ export function GameProvider({
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextSaveRef = useRef(false);
+  // Set by "Exit Without Saving": no autosave may write after this (interval, tab hide or unmount)
+  const discardChangesRef = useRef(false);
+  // Last speed the player chose, and whether the player (not a crisis) paused
+  const [lastRunSpeed, setLastRunSpeed] = useState<1 | 2 | 3>(1);
+  const [pausedByPlayer, setPausedByPlayer] = useState(false);
   const hasLoadedRef = useRef(false);
   
   // Callback for multiplayer action broadcast
@@ -757,8 +775,9 @@ export function GameProvider({
       if (saved) {
         skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
         // Point the simulation loop at the loaded city right away
-        latestStateRef.current = saved;
-        setState(saved);
+        const calmSaved = withCalmSpeed(saved);
+        latestStateRef.current = calmSaved;
+        setState(calmSaved);
         setHasExistingGame(true);
       } else {
         // No save (or a fresh start): create the chosen map (default: Varanasi)
@@ -829,6 +848,11 @@ export function GameProvider({
     const autosave = () => {
       // Wait for the initial load
       if (!hasLoadedRef.current) {
+        return;
+      }
+
+      // "Exit Without Saving": leave the last save as it is
+      if (discardChangesRef.current) {
         return;
       }
 
@@ -964,8 +988,22 @@ export function GameProvider({
   }, []);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
+    if (speed !== 0) setLastRunSpeed(speed);
+    setPausedByPlayer(speed === 0);
     setState((prev) => (prev.gameOver ? prev : { ...prev, speed }));
   }, []);
+
+  const resumeGame = useCallback(() => setSpeed(lastRunSpeed), [setSpeed, lastRunSpeed]);
+
+  const discardUnsavedChanges = useCallback(() => {
+    discardChangesRef.current = true;
+    stateChangedRef.current = false;
+  }, []);
+
+  // A crisis (not the player) paused the city: name it, so the pause is never a mystery
+  const pauseReason = state.speed === 0 && !pausedByPlayer
+    ? (state.notifications.find((n) => n.severity === 'crisis')?.title ?? null)
+    : null;
 
   const setTaxRate = useCallback((rate: number) => {
     setState((prev) => ({ ...prev, taxRate: clamp(rate, 0, 100) }));
@@ -1409,7 +1447,7 @@ export function GameProvider({
           }
         }
         // Increment gameVersion to clear vehicles/entities when loading a new state
-        const normalizedState = normalizeGameStateVersions(parsed as GameState);
+        const normalizedState = withCalmSpeed(normalizeGameStateVersions(parsed as GameState));
         replaceCity(normalizedState, normalizedState);
         return true;
       }
@@ -1796,7 +1834,7 @@ export function GameProvider({
     }
     
     skipNextSaveRef.current = true;
-    const normalizedCityState = normalizeGameStateVersions(cityState);
+    const normalizedCityState = withCalmSpeed(normalizeGameStateVersions(cityState));
     setState((prev) => ({
       ...normalizedCityState,
       gameVersion: (prev.gameVersion ?? 0) + 1,
@@ -1856,6 +1894,10 @@ export function GameProvider({
     gridBufferRef,
     setTool,
     setSpeed,
+    lastRunSpeed,
+    pauseReason,
+    resumeGame,
+    discardUnsavedChanges,
     setTaxRate,
     setActivePanel,
     setBudgetFunding,

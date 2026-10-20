@@ -116,7 +116,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent className="max-w-[520px] max-h-[85vh] sm:max-h-[640px]">
+      <DialogContent showClose className="max-w-[520px] max-h-[85vh] sm:max-h-[640px]">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.cityAdvisors)}</DialogTitle>
         </DialogHeader>

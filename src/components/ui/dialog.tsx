@@ -38,8 +38,11 @@ const BOTTOM_SHEET_CLASSES =
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** Adds a visible close (X) button top-right. Leave off for dialogs that need an answer. */
+    showClose?: boolean
+  }
+>(({ className, children, showClose = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -53,6 +56,16 @@ const DialogContent = React.forwardRef<
     >
       <div aria-hidden className="sm:hidden mx-auto -mt-3 h-1.5 w-10 rounded-full bg-chrome-border" />
       {children}
+      {showClose && (
+        <DialogPrimitive.Close
+          aria-label="Close"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-chrome-muted transition-colors hover:bg-chrome-well hover:text-chrome-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <svg className="h-4 w-4" aria-hidden fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ))

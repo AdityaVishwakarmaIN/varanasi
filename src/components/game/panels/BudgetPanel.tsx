@@ -41,7 +41,7 @@ export function BudgetPanel() {
   
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent className="max-w-[500px]">
+      <DialogContent showClose className="max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.budget)}</DialogTitle>
         </DialogHeader>

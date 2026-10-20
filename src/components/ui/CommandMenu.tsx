@@ -14,6 +14,7 @@ import { formatIndianNumber, formatINR } from '@/lib/format';
 import { getToolDisplay, isToolVisible, LANDMARK_TOOLS, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
 import { getLandmarkMenuStatus, isLandmarkType, LANDMARKS } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import { isMacPlatform } from '@/lib/controlsConfig';
 
 // Global callback to open the command menu
 let openCommandMenuCallback: (() => void) | null = null;
@@ -26,7 +27,9 @@ export function openCommandMenu() {
 // Note: name and description store raw message objects for translation
 interface MenuItem {
   id: string;
-  type: 'tool' | 'panel';
+  type: 'tool' | 'panel' | 'action';
+  /** For type 'action': what to run (set from the `actions` prop). */
+  run?: () => void;
   tool?: Tool;
   panel?: 'budget' | 'statistics' | 'advisors' | 'settings';
   name: unknown; // Raw message object from msg()
@@ -36,7 +39,17 @@ interface MenuItem {
   keywords: string[];
 }
 
+/** A command shown in the menu (Save, Pause, overlays...), provided by the game screen that owns the state. */
+export interface CommandAction {
+  id: string;
+  name: string;
+  description: string;
+  keywords: string[];
+  run: () => void;
+}
+
 const MENU_CATEGORIES = [
+  { key: 'actions', label: msg('Actions') },
   { key: 'tools', label: msg('Tools') },
   { key: 'zones', label: msg('Zones') },
   { key: 'zoning', label: msg('Zoning') },
@@ -286,7 +299,29 @@ function getMenuItemsForMap(mapId: MapId | undefined): MenuItem[] {
     });
 }
 
-export function CommandMenu() {
+/**
+ * How well an item matches the query (0 = no match). Name matches beat keyword matches, which beat
+ * description and category matches; within each, a prefix beats a word start beats a substring.
+ */
+function matchScore(query: string, name: string, description: string, item: MenuItem): number {
+  const n = name.toLowerCase();
+  if (n === query) return 100;
+  if (n.startsWith(query)) return 90;
+  if (n.split(/[\s:/-]+/).some((w) => w.startsWith(query))) return 80;
+  if (n.includes(query)) return 60;
+  let best = 0;
+  for (const kw of item.keywords) {
+    if (kw.startsWith(query)) best = Math.max(best, 50);
+    else if (kw.split(/[\s_-]+/).some((w) => w.startsWith(query))) best = Math.max(best, 45);
+    else if (kw.includes(query)) best = Math.max(best, 30);
+  }
+  if (best > 0) return best;
+  if (description.toLowerCase().includes(query)) return 20;
+  if (item.category.includes(query)) return 10;
+  return 0;
+}
+
+export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
   const { isMobileDevice } = useMobile();
   const { state, setTool, setActivePanel } = useGame();
   const { stats } = state;
@@ -324,24 +359,37 @@ export function CommandMenu() {
   }, [handleOpenChange]);
 
   // Filter items based on search
-  const mapItems = useMemo(() => getMenuItemsForMap(state.mapId), [state.mapId]);
+  const mapItems = useMemo(() => {
+    const actionItems: MenuItem[] = (actions ?? []).map((a) => ({
+      id: `action-${a.id}`,
+      type: 'action',
+      run: a.run,
+      name: a.name,
+      description: a.description,
+      category: 'actions',
+      keywords: a.keywords,
+    }));
+    return [...actionItems, ...getMenuItemsForMap(state.mapId)];
+  }, [state.mapId, actions]);
+  // With a search, items are ranked best match first (prefix, then word start, then anywhere)
   const filteredItems = useMemo(() => {
     if (!search.trim()) return mapItems;
 
     const searchLower = search.toLowerCase().trim();
-    return mapItems.filter(item => {
-      // Check name (decode translation for search)
-      const name = String(m(item.name as Parameters<typeof m>[0]));
-      if (name.toLowerCase().includes(searchLower)) return true;
-      // Check description (decode translation for search)
-      const description = String(m(item.description as Parameters<typeof m>[0]));
-      if (description.toLowerCase().includes(searchLower)) return true;
-      // Check keywords
-      if (item.keywords.some(kw => kw.includes(searchLower))) return true;
-      // Check category
-      if (item.category.includes(searchLower)) return true;
-      return false;
-    });
+    return mapItems
+      .map((item, order) => ({
+        item,
+        order,
+        score: matchScore(
+          searchLower,
+          String(m(item.name as Parameters<typeof m>[0])),
+          String(m(item.description as Parameters<typeof m>[0])),
+          item,
+        ),
+      }))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .map((r) => r.item);
   }, [search, m, mapItems]);
 
   // Group filtered items by category
@@ -356,16 +404,27 @@ export function CommandMenu() {
     return groups;
   }, [filteredItems]);
 
+  // Categories in display order: fixed when browsing, best match first when searching
+  const orderedCategories = useMemo(() => {
+    if (!search.trim()) return MENU_CATEGORIES;
+    const rank = (key: string) => filteredItems.findIndex((i) => i.category === key);
+    return [...MENU_CATEGORIES].sort((a, b) => {
+      const ra = rank(a.key);
+      const rb = rank(b.key);
+      return (ra < 0 ? Infinity : ra) - (rb < 0 ? Infinity : rb);
+    });
+  }, [search, filteredItems]);
+
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => {
     const result: MenuItem[] = [];
-    MENU_CATEGORIES.forEach(cat => {
+    orderedCategories.forEach(cat => {
       if (groupedItems[cat.key]) {
         result.push(...groupedItems[cat.key]);
       }
     });
     return result;
-  }, [groupedItems]);
+  }, [groupedItems, orderedCategories]);
 
   // Handle keyboard shortcut to open
   useEffect(() => {
@@ -374,7 +433,7 @@ export function CommandMenu() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+K or Ctrl+K
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setOpen(prev => !prev);
       }
@@ -390,7 +449,9 @@ export function CommandMenu() {
       const status = getLandmarkMenuStatus(item.tool, state);
       if (status.locked || status.built) return;
     }
-    if (item.type === 'tool' && item.tool) {
+    if (item.type === 'action') {
+      item.run?.();
+    } else if (item.type === 'tool' && item.tool) {
       setTool(item.tool);
     } else if (item.type === 'panel' && item.panel) {
       setActivePanel(state.activePanel === item.panel ? 'none' : item.panel);
@@ -459,7 +520,7 @@ export function CommandMenu() {
             ref={inputRef}
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search tools, buildings, panels..."
+            placeholder="Search tools, buildings, panels, commands..."
             className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-12 text-sm"
           />
           <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-sidebar-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
@@ -475,7 +536,7 @@ export function CommandMenu() {
                 No results found.
               </div>
             ) : (
-              MENU_CATEGORIES.map(category => {
+              orderedCategories.map(category => {
                 const items = groupedItems[category.key];
                 if (!items || items.length === 0) return null;
 
@@ -552,7 +613,7 @@ export function CommandMenu() {
             </span>
           </div>
           <span className="flex items-center gap-1">
-            <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">⌘</kbd>
+            <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">{isMacPlatform() ? '⌘' : 'Ctrl'}</kbd>
             <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">K</kbd>
             <span>to toggle</span>
           </span>

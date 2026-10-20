@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { msg, useMessages } from 'gt-next';
 import { useGame, DayNightMode } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -91,6 +91,15 @@ const UI_LABELS = {
   auto: msg('Auto'),
   day: msg('Day'),
   night: msg('Night'),
+  dangerZone: msg('Danger zone'),
+  saveShortcut: msg('Shortcut: Ctrl+S (⌘S on Mac).'),
+  confirmExpandTitle: msg('Expand the city?'),
+  confirmExpandDesc: msg('This reshapes the map: 15 tiles are added on every side. This cannot be undone.'),
+  confirmShrinkTitle: msg('Shrink the city?'),
+  confirmShrinkDesc: msg('This reshapes the map: 15 tiles are removed from every edge and every building on them is deleted. This cannot be undone. Save first if you may want the old map back.'),
+  cityExpanded: msg('City expanded'),
+  cityShrunk: msg('City shrunk'),
+  cityResizedDesc: msg('The map was reshaped. Buildings on removed edges are gone.'),
   cannotShrink: msg('Cannot shrink city further - minimum size reached.'),
 };
 
@@ -135,7 +144,7 @@ async function loadExampleState(
 
 
 export function SettingsPanel() {
-  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
+  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity, addNotification } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
   const showProblemIcons = useSyncExternalStore(subscribeFeedbackPrefs, getShowProblemIcons, () => true);
   const [tipsWereReset, setTipsWereReset] = useState(false);
@@ -145,6 +154,7 @@ export function SettingsPanel() {
   const [newCityName, setNewCityName] = useState(cityName);
   const [newMapId, setNewMapId] = useState<MapId>(state.mapId ?? 'varanasi');
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [pendingResize, setPendingResize] = useState<'expand' | 'shrink' | null>(null);
   const [saveCitySuccess, setSaveCitySuccess] = useState(false);
   const [cityToDelete, setCityToDelete] = useState<SavedCityMeta | null>(null);
   const [cityToRename, setCityToRename] = useState<SavedCityMeta | null>(null);
@@ -201,6 +211,26 @@ export function SettingsPanel() {
     }, 0);
   }, [showSpriteTest, searchParams, router]);
   
+  const confirmResize = () => {
+    const kind = pendingResize;
+    setPendingResize(null);
+    if (kind === 'expand') {
+      expandCity();
+    } else if (kind === 'shrink') {
+      if (!shrinkCity()) {
+        alert(String(m(UI_LABELS.cannotShrink)));
+        return;
+      }
+    } else {
+      return;
+    }
+    addNotification(
+      String(m(kind === 'expand' ? UI_LABELS.cityExpanded : UI_LABELS.cityShrunk)),
+      String(m(UI_LABELS.cityResizedDesc)),
+      'info',
+    );
+  };
+
   const handleCopyExport = async () => {
     const exported = exportState();
     await navigator.clipboard.writeText(exported);
@@ -225,177 +255,22 @@ export function SettingsPanel() {
   
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent className="max-w-[400px] max-h-[85vh] overflow-y-auto">
+      <DialogContent showClose className="max-w-[400px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.settings)}</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-6">
-          <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
-            
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.disasters)}</Label>
-                <p className="text-chrome-muted text-xs">{m(UI_LABELS.disastersDesc)}</p>
-              </div>
-              <Switch
-                checked={disastersEnabled}
-                onCheckedChange={setDisastersEnabled}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
-                <p className="text-chrome-muted text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
-              </div>
-              <Switch
-                checked={pauseOnCrisis !== false}
-                onCheckedChange={setPauseOnCrisis}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.showProblemIcons)}</Label>
-                <p className="text-chrome-muted text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
-              </div>
-              <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.resetTips)}</Label>
-                <p className="text-chrome-muted text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={tipsWereReset}
-                onClick={() => {
-                  resetShownTips();
-                  setTipsWereReset(true);
-                }}
-              >
-                {m(tipsWereReset ? UI_LABELS.tipsReset : UI_LABELS.resetTips)}
-              </Button>
-            </div>
-            
-            <div className="py-2">
-              <Label>{m(UI_LABELS.spritePack)}</Label>
-              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
-              <div className="grid grid-cols-1 gap-2">
-                {availableSpritePacks.map((pack) => (
-                  <button
-                    key={pack.id}
-                    onClick={() => setSpritePack(pack.id)}
-                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors text-left ${
-                      currentSpritePack.id === pack.id
-                        ? 'border-chrome-accent bg-chrome-well text-chrome-text'
-                        : 'border-chrome-border hover:border-chrome-text text-chrome-muted hover:text-chrome-text'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded overflow-hidden bg-chrome-well flex-shrink-0 relative">
-                      <Image 
-                        src={pack.src} 
-                        alt={pack.name}
-                        fill
-                        className="object-cover object-top"
-                        style={{ imageRendering: 'pixelated' }}
-                        unoptimized
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{pack.name}</div>
-                      <div className="text-xs text-chrome-muted truncate">{pack.src}</div>
-                    </div>
-                    {currentSpritePack.id === pack.id && (
-                      <div className="w-2 h-2 rounded-full bg-chrome-accent flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="py-2">
-              <Label>{m(UI_LABELS.language)}</Label>
-              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
-              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-md px-2 py-1" />
-            </div>
-
-            <GraphicsSettings />
-
-            <AudioSettings />
-
-            <ControlsHelpButton />
-            <CreditsButton className="w-full mt-2" />
-          </div>
-
-          <div>
-            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-chrome-muted">
-                <span>{m(UI_LABELS.cityName)}</span>
-                <span className="text-chrome-text">{cityName}</span>
-              </div>
-              <div className="flex justify-between text-chrome-muted">
-                <span>{m(UI_LABELS.gridSize)}</span>
-                <span className="text-chrome-text">{gridSize} x {gridSize}</span>
-              </div>
-              <div className="flex justify-between text-chrome-muted">
-                <span>{m(UI_LABELS.autoSave)}</span>
-                <span className="text-green-700">{m(UI_LABELS.enabled)}</span>
-              </div>
-            </div>
-            
-            <div className="mt-4 space-y-3">
-              <div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    expandCity();
-                  }}
-                >
-                  {m(UI_LABELS.expandCity)}
-                </Button>
-                <p className="text-chrome-muted text-xs mt-1 text-center">
-                  {m(UI_LABELS.expandCityDesc)}
-                </p>
-              </div>
-              <div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    const success = shrinkCity();
-                    if (!success) {
-                      alert(String(m(UI_LABELS.cannotShrink)));
-                    }
-                  }}
-                  disabled={gridSize <= 50}
-                >
-                  {m(UI_LABELS.shrinkCity)}
-                </Button>
-                <p className="text-chrome-muted text-xs mt-1 text-center">
-                  {m(UI_LABELS.shrinkCityDesc)}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <Separator />
-          
           {/* Saved Cities Section */}
           <div>
             <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
-            <p className="text-chrome-muted text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)}</p>
+            <p className="text-chrome-muted text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)} {m(UI_LABELS.saveShortcut)}</p>
             
             {/* Save Current City Button */}
             <Button
               variant="default"
               className="w-full mb-3"
+              aria-live="polite"
               onClick={() => {
                 saveCity();
                 setSaveCitySuccess(true);
@@ -546,6 +421,128 @@ export function SettingsPanel() {
             )}
           </div>
           
+          <Separator />
+
+          <div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
+            
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.disasters)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.disastersDesc)}</p>
+              </div>
+              <Switch
+                checked={disastersEnabled}
+                onCheckedChange={setDisastersEnabled}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
+              </div>
+              <Switch
+                checked={pauseOnCrisis !== false}
+                onCheckedChange={setPauseOnCrisis}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.showProblemIcons)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
+              </div>
+              <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.resetTips)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tipsWereReset}
+                onClick={() => {
+                  resetShownTips();
+                  setTipsWereReset(true);
+                }}
+              >
+                {m(tipsWereReset ? UI_LABELS.tipsReset : UI_LABELS.resetTips)}
+              </Button>
+            </div>
+            
+            <div className="py-2">
+              <Label>{m(UI_LABELS.spritePack)}</Label>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
+              <div className="grid grid-cols-1 gap-2">
+                {availableSpritePacks.map((pack) => (
+                  <button
+                    key={pack.id}
+                    onClick={() => setSpritePack(pack.id)}
+                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors text-left ${
+                      currentSpritePack.id === pack.id
+                        ? 'border-chrome-accent bg-chrome-well text-chrome-text'
+                        : 'border-chrome-border hover:border-chrome-text text-chrome-muted hover:text-chrome-text'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded overflow-hidden bg-chrome-well flex-shrink-0 relative">
+                      <Image 
+                        src={pack.src} 
+                        alt={pack.name}
+                        fill
+                        className="object-cover object-top"
+                        style={{ imageRendering: 'pixelated' }}
+                        unoptimized
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{pack.name}</div>
+                      <div className="text-xs text-chrome-muted truncate">{pack.src}</div>
+                    </div>
+                    {currentSpritePack.id === pack.id && (
+                      <div className="w-2 h-2 rounded-full bg-chrome-accent flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="py-2">
+              <Label>{m(UI_LABELS.language)}</Label>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
+              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-md px-2 py-1" />
+            </div>
+
+            <GraphicsSettings />
+
+            <AudioSettings />
+
+            <ControlsHelpButton />
+            <CreditsButton className="w-full mt-2" />
+          </div>
+
+          <div>
+            <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.cityName)}</span>
+                <span className="text-chrome-text">{cityName}</span>
+              </div>
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.gridSize)}</span>
+                <span className="text-chrome-text">{gridSize} x {gridSize}</span>
+              </div>
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.autoSave)}</span>
+                <span className="text-green-700">{m(UI_LABELS.enabled)}</span>
+              </div>
+            </div>
+            
+          </div>
+          
           {/* Restore saved city button - shown if there's a saved city from before viewing a shared city */}
           {savedCityInfo && (
             <div className="space-y-2">
@@ -564,45 +561,6 @@ export function SettingsPanel() {
                 {m(UI_LABELS.citySavedBeforeViewing)}
               </p>
               <Separator />
-            </div>
-          )}
-          
-          {!showNewGameConfirm ? (
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => setShowNewGameConfirm(true)}
-            >
-              {m(UI_LABELS.startNewGame)}
-            </Button>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-chrome-muted text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
-              <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
-              <Input
-                value={newCityName}
-                onChange={(e) => setNewCityName(e.target.value)}
-                placeholder={String(m(UI_LABELS.newCityName))}
-              />
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowNewGameConfirm(false)}
-                >
-                  {m(UI_LABELS.cancel)}
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => {
-                    newGame({ name: newCityName, mapId: newMapId, size: gridSize });
-                    setActivePanel('none');
-                  }}
-                >
-                  {m(UI_LABELS.reset)}
-                </Button>
-              </div>
             </div>
           )}
           
@@ -723,8 +681,101 @@ export function SettingsPanel() {
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          {/* Danger zone: actions that reshape or reset the city, away from Save */}
+          <div className="space-y-3 rounded-md border border-destructive/40 p-3">
+            <div className="text-[10px] text-destructive uppercase tracking-wider">{m(UI_LABELS.dangerZone)}</div>
+            <div className="space-y-3">
+              <div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setPendingResize('expand')}
+                >
+                  {m(UI_LABELS.expandCity)}
+                </Button>
+                <p className="text-chrome-muted text-xs mt-1 text-center">
+                  {m(UI_LABELS.expandCityDesc)}
+                </p>
+              </div>
+              <div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setPendingResize('shrink')}
+                  disabled={gridSize <= 50}
+                >
+                  {m(UI_LABELS.shrinkCity)}
+                </Button>
+                <p className="text-chrome-muted text-xs mt-1 text-center">
+                  {m(UI_LABELS.shrinkCityDesc)}
+                </p>
+              </div>
+            </div>
+          {!showNewGameConfirm ? (
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => setShowNewGameConfirm(true)}
+            >
+              {m(UI_LABELS.startNewGame)}
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-chrome-muted text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
+              <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
+              <Input
+                value={newCityName}
+                onChange={(e) => setNewCityName(e.target.value)}
+                placeholder={String(m(UI_LABELS.newCityName))}
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowNewGameConfirm(false)}
+                >
+                  {m(UI_LABELS.cancel)}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => {
+                    newGame({ name: newCityName, mapId: newMapId, size: gridSize });
+                    setActivePanel('none');
+                  }}
+                >
+                  {m(UI_LABELS.reset)}
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          </div>
         </div>
       </DialogContent>
+
+      {/* Confirm before the map is reshaped (edge buildings are deleted when shrinking) */}
+      <Dialog open={pendingResize !== null} onOpenChange={(open) => !open && setPendingResize(null)}>
+        <DialogContent role="alertdialog" className="max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{m(pendingResize === 'shrink' ? UI_LABELS.confirmShrinkTitle : UI_LABELS.confirmExpandTitle)}</DialogTitle>
+            <DialogDescription>
+              {m(pendingResize === 'shrink' ? UI_LABELS.confirmShrinkDesc : UI_LABELS.confirmExpandDesc)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setPendingResize(null)} autoFocus>
+              {m(UI_LABELS.cancel)}
+            </Button>
+            <Button variant="destructive" onClick={confirmResize}>
+              {m(pendingResize === 'shrink' ? UI_LABELS.shrinkCity : UI_LABELS.expandCity)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {devMode && showSpriteTest && (
         <SpriteTestPanel onClose={() => {
