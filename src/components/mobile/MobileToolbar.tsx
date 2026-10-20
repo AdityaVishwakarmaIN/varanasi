@@ -34,7 +34,7 @@ import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 
 /** Bottom-bar quick tool: saffron when selected, sandstone otherwise. */
 function quickToolClass(selected: boolean, extra = '') {
-  return `press h-11 w-11 rounded-md ${selected ? 'hud-selected hover:text-chrome-accentText' : `text-chrome-text hover:bg-chrome-well ${extra}`}`;
+  return `press h-11 w-11 rounded-none ${selected ? 'hud-selected hover:text-chrome-accentText' : `text-chrome-text hover:bg-chrome-well ${extra}`}`;
 }
 
 // Tool category icons
@@ -110,22 +110,22 @@ const QuickToolIcons: Partial<Record<Tool, React.ReactNode>> = {
   subway: <SubwayIcon size={20} />,
   tree: <TreeIcon size={20} />,
   zone_residential: (
-    <div className="w-5 h-5 rounded-md bg-green-700 flex items-center justify-center text-[10px] font-bold text-white">R</div>
+    <div className="w-5 h-5 rounded-none bg-green-700 flex items-center justify-center text-[10px] font-bold text-white">R</div>
   ),
   zone_commercial: (
-    <div className="w-5 h-5 rounded-md bg-blue-700 flex items-center justify-center text-[10px] font-bold text-white">C</div>
+    <div className="w-5 h-5 rounded-none bg-blue-700 flex items-center justify-center text-[10px] font-bold text-white">C</div>
   ),
   zone_industrial: (
-    <div className="w-5 h-5 rounded-md bg-amber-700 flex items-center justify-center text-[10px] font-bold text-white">I</div>
+    <div className="w-5 h-5 rounded-none bg-amber-700 flex items-center justify-center text-[10px] font-bold text-white">I</div>
   ),
   zone_dezone: (
-    <div className="w-5 h-5 rounded-md bg-gray-700 flex items-center justify-center text-[10px] font-bold text-white">X</div>
+    <div className="w-5 h-5 rounded-none bg-gray-700 flex items-center justify-center text-[10px] font-bold text-white">X</div>
   ),
   zone_water: (
-    <div className="w-5 h-5 rounded-md bg-cyan-700 flex items-center justify-center text-[10px] font-bold text-white">~</div>
+    <div className="w-5 h-5 rounded-none bg-cyan-700 flex items-center justify-center text-[10px] font-bold text-white">~</div>
   ),
   zone_land: (
-    <div className="w-5 h-5 rounded-md bg-emerald-700 flex items-center justify-center text-[10px] font-bold text-white">▲</div>
+    <div className="w-5 h-5 rounded-none bg-emerald-700 flex items-center justify-center text-[10px] font-bold text-white">▲</div>
   ),
   police_station: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -302,7 +302,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
   // S5-T6: badge with the count of high and critical advisor messages
   const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
   const advisorBadge = urgentAdvisorCount > 0 ? (
-    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-sm bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center">
+    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-none bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center">
       {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}
     </span>
   ) : null;
@@ -362,7 +362,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 data-testid="draw-mode-toggle"
                 variant="ghost"
                 aria-pressed={drawMode}
-                className={`press pointer-events-auto ml-auto h-11 min-w-11 px-4 gap-2 rounded-sm ${drawMode ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text'}`}
+                className={`press pointer-events-auto ml-auto h-11 min-w-11 px-4 gap-2 rounded-none ${drawMode ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text'}`}
                 onClick={() => onDrawModeChange(!drawMode)}
               >
                 <Pencil className="w-4 h-4" />
@@ -371,7 +371,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             )}
           </div>
         </div>
-        <div className="hud-panel rounded-t-md border-x-0 border-b-0">
+        <div className="hud-panel rounded-none border-x-0 border-b-0">
           {/* Selected tool info - now above the toolbar */}
           {selectedTool && TOOL_INFO[selectedTool] && (
             <div className="flex items-center justify-between px-4 py-1.5 border-b border-chrome-border text-xs">
@@ -473,7 +473,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               aria-label={showMenu ? gt('Close build menu') : gt('Open build menu')}
               aria-expanded={showMenu}
               data-testid="mobile-build-menu"
-              className={`press h-11 w-11 relative rounded-md ${showMenu ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'} ${landmarksGlow && !showMenu ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
+              className={`press h-11 w-11 relative rounded-none ${showMenu ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'} ${landmarksGlow && !showMenu ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
               onClick={() => setShowMenu(!showMenu)}
             >
               {!showMenu && advisorBadge}
@@ -495,7 +495,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       {showMenu && (
         <div className="fixed inset-0 z-40 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn" onClick={() => setShowMenu(false)}>
           <div
-            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(78dvh,calc(100dvh-10.5rem))] overflow-hidden rounded-md flex flex-col"
+            className="hud-panel animate-rise-in absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(78dvh,calc(100dvh-10.5rem))] overflow-hidden rounded-none flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Categories first: they get the sheet's height. */}
@@ -510,10 +510,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                         <Button
                           variant="ghost"
                           aria-expanded={expandCityExpanded}
-                          className={`w-full justify-start gap-3 h-12 rounded-md ${expandCityExpanded ? 'bg-chrome-well' : ''}`}
+                          className={`w-full justify-start gap-3 h-12 rounded-none ${expandCityExpanded ? 'bg-chrome-well' : ''}`}
                           onClick={() => setExpandCityExpanded(!expandCityExpanded)}
                         >
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS.expandCity}</span>
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS.expandCity}</span>
                           <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS['EXPAND_CITY']) as Parameters<typeof m>[0])}</span>
                           <svg
                             className={`w-4 h-4 transition-transform ${expandCityExpanded ? 'rotate-180' : ''}`}
@@ -552,10 +552,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                       variant="ghost"
                       data-category={category}
                       aria-expanded={expandedCategory === category}
-                      className={`w-full justify-start gap-3 h-12 rounded-md ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'} ${tools.includes(selectedTool) ? 'border border-chrome-border' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
+                      className={`w-full justify-start gap-3 h-12 rounded-none ${expandedCategory === category ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'} ${tools.includes(selectedTool) ? 'border border-chrome-border' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-chrome-accent animate-pulse' : ''}`}
                       onClick={() => handleCategoryClick(category)}
                     >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
                       <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}</span>
                       <svg
                         className={`w-4 h-4 transition-transform ${expandedCategory === category ? 'rotate-180' : ''}`}
@@ -585,7 +585,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                               key={tool}
                               variant="ghost"
                               aria-pressed={selectedTool === tool}
-                              className={`press h-auto min-h-11 w-full flex-col items-center justify-start gap-1 rounded-md px-1 py-2 whitespace-normal ${selectedTool === tool ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
+                              className={`press h-auto min-h-11 w-full flex-col items-center justify-start gap-1 rounded-none px-1 py-2 whitespace-normal ${selectedTool === tool ? 'hud-selected hover:text-chrome-accentText' : 'hud-well text-chrome-text'}`}
                               disabled={(!canAfford && info.cost > 0) || !!status?.locked || !!status?.built}
                               onClick={() => handleToolSelect(tool, true)}
                             >
@@ -619,7 +619,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     key={panel}
                     variant="ghost"
                     size="sm"
-                    className="press hud-well relative h-11 w-full px-1 text-xs text-chrome-text rounded-md"
+                    className="press hud-well relative h-11 w-full px-1 text-xs text-chrome-text rounded-none"
                     onClick={() => { onOpenPanel(panel); setShowMenu(false); }}
                   >
                     {m(UI_LABELS[panel])}
@@ -637,7 +637,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                         variant="ghost"
                         size="sm"
                         aria-pressed={overlayMode === mode}
-                        className={`press h-11 shrink-0 px-3 text-xs rounded-md ${overlayMode === mode ? activeClass : 'hud-well text-chrome-text'}`}
+                        className={`press h-11 shrink-0 px-3 text-xs rounded-none ${overlayMode === mode ? activeClass : 'hud-well text-chrome-text'}`}
                         onClick={() => setOverlayMode(mode)}
                       >
                         {m(label)}

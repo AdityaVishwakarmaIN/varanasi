@@ -112,9 +112,9 @@ function DemandBar({ label, demand, color }: { label: string; demand: number; co
   return (
     <div className="flex items-center gap-1">
       <span className={`text-[9px] font-bold ${color} w-2`}>{label}</span>
-      <div className="w-4 h-1.5 bg-chrome-border rounded-full overflow-hidden">
+      <div className="w-4 h-1.5 bg-chrome-border rounded-none overflow-hidden">
         <div
-          className={`h-full rounded-full ${isPositive ? color.replace('text-', 'bg-') : 'bg-red-500'}`}
+          className={`h-full rounded-none ${isPositive ? color.replace('text-', 'bg-') : 'bg-red-500'}`}
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -196,7 +196,7 @@ export function MobileTopBar({
   return (
     <>
       {/* Main Top Bar */}
-      <Card className="hud-panel bg-chrome-panel text-chrome-text fixed top-0 left-0 right-0 z-40 rounded-none rounded-b-md border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
+      <Card className="hud-panel bg-chrome-panel text-chrome-text fixed top-0 left-0 right-0 z-40 rounded-none border-x-0 border-t-0 border-chrome-border safe-area-top safe-area-left safe-area-right">
         <div className="flex items-center px-3 py-0">
           {/* Left: city name, then the date and season (always shown, abbreviated); event chips share the date line and truncate first */}
           <button
@@ -225,7 +225,7 @@ export function MobileTopBar({
               title={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
               aria-label={speed === 0 ? m(UI_LABELS.resume) : m(UI_LABELS.pause)}
             >
-              <span className={`h-8 w-8 flex items-center justify-center rounded-md transition-transform active:scale-95 ${
+              <span className={`h-8 w-8 flex items-center justify-center rounded-none transition-transform active:scale-95 ${
                 speed === 0 ? 'hud-selected' : 'hud-well text-chrome-muted'
               }`}>
                 {speed === 0 ? <PlayIcon size={12} /> : <PauseIcon size={12} />}
@@ -237,7 +237,7 @@ export function MobileTopBar({
               title={m(UI_LABELS.speed)}
               aria-label={m(UI_LABELS.speed)}
             >
-              <span className={`h-8 w-9 flex items-center justify-center rounded-md transition-transform active:scale-95 ${
+              <span className={`h-8 w-9 flex items-center justify-center rounded-none transition-transform active:scale-95 ${
                 speed !== 0 ? 'hud-selected' : 'hud-well text-chrome-muted'
               }`}>
                 <span className={`flex items-center ${shownSpeed === 3 ? '-space-x-[7px]' : '-space-x-[5px]'}`}>
@@ -448,7 +448,7 @@ export function MobileTopBar({
           onClick={() => setShowDetails(false)}
         >
           <Card
-            className="hud-panel animate-rise-in mx-2 mt-2 rounded-md overflow-hidden"
+            className="hud-panel animate-rise-in mx-2 mt-2 rounded-none overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Season calendar (S4-T1) */}
