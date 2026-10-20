@@ -43,7 +43,7 @@ import {
   AdvisorsPanel,
 } from '@/components/game/panels';
 import { MiniMap } from '@/components/game/MiniMap';
-import { TopBar, StatsPanel } from '@/components/game/TopBar';
+import { TopBar } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
 import { PausedIndicator } from '@/components/game/PausedIndicator';
@@ -530,7 +530,6 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onToggleWaterOverlay={toggleWaterOverlay}
             onCalendarEventClick={openCalendarEvent}
           />
-          <StatsPanel />
           <div className="flex-1 relative overflow-visible">
             <CanvasIsometricGrid 
               overlayMode={overlayMode} 
