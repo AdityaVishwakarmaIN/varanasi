@@ -203,7 +203,7 @@ export function StatisticsPanel() {
               </div>
             ) : (
               <>
-                <canvas ref={canvasRef} width={536} height={200} className="w-full rounded-md" />
+                <canvas ref={canvasRef} width={536} height={200} className="w-full rounded-none" />
                 <p className="mt-1 text-center text-[11px] text-chrome-muted">{m(UI_LABELS.quarterly)}</p>
               </>
             )}

@@ -75,7 +75,7 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
         aria-pressed={active}
       >
         <span
-          className={`flex items-center gap-1 rounded-sm pl-1 pr-1.5 py-0.5 ring-1 ${
+          className={`flex items-center gap-1 rounded-none pl-1 pr-1.5 py-0.5 ring-1 ${
             active ? 'bg-chrome-accent/20 ring-chrome-accent' : 'bg-chrome-well ring-chrome-border'
           }`}
         >

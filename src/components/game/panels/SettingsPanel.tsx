@@ -293,7 +293,7 @@ export function SettingsPanel() {
                 {savedCities.map((city) => (
                   <div
                     key={city.id}
-                    className={`p-3 rounded-md border transition-colors ${
+                    className={`p-3 rounded-none border transition-colors ${
                       city.id === currentCityId
                         ? 'border-chrome-accent bg-chrome-well'
                         : 'border-chrome-border hover:border-chrome-text'
@@ -419,7 +419,7 @@ export function SettingsPanel() {
                 ))}
               </div>
             ) : (
-              <p className="text-chrome-muted text-xs text-center py-3 border border-dashed rounded-md">
+              <p className="text-chrome-muted text-xs text-center py-3 border border-dashed rounded-none">
                 {m(UI_LABELS.noSavedCities)}
               </p>
             )}
@@ -487,13 +487,13 @@ export function SettingsPanel() {
                   <button
                     key={pack.id}
                     onClick={() => setSpritePack(pack.id)}
-                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors text-left ${
+                    className={`flex items-center gap-3 p-2 rounded-none border transition-colors text-left ${
                       currentSpritePack.id === pack.id
                         ? 'border-chrome-accent bg-chrome-well text-chrome-text'
                         : 'border-chrome-border hover:border-chrome-text text-chrome-muted hover:text-chrome-text'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded overflow-hidden bg-chrome-well flex-shrink-0 relative">
+                    <div className="w-10 h-10 rounded-none overflow-hidden bg-chrome-well flex-shrink-0 relative">
                       <Image 
                         src={pack.src} 
                         alt={pack.name}
@@ -518,7 +518,7 @@ export function SettingsPanel() {
             <div className="py-2">
               <Label>{m(UI_LABELS.language)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
-              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-md px-2 py-1" />
+              <LocaleSelector className="bg-chrome-well border border-chrome-border text-chrome-text rounded-none px-2 py-1" />
             </div>
 
             <GraphicsSettings />
@@ -587,7 +587,7 @@ export function SettingsPanel() {
             <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
             <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
             <textarea
-              className="w-full h-20 bg-chrome-panel border border-chrome-border rounded-md p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-20 bg-chrome-panel border border-chrome-border rounded-none p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder={String(m(UI_LABELS.pasteGameState))}
               value={importValue}
               onChange={(e) => {
@@ -667,7 +667,7 @@ export function SettingsPanel() {
             <div className={devMode ? 'mt-4 pt-4 border-t border-chrome-border' : ''}>
               <Label>{m(UI_LABELS.dayNightMode)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
-              <div className="flex rounded-md border border-chrome-border overflow-hidden">
+              <div className="flex rounded-none border border-chrome-border overflow-hidden">
                 {(['auto', 'day', 'night'] as DayNightMode[]).map((mode) => (
                   <button
                     key={mode}
@@ -690,7 +690,7 @@ export function SettingsPanel() {
           <Separator />
 
           {/* Danger zone: actions that reshape or reset the city, away from Save */}
-          <div className="space-y-3 rounded-md border border-destructive/40 p-3">
+          <div className="space-y-3 rounded-none border border-destructive/40 p-3">
             <div className="text-[10px] text-destructive uppercase tracking-wider">{m(UI_LABELS.dangerZone)}</div>
             <div className="space-y-3">
               <div>

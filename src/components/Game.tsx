@@ -447,14 +447,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
               <div className="absolute top-2 right-2 z-20">
-                <div className="hud-glass rounded-xl px-2 py-1.5 shadow-lg">
+                <div className="hud-glass rounded-none px-2 py-1.5 shadow-lg">
                   <div className="flex items-center gap-1.5 text-xs text-chrome-text">
                     {roomCode && (
                       <>
                         <span className="font-mono tracking-wider">{roomCode}</span>
                         <button
                           onClick={handleCopyRoomLink}
-                          className="p-0.5 hover:bg-chrome-well rounded transition-colors"
+                          className="p-0.5 hover:bg-chrome-well rounded-none transition-colors"
                           title="Copy invite link"
                         >
                           {copiedRoomLink ? (
@@ -569,14 +569,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} />
             {isMultiplayer && (
               <div className="pointer-events-auto">
-                <div className="hud-glass rounded-xl px-3 py-2 shadow-lg min-w-[120px]">
+                <div className="hud-glass rounded-none px-3 py-2 shadow-lg min-w-[120px]">
                   <div className="flex items-center gap-2 text-sm text-chrome-text">
                     {roomCode && (
                       <>
                         <span className="font-mono font-medium tracking-wider">{roomCode}</span>
                         <button
                           onClick={handleCopyRoomLink}
-                          className="p-1 hover:bg-chrome-well rounded transition-colors"
+                          className="p-1 hover:bg-chrome-well rounded-none transition-colors"
                           title="Copy invite link"
                         >
                           {copiedRoomLink ? (

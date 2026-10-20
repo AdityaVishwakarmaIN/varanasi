@@ -523,7 +523,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
             placeholder="Search tools, buildings, panels, commands..."
             className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-12 text-sm"
           />
-          <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-sidebar-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+          <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded-none border border-sidebar-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
             ESC
           </kbd>
         </div>
@@ -562,7 +562,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
                             onClick={() => handleSelect(item)}
                             disabled={!canAfford}
                             className={cn(
-                              'flex items-center justify-between gap-2 px-3 py-2 rounded-sm text-sm transition-colors text-left w-full',
+                              'flex items-center justify-between gap-2 px-3 py-2 rounded-none text-sm transition-colors text-left w-full',
                               isSelected 
                                 ? 'bg-primary text-primary-foreground' 
                                 : 'hover:bg-muted/60',
@@ -603,18 +603,18 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
         <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↑</kbd>
-              <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↓</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↑</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↓</kbd>
               <span>navigate</span>
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↵</kbd>
+              <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">↵</kbd>
               <span>select</span>
             </span>
           </div>
           <span className="flex items-center gap-1">
-            <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">{isMacPlatform() ? '⌘' : 'Ctrl'}</kbd>
-            <kbd className="inline-flex h-4 items-center rounded border border-sidebar-border bg-muted px-1 font-mono text-[10px]">K</kbd>
+            <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">{isMacPlatform() ? '⌘' : 'Ctrl'}</kbd>
+            <kbd className="inline-flex h-4 items-center rounded-none border border-sidebar-border bg-muted px-1 font-mono text-[10px]">K</kbd>
             <span>to toggle</span>
           </span>
         </div>

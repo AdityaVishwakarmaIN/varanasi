@@ -67,10 +67,10 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
         isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'
       )}
     >
-      <div className="hud-glass gold-hairline relative rounded-2xl overflow-hidden w-full">
+      <div className="hud-glass gold-hairline relative rounded-none overflow-hidden w-full">
         {/* Content */}
         <div className="p-3.5 flex items-start gap-3">
-          <div className="relative flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-b from-marigold/25 to-saffron/10 ring-1 ring-marigold/40 flex items-center justify-center">
+          <div className="relative flex-shrink-0 w-10 h-10 rounded-none bg-gradient-to-b from-marigold/25 to-saffron/10 ring-1 ring-marigold/40 flex items-center justify-center">
             <Lightbulb className="w-5 h-5 text-marigold animate-diya" aria-hidden />
           </div>
 
@@ -83,7 +83,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
 
           <button
             onClick={onContinue}
-            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-lg text-chrome-muted hover:text-chrome-accent hover:bg-chrome-well transition-colors"
+            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-none text-chrome-muted hover:text-chrome-accent hover:bg-chrome-well transition-colors"
             aria-label={gt('Dismiss tip')}
           >
             <X className="w-4 h-4" aria-hidden />

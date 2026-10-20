@@ -36,7 +36,7 @@ const PROBLEM_LEGEND: Record<ProblemKind, string> = {
 
 function KeyCap({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-block rounded border border-chrome-border bg-chrome-well px-1.5 py-0.5 font-mono text-[11px] leading-none text-chrome-text whitespace-nowrap">
+    <kbd className="inline-block rounded-none border border-chrome-border bg-chrome-well px-1.5 py-0.5 font-mono text-[11px] leading-none text-chrome-text whitespace-nowrap">
       {children}
     </kbd>
   );

@@ -94,7 +94,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
 
   return (
     <div className={`relative w-full ${className}`}>
-      <div className={`relative flex w-full overflow-hidden rounded-sm ${full ? 'h-6' : 'h-1.5'}`}>
+      <div className={`relative flex w-full overflow-hidden rounded-none ${full ? 'h-6' : 'h-1.5'}`}>
         {months.map((cm) => {
           const label = `${MONTH_ABBR[cm.month - 1]} ${cm.year} · ${m(SEASON_NAMES[cm.season])}`;
           return (
@@ -147,7 +147,7 @@ export function FogChip({ weather, hour, className = '' }: { weather: SimWeather
   if (!isFogActive(weather, hour)) return null;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-full bg-chrome-well ring-1 ring-chrome-border px-1.5 text-[10px] leading-4 text-chrome-muted ${className}`}
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none bg-chrome-well ring-1 ring-chrome-border px-1.5 text-[10px] leading-4 text-chrome-muted ${className}`}
       title={m(FOG_TOOLTIP)}
     >
       ☁ {m(FOG_LABEL)}

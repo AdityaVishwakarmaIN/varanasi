@@ -26,7 +26,7 @@ export const HUD_VALUE_TONE = {
 } as const;
 
 /** Shared chip frame for desktop HUD stats and the clickable Ganga / utility chips. */
-export const HUD_CHIP_CLASS = 'hud-well flex min-w-0 shrink items-center gap-2 rounded-md h-11 pl-1.5 pr-3 max-[1535px]:pl-3 max-[1439px]:gap-1.5 max-[1439px]:px-2';
+export const HUD_CHIP_CLASS = 'hud-well flex min-w-0 shrink items-center gap-2 rounded-none h-11 pl-1.5 pr-3 max-[1535px]:pl-3 max-[1439px]:gap-1.5 max-[1439px]:px-2';
 
 export function HudIconBadge({ tint, children, size = 'md' }: { tint: HudTint; children: React.ReactNode; size?: 'sm' | 'md' }) {
   return (

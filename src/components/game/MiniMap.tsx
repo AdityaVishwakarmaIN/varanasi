@@ -215,7 +215,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
   }, [isDragging]);
   
   return (
-    <Card className="hud-panel bg-chrome-panel text-chrome-text fixed bottom-4 right-4 p-2.5 rounded-md z-50">
+    <Card className="hud-panel bg-chrome-panel text-chrome-text fixed bottom-4 right-4 p-2.5 rounded-none z-50">
       <div className="hud-label mb-2 flex items-center gap-1.5">
         {m(MINIMAP_LABEL)}
       </div>
@@ -223,7 +223,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
         ref={canvasRef}
         width={140}
         height={140}
-        className="block rounded-md border border-chrome-border cursor-pointer select-none"
+        className="block rounded-none border border-chrome-border cursor-pointer select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -231,19 +231,19 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       />
       <div className="mt-2 grid grid-cols-4 gap-1 text-[8px]">
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-green-500 rounded-sm" />
+          <div className="w-2 h-2 bg-green-500 rounded-none" />
           <span className="text-chrome-muted">R</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-blue-500 rounded-sm" />
+          <div className="w-2 h-2 bg-blue-500 rounded-none" />
           <span className="text-chrome-muted">C</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-amber-500 rounded-sm" />
+          <div className="w-2 h-2 bg-amber-500 rounded-none" />
           <span className="text-chrome-muted">I</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-pink-500 rounded-sm" />
+          <div className="w-2 h-2 bg-pink-500 rounded-none" />
           <span className="text-chrome-muted">S</span>
         </div>
       </div>

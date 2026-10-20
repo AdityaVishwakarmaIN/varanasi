@@ -115,7 +115,7 @@ export function ToolGlyph({ tool, size = 36, className, selected = false }: Tool
   if (toolHasArt(tool)) {
     return (
       <span
-        className={cn('relative flex shrink-0 items-end justify-center overflow-hidden rounded-md bg-chrome-well border border-chrome-border', className)}
+        className={cn('relative flex shrink-0 items-end justify-center overflow-hidden rounded-none bg-chrome-well border border-chrome-border', className)}
         style={{ width: size, height: size }}
         aria-hidden
       >
@@ -127,7 +127,7 @@ export function ToolGlyph({ tool, size = 36, className, selected = false }: Tool
   const iconSize = Math.round(size * 0.5);
   return (
     <span
-      className={cn('flex shrink-0 items-center justify-center rounded-md border', selected ? 'border-chrome-accentText bg-chrome-accent text-chrome-accentText' : 'border-chrome-border bg-chrome-well text-chrome-text', className)}
+      className={cn('flex shrink-0 items-center justify-center rounded-none border', selected ? 'border-chrome-accentText bg-chrome-accent text-chrome-accentText' : 'border-chrome-border bg-chrome-well text-chrome-text', className)}
       style={{ width: size, height: size }}
       aria-hidden
     >

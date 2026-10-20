@@ -53,7 +53,7 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, gangaLoad, act
         aria-pressed={active}
       >
         <span
-          className={`flex items-center gap-1 rounded-full pl-1 pr-1.5 py-0.5 ring-1 ${
+          className={`flex items-center gap-1 rounded-none pl-1 pr-1.5 py-0.5 ring-1 ${
             active ? 'bg-ganga/25 ring-ganga/70' : 'bg-ganga/10 ring-ganga/25'
           }`}
         >

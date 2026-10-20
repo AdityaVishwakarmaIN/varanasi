@@ -51,7 +51,7 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
+        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-none bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-chrome-accent', className)}>
           {f.chip}
         </span>
       ))}
@@ -73,7 +73,7 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
       type="button"
       onClick={() => onOpen(upcoming.id)}
       className={cn(
-        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-full !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold shadow-[0_0_20px_-8px_hsl(var(--marigold)/0.7)]',
+        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-none !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold shadow-[0_0_20px_-8px_hsl(var(--marigold)/0.7)]',
         className
       )}
     >
@@ -136,11 +136,11 @@ export function FestivalEventPanel({
                 return (
                   <li key={r.requirement}>
                     {r.passed || !center ? (
-                      <div className="flex items-start gap-2 rounded px-2 py-1.5 text-sm">{content}</div>
+                      <div className="flex items-start gap-2 rounded-none px-2 py-1.5 text-sm">{content}</div>
                     ) : (
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-sm text-chrome-text hover:bg-chrome-well"
+                        className="flex w-full items-start gap-2 rounded-none px-2 py-2 text-sm text-chrome-text hover:bg-chrome-well"
                         onClick={() => {
                           onLocate(center.x, center.y, readinessOverlay(r));
                           onClose();

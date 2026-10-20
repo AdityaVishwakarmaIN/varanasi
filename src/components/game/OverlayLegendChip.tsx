@@ -24,7 +24,7 @@ export const OverlayLegendChip = React.memo(function OverlayLegendChip({
     <div
       role="status"
       data-testid="overlay-legend-chip"
-      className={`hud-panel pointer-events-auto flex max-w-full items-center gap-2 rounded-md py-1 pl-3 pr-0 ${className}`}
+      className={`hud-panel pointer-events-auto flex max-w-full items-center gap-2 rounded-none py-1 pl-3 pr-0 ${className}`}
     >
       <div className="min-w-0 flex-1">
         <div className="text-xs font-semibold leading-tight text-chrome-text">{name} overlay</div>
@@ -33,7 +33,7 @@ export const OverlayLegendChip = React.memo(function OverlayLegendChip({
             <li key={stop.label} className="flex items-center gap-1 whitespace-nowrap">
               <span
                 aria-hidden
-                className="h-2.5 w-2.5 shrink-0 rounded-sm ring-1 ring-chrome-border"
+                className="h-2.5 w-2.5 shrink-0 rounded-none ring-1 ring-chrome-border"
                 style={stop.color ? { background: stop.color } : undefined}
               />
               {stop.label}
@@ -44,7 +44,7 @@ export const OverlayLegendChip = React.memo(function OverlayLegendChip({
       <button
         type="button"
         onClick={onClear}
-        className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-chrome-muted hover:text-chrome-text"
+        className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-none text-chrome-muted hover:text-chrome-text"
         aria-label={`Turn off the ${name} overlay`}
         title="Turn off overlay"
       >
