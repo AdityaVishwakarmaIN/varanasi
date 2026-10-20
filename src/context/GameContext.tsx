@@ -274,6 +274,12 @@ function withCalmSpeed<T extends { speed: 0 | 1 | 2 | 3 }>(state: T): T {
   return state.speed > 1 ? { ...state, speed: 1 } : state;
 }
 
+// A freshly loaded/new city starts on the Select tool so the first drag pans
+// the map instead of painting whatever tool was active when it was saved.
+function withSelectTool<T extends { selectedTool: Tool }>(state: T): T {
+  return state.selectedTool === 'select' ? state : { ...state, selectedTool: 'select' };
+}
+
 // Load the autosave from IndexedDB (S1-T9)
 // Supports both compressed (lz-string) and uncompressed (legacy) formats.
 // Decompression + JSON.parse run in the save worker.
@@ -789,7 +795,7 @@ export function GameProvider({
       if (saved) {
         skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
         // Point the simulation loop at the loaded city right away
-        const calmSaved = withCalmSpeed(saved);
+        const calmSaved = withSelectTool(withCalmSpeed(saved));
         latestStateRef.current = calmSaved;
         setState(calmSaved);
         setHasExistingGame(true);
@@ -1418,7 +1424,7 @@ export function GameProvider({
   const replaceCity = useCallback((next: GameState, versionBase: Pick<GameState, 'structureVersion' | 'roadNetworkVersion'>) => {
     const prev = latestStateRef.current;
     const city: GameState = {
-      ...next,
+      ...withSelectTool(next),
       gameVersion: (prev.gameVersion ?? 0) + 1,
       structureVersion: (versionBase.structureVersion ?? 0) + 1,
       roadNetworkVersion: (versionBase.roadNetworkVersion ?? 0) + 1,
@@ -1769,7 +1775,7 @@ export function GameProvider({
       skipNextSaveRef.current = true;
       const normalizedSavedState = normalizeGameStateVersions(savedState);
       setState((prev) => ({
-        ...normalizedSavedState,
+        ...withSelectTool(normalizedSavedState),
         gameVersion: (prev.gameVersion ?? 0) + 1,
         structureVersion: (normalizedSavedState.structureVersion ?? 0) + 1,
         roadNetworkVersion: (normalizedSavedState.roadNetworkVersion ?? 0) + 1,
@@ -1906,7 +1912,7 @@ export function GameProvider({
     skipNextSaveRef.current = true;
     const normalizedCityState = withCalmSpeed(normalizeGameStateVersions(cityState));
     setState((prev) => ({
-      ...normalizedCityState,
+      ...withSelectTool(normalizedCityState),
       gameVersion: (prev.gameVersion ?? 0) + 1,
       structureVersion: (normalizedCityState.structureVersion ?? 0) + 1,
       roadNetworkVersion: (normalizedCityState.roadNetworkVersion ?? 0) + 1,

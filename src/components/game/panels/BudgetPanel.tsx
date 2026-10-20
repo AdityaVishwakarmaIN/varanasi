@@ -3,7 +3,7 @@
 import React from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { formatINR, formatINRPerMonth } from '@/lib/format';
@@ -11,6 +11,7 @@ import { formatINR, formatINRPerMonth } from '@/lib/format';
 // Translatable UI labels
 const UI_LABELS = {
   budget: msg('Budget'),
+  budgetDesc: msg('Set the tax rate and funding for each city service.'),
   income: msg('Income'),
   expenses: msg('Expenses'),
   net: msg('Net'),
@@ -44,6 +45,7 @@ export function BudgetPanel() {
       <DialogContent showClose className="max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.budget)}</DialogTitle>
+          <DialogDescription className="sr-only">{m(UI_LABELS.budgetDesc)}</DialogDescription>
         </DialogHeader>
         
         <div className="space-y-6">

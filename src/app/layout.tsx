@@ -89,7 +89,7 @@ export default async function RootLayout({ children }: {children: React.ReactNod
         type="image/webp" />
 
       </head>
-      <body className="bg-background text-foreground antialiased font-sans overflow-hidden" suppressHydrationWarning><GTProvider>{children}<Analytics /></GTProvider></body>
+      <body className="bg-background text-foreground antialiased font-sans overflow-hidden" suppressHydrationWarning><GTProvider>{children}{/* The analytics script only exists on Vercel; elsewhere it 404s. */}{process.env.VERCEL ? <Analytics /> : null}</GTProvider></body>
     </html>
   );
 }

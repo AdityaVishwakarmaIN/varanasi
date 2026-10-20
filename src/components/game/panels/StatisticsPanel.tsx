@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR, formatINRPerMonth, formatIndianNumber, formatPopulation, POPULATION_DISPLAY_SCALE } from '@/lib/format';
@@ -20,6 +20,7 @@ const GANGA_LEVEL_CLASS = { good: 'text-green-800', fair: 'text-amber-800', poor
 // Translatable UI labels
 const UI_LABELS = {
   cityStatistics: msg('City Statistics'),
+  cityStatisticsDesc: msg('Population, jobs, money and happiness over time.'),
   population: msg('Population'),
   jobs: msg('Jobs'),
   treasury: msg('Treasury'),
@@ -141,6 +142,7 @@ export function StatisticsPanel() {
       <DialogContent showClose className="max-w-[600px]">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.cityStatistics)}</DialogTitle>
+          <DialogDescription className="sr-only">{m(UI_LABELS.cityStatisticsDesc)}</DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">

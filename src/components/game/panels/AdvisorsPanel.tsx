@@ -4,7 +4,7 @@ import React from 'react';
 import { msg, useMessages } from 'gt-next';
 import { MapPin } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
 // Translatable UI labels
 const UI_LABELS = {
   cityAdvisors: msg('City Advisors'),
+  cityAdvisorsDesc: msg('Your city rating and what your advisors suggest fixing next.'),
   overallCityRating: msg('Overall City Rating'),
   ratingDescription: msg('Based on happiness, health, education, safety & environment'),
   noUrgentIssues: msg('No urgent issues to report!'),
@@ -127,6 +128,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
       <DialogContent showClose className="max-w-[520px] max-h-[85vh] sm:max-h-[640px]">
         <DialogHeader>
           <DialogTitle>{m(UI_LABELS.cityAdvisors)}</DialogTitle>
+          <DialogDescription className="sr-only">{m(UI_LABELS.cityAdvisorsDesc)}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 min-h-0">

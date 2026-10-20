@@ -5,7 +5,7 @@ import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tool, TOOL_INFO } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -504,6 +504,7 @@ export function CommandMenu({ actions }: { actions?: CommandAction[] } = {}) {
       >
         <VisuallyHidden.Root>
           <DialogTitle>Command Menu</DialogTitle>
+          <DialogDescription>Search tools, buildings, panels and commands. Use the arrow keys and Enter to run one.</DialogDescription>
         </VisuallyHidden.Root>
         
         {/* Search input */}
