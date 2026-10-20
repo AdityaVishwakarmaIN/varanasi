@@ -43,7 +43,7 @@
 
     --border: 30 22% 62%;
     --input: 30 22% 62%;
-    --ring: 14 62% 44%;
+    --ring: 25 35% 14%;
 
     --sidebar: 36 38% 86%;
     --sidebar-foreground: 25 35% 14%;
@@ -83,7 +83,7 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
-  /* One consistent, high-contrast keyboard focus ring (marigold) */
+  /* One consistent, high-contrast keyboard focus ring (dark ink, so it never reads as "selected") */
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;

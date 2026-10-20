@@ -70,8 +70,8 @@ const LEVEL_BAR: Record<Level, string> = {
 const LEVEL_FRAME: Record<Level, string> = {
   idle: '',
   ok: '',
-  warn: '!border-amber-700 !bg-amber-700/10',
-  bad: '!border-red-700 !bg-red-700/10',
+  warn: 'border-l-[3px] !border-l-amber-700',
+  bad: 'border-l-[3px] !border-l-red-700',
 };
 
 /** Rating bands (happiness, health, education, safety, environment): good ≥ 60, fair 40–59, poor < 40. */
