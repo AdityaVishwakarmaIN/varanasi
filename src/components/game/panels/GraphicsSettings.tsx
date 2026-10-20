@@ -9,7 +9,7 @@ import type { QualitySetting } from '@/lib/qualityConfig';
 import type { RendererSetting } from '@/lib/rendererSelection';
 
 const LABELS = {
-  quality: msg('Graphics Quality'),
+  quality: msg('Graphics quality'),
   qualityDesc: msg('Auto lowers detail when the frame rate drops'),
   renderer: msg('Renderer'),
   rendererDesc: msg('GPU is faster on large cities; Canvas works everywhere'),
@@ -81,7 +81,7 @@ export function GraphicsSettings() {
         <p className="text-chrome-muted text-xs mb-2">{m(LABELS.rendererDesc)}</p>
         <Segmented options={RENDERER_OPTIONS} value={g.rendererSetting} onChange={setRendererSetting} label={name} />
         {g.gpuFailed ? (
-          <p className="text-amber-700 text-[11px] mt-1">{m(LABELS.gpuFailed)}</p>
+          <p className="text-amber-800 text-[11px] mt-1">{m(LABELS.gpuFailed)}</p>
         ) : (
           g.rendererSetting === 'auto' && (
             <p className="text-chrome-muted text-[11px] mt-1">

@@ -93,7 +93,7 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
               aria-label={config.title}
               className={`press h-9 w-9 p-0 rounded-none ${
                 isActive
-                  ? mode === 'none' ? 'hud-selected hover:text-chrome-accentText' : `${getOverlayButtonClass(mode, isActive)} text-white`
+                  ? 'hud-selected hover:text-chrome-accentText'
                   : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'
               }`}
               title={config.title}

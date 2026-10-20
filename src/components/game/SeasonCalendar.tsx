@@ -44,7 +44,7 @@ export interface CalendarEvent {
 /** Label text colours with 4.5:1+ contrast on the sandstone chrome (SEASON_COLORS are swatch fills). */
 const SEASON_TEXT_CLASS: Record<Season, string> = {
   summer: 'text-orange-800',
-  monsoon: 'text-slate-700',
+  monsoon: 'text-slate-800',
   postMonsoon: 'text-yellow-800',
   winter: 'text-sky-800',
 };
@@ -105,7 +105,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
               title={label}
             >
               {full && (
-                <span className="text-[10px] font-medium text-black/75 truncate px-1">
+                <span className="text-[10px] font-medium text-chrome-text truncate px-1">
                   {MONTH_ABBR[cm.month - 1]} · {m(SEASON_NAMES[cm.season])}
                 </span>
               )}

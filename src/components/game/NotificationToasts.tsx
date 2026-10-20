@@ -132,11 +132,11 @@ function NotificationToast({
         'hud-panel pointer-events-auto flex items-start gap-2.5 rounded-none p-2.5 text-sm',
         'animate-in fade-in slide-in-from-top-2 duration-200',
         SEVERITY_STYLES[n.severity ?? 'info'],
-        isCelebration && '!border-marigold/70 ring-1 ring-marigold/40 shadow-[0_0_24px_-6px_hsl(var(--marigold)/0.6)]'
+        isCelebration && '!border-marigold/70'
       )}
     >
-      <span className={cn('shrink-0 h-8 w-8 rounded-none ring-1 flex items-center justify-center', isCrisis ? 'bg-red-500/15 ring-red-400/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
-        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
+      <span className={cn('shrink-0 h-8 w-8 rounded-none ring-1 flex items-center justify-center', isCrisis ? 'bg-red-800/10 ring-red-800/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
+        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
       </span>
       <button
         type="button"
@@ -144,7 +144,7 @@ function NotificationToast({
         disabled={!canLocate}
         className="flex-1 min-w-0 text-left disabled:cursor-default"
       >
-        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-700' : isCelebration ? 'text-chrome-accent' : 'text-chrome-text')}>{n.title}</p>
+        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-text')}>{n.title}</p>
         <p className="text-xs text-chrome-muted line-clamp-2">{n.description}</p>
         {canLocate && (
           <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent">

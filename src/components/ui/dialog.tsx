@@ -48,7 +48,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-chrome-border bg-chrome-panel text-chrome-text p-6 shadow-[0_16px_48px_-16px_rgb(0_0_0/0.6)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] rounded-none",
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-chrome-border bg-chrome-panel text-chrome-text p-6 shadow-[0_1px_2px_rgb(60_40_20/0.18)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] rounded-none",
         BOTTOM_SHEET_CLASSES,
         className
       )}
@@ -61,7 +61,7 @@ const DialogContent = React.forwardRef<
           aria-label="Close"
           className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-none text-chrome-muted transition-colors hover:bg-chrome-well hover:text-chrome-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <svg className="h-4 w-4" aria-hidden fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-4 w-4" aria-hidden fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
           </svg>
         </DialogPrimitive.Close>

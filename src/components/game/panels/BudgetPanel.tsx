@@ -59,7 +59,7 @@ export function BudgetPanel() {
                 {showTourism && (
                   <div className="flex justify-between gap-2" title={`${tourismShare}% of income`}>
                     <span className="text-chrome-muted">{m(UI_LABELS.tourism)}</span>
-                    <span className="font-mono text-cyan-800">{formatINR(tourismIncome)}</span>
+                    <span className="font-mono text-blue-800">{formatINR(tourismIncome)}</span>
                   </div>
                 )}
               </div>
