@@ -71,7 +71,7 @@ describe('landmark unlocks', () => {
       'landmark_ramnagar_fort',
     ]);
     expect(LANDMARKS.landmark_bhu.size).toEqual({ width: 4, height: 4 });
-    expect(LANDMARKS.landmark_ramnagar_fort.cost).toBe(80_000);
+    expect(LANDMARKS.landmark_ramnagar_fort.cost).toBe(100_000);
     expect(LANDMARKS.landmark_sarnath.effects.tourismGangaAffected).toBe(false);
   });
 
@@ -216,7 +216,7 @@ describe('landmark effects', () => {
     expect(b.commercialDemand).toBe(10);
     expect(b.extraGhats).toHaveLength(4);
     expect(new Set(b.extraGhats).size).toBe(4);
-    expect(b.tourismIncome).toBeCloseTo(150 * riverFactor(64) + 200);
+    expect(b.tourismIncome).toBeCloseTo((700 + 2000) * riverFactor(64) + 2200);
   });
 
   it('Ramnagar Fort raises land value within 6 tiles of its footprint', () => {

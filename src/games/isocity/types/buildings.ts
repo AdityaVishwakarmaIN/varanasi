@@ -67,7 +67,9 @@ export interface Building {
 
 export const RESIDENTIAL_BUILDINGS: BuildingType[] = ['house_small', 'house_medium', 'mansion', 'apartment_low', 'apartment_high'];
 export const COMMERCIAL_BUILDINGS: BuildingType[] = ['shop_small', 'shop_medium', 'office_low', 'office_high', 'mall'];
-export const INDUSTRIAL_BUILDINGS: BuildingType[] = ['factory_small', 'factory_medium', 'warehouse', 'factory_large', 'factory_large'];
+// Indexed by target level − 1 and clamped to the last entry, so levels above the list length get the last type
+// (industrial level 5 is a factory_large, like level 4).
+export const INDUSTRIAL_BUILDINGS: BuildingType[] = ['factory_small', 'factory_medium', 'warehouse', 'factory_large'];
 
 export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: number; pollution: number; landValue: number }> = {
   empty: { maxPop: 0, maxJobs: 0, pollution: 0, landValue: 0 },
@@ -79,7 +81,8 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   tree: { maxPop: 0, maxJobs: 0, pollution: -5, landValue: 2 },
   house_small: { maxPop: 6, maxJobs: 0, pollution: 0, landValue: 10 },
   house_medium: { maxPop: 14, maxJobs: 0, pollution: 0, landValue: 22 },
-  mansion: { maxPop: 18, maxJobs: 0, pollution: 0, landValue: 60 },
+  // Mansion (2x2, level 3): 40 keeps densifying monotonic (4 level-2 houses ≈ 89 people → mansion ≈ 96); at 18 it halved them
+  mansion: { maxPop: 40, maxJobs: 0, pollution: 0, landValue: 60 },
   apartment_low: { maxPop: 120, maxJobs: 0, pollution: 2, landValue: 40 },
   apartment_high: { maxPop: 260, maxJobs: 0, pollution: 3, landValue: 55 },
   shop_small: { maxPop: 0, maxJobs: 10, pollution: 1, landValue: 16 },

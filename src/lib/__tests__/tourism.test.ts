@@ -45,8 +45,10 @@ describe('tourism balance (S2-T9 design target)', () => {
   }
 
   it('tourism is 15–25% of total income', () => {
-    const tourism = calculateTourismIncome(grid, size, ghats, 70);
     const population = 10_000;
+    // 20 ghats fit inside this city's visitor pool, so the pool does not cut them
+    const tourism = calculateTourismIncome(grid, size, ghats, 70, 1, { population, landmarkCount: 0 });
+    expect(tourism).toBeCloseTo(calculateTourismIncome(grid, size, ghats, 70));
     for (const jobsPerResident of [0.4, 0.6, 0.8]) {
       const tax = calculateTaxIncome(population, population * jobsPerResident, 9);
       const share = tourism / (tourism + tax);

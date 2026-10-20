@@ -25,9 +25,12 @@ export interface LandmarkEffects {
   countsAsGhats?: number;
   /** City-wide happiness points. */
   happiness?: number;
-  /** ₹ per tick of tourism income. */
-  tourismPerTick?: number;
-  /** When true, tourismPerTick is multiplied by the Ganga factor (riverFactor in tourism.ts). */
+  /**
+   * ₹ per month of tourism income (it lands in `stats.income`, which is monthly). Balance pass: sized so a landmark
+   * pays back its cost in about 3 years on a healthy Ganga (see the payback test in economyBalance.test.ts).
+   */
+  tourismPerMonth?: number;
+  /** When true, tourismPerMonth is multiplied by the Ganga factor (riverFactor in tourism.ts). */
   tourismGangaAffected?: boolean;
   commercialDemand?: number;
   residentialDemand?: number;
@@ -55,6 +58,8 @@ export interface LandmarkDef {
   size: { width: number; height: number };
   /** ₹ */
   cost: number;
+  /** ₹ per month to keep it up (Parks budget line; BHU goes on Education). */
+  upkeepMonthly: number;
   /** Plain-English placement rule for the tooltip. */
   placement: string;
   effects: LandmarkEffects;
@@ -67,19 +72,22 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     name: 'Dashashwamedh Ghat',
     unlockPopulation: 50_000,
     size: { width: 2, height: 2 },
-    cost: 15_000,
+    cost: 30_000,
+    upkeepMonthly: 100,
     placement: 'Must include at least 2 west-bank riverfront tiles',
-    effects: { countsAsGhats: 4, happiness: 2, hostsGangaAarti: true },
+    // The nightly Aarti draws its own crowd on top of the 4 ghats' worth of bathers
+    effects: { countsAsGhats: 4, tourismPerMonth: 700, tourismGangaAffected: true, happiness: 2, hostsGangaAarti: true },
   },
   landmark_kashi_vishwanath: {
     id: 'landmark_kashi_vishwanath',
     name: 'Kashi Vishwanath Temple',
     unlockPopulation: 100_000,
     size: { width: 2, height: 2 },
-    cost: 40_000,
+    cost: 50_000,
+    upkeepMonthly: 200,
     placement: 'Within 8 tiles of the Ganga, on the west bank',
     effects: {
-      tourismPerTick: 150,
+      tourismPerMonth: 2000,
       tourismGangaAffected: true,
       commercialDemand: 10,
       pilgrimMultiplier: 2,
@@ -93,6 +101,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     unlockPopulation: 200_000,
     size: { width: 4, height: 4 },
     cost: 60_000,
+    upkeepMonthly: 300,
     placement: 'Any land outside a flood zone',
     effects: { educationRangeMultiplier: 2, residentialDemand: 10, commercialDemand: 5 },
   },
@@ -101,18 +110,20 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     name: 'Sarnath',
     unlockPopulation: 300_000,
     size: { width: 3, height: 3 },
-    cost: 50_000,
+    cost: 70_000,
+    upkeepMonthly: 250,
     placement: 'Northern quarter of the map, west of the Ganga',
-    effects: { tourismPerTick: 200, tourismGangaAffected: false, happiness: 3 },
+    effects: { tourismPerMonth: 2200, tourismGangaAffected: false, happiness: 3 },
   },
   landmark_ramnagar_fort: {
     id: 'landmark_ramnagar_fort',
     name: 'Ramnagar Fort',
     unlockPopulation: 500_000,
     size: { width: 3, height: 3 },
-    cost: 80_000,
+    cost: 100_000,
+    upkeepMonthly: 300,
     placement: 'East bank, beyond the sandy floodplain',
-    effects: { tourismPerTick: 250, tourismGangaAffected: true, boatDestination: true, landValueBonus: 20, landValueRadius: 6 },
+    effects: { tourismPerMonth: 3800, tourismGangaAffected: true, boatDestination: true, landValueBonus: 20, landValueRadius: 6 },
   },
 };
 
@@ -303,7 +314,7 @@ export interface LandmarkBonuses {
   happiness: number;
   residentialDemand: number;
   commercialDemand: number;
-  /** ₹ per tick, after the Ganga factor where it applies. */
+  /** ₹ per month, after the Ganga factor where it applies. */
   tourismIncome: number;
   /** Extra ghat positions for the ghat tourism model (Dashashwamedh counts as 4 ghats). Distinct objects, so they cluster. */
   extraGhats: { x: number; y: number }[];
@@ -317,7 +328,7 @@ export function getLandmarkBonuses(placed: readonly PlacedLandmark[], gangaHealt
     out.happiness += e.happiness ?? 0;
     out.residentialDemand += e.residentialDemand ?? 0;
     out.commercialDemand += e.commercialDemand ?? 0;
-    if (e.tourismPerTick) out.tourismIncome += e.tourismPerTick * (e.tourismGangaAffected ? riverFactor(gangaHealth) : 1);
+    if (e.tourismPerMonth) out.tourismIncome += e.tourismPerMonth * (e.tourismGangaAffected ? riverFactor(gangaHealth) : 1);
     for (let i = 0; i < (e.countsAsGhats ?? 0); i++) out.extraGhats.push({ x: p.x, y: p.y });
   }
   return out;

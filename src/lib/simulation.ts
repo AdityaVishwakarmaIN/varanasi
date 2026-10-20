@@ -56,6 +56,7 @@ import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERF
 import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
+import { getBuildingUpkeep, RAIL_TILE_UPKEEP_MONTHLY, type UpkeepCategory, type UpkeepEntry } from '@/lib/upkeep';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import { advanceFailureState, applyLoanRepayment, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
 import { POPULATION_DISPLAY_SCALE, formatINR } from '@/lib/format';
@@ -2118,7 +2119,7 @@ interface GridTotals {
   totalPollution: number;
   playableTileCount: number;
   treeCount: number;
-  /** park, park_large and tennis (used by both stats and budget) */
+  /** park, park_large and tennis (used by the ratings; their upkeep comes from `upkeep`) */
   parkCount: number;
   subwayTiles: number;
   subwayStations: number;
@@ -2155,6 +2156,11 @@ interface GridTotals {
   stps: { x: number; y: number }[];
   /** Finished landmarks (S5-T2). */
   landmarks: PlacedLandmark[];
+  /** Monthly upkeep of non-service buildings (parks, attractions, ghats, landmarks, stations, bridges) by budget line. */
+  upkeep: Record<UpkeepCategory, number>;
+  /** Jobs in commercial and industrial zones (for industrial demand). */
+  commercialJobs: number;
+  industrialJobs: number;
   /** Power and water capacity inputs (S3-T7/T8). Only filled when scanGridTotals gets the uncut coverage. */
   utility?: UtilityTotals;
 }
@@ -2238,6 +2244,11 @@ function scanGridTotals(
   const ghats: { x: number; y: number }[] = [];
   const stps: { x: number; y: number }[] = [];
   const landmarks: PlacedLandmark[] = [];
+  const upkeep: Record<UpkeepCategory, number> = { parks: 0, transportation: 0, education: 0, water: 0 };
+  let commercialJobs = 0;
+  let industrialJobs = 0;
+  let lastUpkeepType: BuildingType | null = null;
+  let lastUpkeep: UpkeepEntry | null = null;
 
   for (let y = 0; y < size; y++) {
     const row = grid[y];
@@ -2266,6 +2277,8 @@ function scanGridTotals(
       }
       population += building.population;
       jobs += jobsFromTile;
+      if (zone === 'commercial') commercialJobs += jobsFromTile;
+      else if (zone === 'industrial') industrialJobs += jobsFromTile;
       totalPollution += tile.pollution;
 
       if (isEnvironmentPlayableBuildingType(type)) playableTileCount++;
@@ -2300,6 +2313,11 @@ function scanGridTotals(
         case 'sewage_treatment_plant': stps.push({ x, y }); break;
       }
       if (isComplete && !building.abandoned && isLandmarkType(type)) landmarks.push({ id: type, x, y });
+      if (type !== lastUpkeepType) {
+        lastUpkeepType = type;
+        lastUpkeep = getBuildingUpkeep(type);
+      }
+      if (lastUpkeep && !building.abandoned) upkeep[lastUpkeep.category] += lastUpkeep.monthly;
 
       // --- power and water capacity (S3-T7/T8) ---
       let inPowerCoverage = building.powered;
@@ -2361,7 +2379,7 @@ function scanGridTotals(
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, waterWorksCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings,
     abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, landmarks, utility,
-    informalSettlements, informalPopulation, informalDryPopulation,
+    informalSettlements, informalPopulation, informalDryPopulation, upkeep, commercialJobs, industrialJobs,
   };
 }
 
@@ -2393,6 +2411,36 @@ export function calculateTaxIncome(population: number, jobs: number, taxRate: nu
 }
 
 const DEFICIT_NOTE_TITLE = 'Monthly budget is in the red';
+
+/** Industrial demand tunables (economy balance pass). */
+export const INDUSTRIAL_DEMAND_CONFIG = {
+  /** Share of residents who want a job (same 0.7 the residential demand balances jobs against). */
+  workforceShare: 0.7,
+  /** Demand points at a full labour surplus (no jobs yet) / full shortage. */
+  laborWeight: 60,
+  /** Industrial jobs the shops and offices want supplying them, per commercial job. */
+  goodsPerCommercialJob: 0.6,
+  /** Demand points when industry is far short of / far over what commerce needs. */
+  goodsWeight: 40,
+  /** Floor of the goods-gap denominator, so the first factory or shop does not swing demand by 40 points. */
+  goodsScaleMin: 200,
+} as const;
+
+/**
+ * Base industrial demand before building bonuses and tax: a labour term (idle workers want factory jobs; once jobs
+ * outnumber the workforce it turns negative) plus a goods term (commerce needs industry to supply it). Each term is
+ * a ratio, so it stays responsive at any city size; the old absolute formula ((0.35 pop − 0.3 jobs) / 2) sat at +100
+ * for any city of a few hundred people unless jobs passed 1.17 × population.
+ */
+export function calculateBaseIndustrialDemand(population: number, jobs: number, commercialJobs: number, industrialJobs: number): number {
+  const c = INDUSTRIAL_DEMAND_CONFIG;
+  const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
+  const workforce = population * c.workforceShare;
+  const labor = workforce > 0 ? clamp1((workforce - jobs) / workforce) : jobs > 0 ? -1 : 0;
+  const goodsWanted = commercialJobs * c.goodsPerCommercialJob;
+  const goods = clamp1((goodsWanted - industrialJobs) / Math.max(c.goodsScaleMin, goodsWanted));
+  return labor * c.laborWeight + goods * c.goodsWeight;
+}
 
 function calculateStats(
   grid: Tile[][],
@@ -2474,7 +2522,7 @@ function calculateStats(
   // Calculate base demands from economic factors
   const baseResidentialDemand = (jobs - population * 0.7) / 18;
   const baseCommercialDemand = (population * 0.3 - jobs * 0.3) / 4 + subwayBonus;
-  const baseIndustrialDemand = (population * 0.35 - jobs * 0.3) / 2.0;
+  const baseIndustrialDemand = calculateBaseIndustrialDemand(population, jobs, totals.commercialJobs, totals.industrialJobs);
   
   // Add special building bonuses to base demands
   const residentialWithBonuses = baseResidentialDemand + cityHallResidentialBonus + spaceProgramResidentialBonus + museumResidentialBonus + (landmarkFx?.residentialDemand ?? 0);
@@ -2504,9 +2552,13 @@ function calculateStats(
     const target = gangaLoad.targetHealth;
     const floodMask = river.floodMask;
     const openGhats = floodMask ? totals.ghats.filter((g) => !floodMask[g.y * size + g.x]) : totals.ghats;
-    const tourGhats = landmarkFx ? [...openGhats, ...landmarkFx.extraGhats] : openGhats;
+    // The player's ghats share one visitor pool sized by population and landmarks; landmark ghats sit outside it
+    const pool = { population, landmarkCount: totals.landmarks.length };
+    // Ghats and landmarks are kept up from the Parks line: cutting its funding drives visitors away in step
+    const upkeepFactor = Math.min(1, Math.max(0, (budget.parks?.funding ?? 100) / 100));
     tourismIncome = Math.floor(
-      calculateTourismIncome(grid, size, tourGhats, river.gangaHealth, seasonFx?.tourism ?? 1) + (landmarkFx?.tourismIncome ?? 0)
+      (calculateTourismIncome(grid, size, openGhats, river.gangaHealth, seasonFx?.tourism ?? 1, pool, landmarkFx?.extraGhats) +
+        (landmarkFx?.tourismIncome ?? 0)) * upkeepFactor
     );
     gangaStats = {
       gangaHealth: river.gangaHealth,
@@ -2614,7 +2666,7 @@ function calculateStats(
 function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = scanGridTotals(grid, grid.length)): Budget {
   const newBudget = { ...budget };
   const {
-    policeCount, fireCount, hospitalCount, schoolCount, universityCount, parkCount, powerCount, waterCount,
+    policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount, waterCount,
     roadCount,
   } = totals;
   const subwayTileCount = totals.subwayTiles;
@@ -2625,16 +2677,22 @@ function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = 
   newBudget.police = { ...budget.police, cost: policeCount * 50 };
   newBudget.fire = { ...budget.fire, cost: fireCount * 50 };
   newBudget.health = { ...budget.health, cost: hospitalCount * 100 };
-  newBudget.education = { ...budget.education, cost: schoolCount * 30 + universityCount * 100 };
-  newBudget.transportation = { ...budget.transportation, cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 };
-  newBudget.parks = { ...budget.parks, cost: parkCount * 10 };
+  // Parks, attractions, ghats, landmarks, stations, rail and bridges: see BUILDING_UPKEEP in ./upkeep
+  const upkeep = totals.upkeep;
+  newBudget.education = { ...budget.education, cost: schoolCount * 30 + universityCount * 100 + upkeep.education };
+  newBudget.transportation = {
+    ...budget.transportation,
+    cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 + totals.railTiles * RAIL_TILE_UPKEEP_MONTHLY + upkeep.transportation,
+  };
+  newBudget.parks = { ...budget.parks, cost: upkeep.parks };
   newBudget.power = { ...budget.power, cost: powerCount * 150 };
   newBudget.water = {
     ...budget.water,
     cost:
       waterCount * 75 +
       totals.stps.length * RIVERFRONT_CONFIG.stpUpkeepMonthly +
-      totals.waterWorksCount * WATER_CONFIG.worksUpkeepMonthly,
+      totals.waterWorksCount * WATER_CONFIG.worksUpkeepMonthly +
+      upkeep.water,
   };
 
   return newBudget;
