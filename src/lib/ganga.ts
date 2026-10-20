@@ -8,7 +8,7 @@ import type { BuildingType } from '@/games/isocity/types/buildings';
 import type { Tile } from '@/games/isocity/types/game';
 import { getDistanceToGanga, getGangaCatchment, getRiverZone, getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
 import type { MapId } from '@/games/isocity/maps/varanasi';
-import { SCORING_CONFIG, type GangaLoadInput } from '@/lib/scoring';
+import { SCORING_CONFIG, getGangaPollutionWeight, type GangaLoadInput } from '@/lib/scoring';
 import { WATER_CONFIG, isWaterWorksSiteValid } from '@/lib/utilities';
 
 const GANGA = SCORING_CONFIG.ganga;
@@ -38,8 +38,23 @@ export function isWorkingStp(tile: Tile): boolean {
   return b.type === 'sewage_treatment_plant' && b.powered && !b.abandoned && b.constructionProgress >= 100;
 }
 
+/** Homes and shops drain sewage; so do informal settlements, which sit on unzoned land (S3-T9). */
 function producesSewage(tile: Tile): boolean {
-  return (tile.zone === 'residential' || tile.zone === 'commercial') && tile.building.population > 0;
+  return (
+    (tile.zone === 'residential' || tile.zone === 'commercial' || tile.building.type === 'informal_housing') &&
+    tile.building.population > 0
+  );
+}
+
+/** `getGangaPollutionWeight` for each distance 0..catchmentRadius (the catchment never goes further). */
+const POLLUTION_WEIGHT_BY_DISTANCE: Float64Array = (() => {
+  const weights = new Float64Array(GANGA.catchmentRadius + 1);
+  for (let d = 0; d <= GANGA.catchmentRadius; d++) weights[d] = getGangaPollutionWeight(d);
+  return weights;
+})();
+
+function pollutionWeightAt(distance: number): number {
+  return distance < POLLUTION_WEIGHT_BY_DISTANCE.length ? POLLUTION_WEIGHT_BY_DISTANCE[distance] : getGangaPollutionWeight(distance);
 }
 
 /**
@@ -48,7 +63,7 @@ function producesSewage(tile: Tile): boolean {
  */
 export function gatherGangaInputs(grid: Tile[][], gridSize: number, stps: readonly { x: number; y: number }[]): GangaInputs {
   const catchment = getGangaCatchment(gridSize, GANGA.catchmentRadius);
-  const { zone } = getRiverZoneArrays(gridSize);
+  const { zone, distance } = getRiverZoneArrays(gridSize);
   let catchmentPollution = 0;
   let riversideGreenTiles = 0;
   let catchmentPopulation = 0;
@@ -61,7 +76,7 @@ export function gatherGangaInputs(grid: Tile[][], gridSize: number, stps: readon
     const y = (idx / gridSize) | 0;
     const tile = grid[y]?.[x];
     if (!tile || tile.building.type === 'water') continue;
-    catchmentPollution += tile.pollution;
+    if (tile.pollution > 0) catchmentPollution += tile.pollution * pollutionWeightAt(distance[idx]);
     if (GANGA_GREEN_TYPES.has(tile.building.type) && RIVERSIDE_ZONE_CODES.has(zone[idx])) riversideGreenTiles++;
     if (producesSewage(tile)) {
       remaining[i] = tile.building.population;
@@ -245,7 +260,7 @@ export function getCachedGangaTileEffects(grid: Tile[][], gridSize: number): Gan
 
 /** What one catchment tile does to the Ganga (tile info). */
 export interface GangaTileEffectInfo {
-  /** Load this tile's pollution adds (tile.pollution × industry weight). */
+  /** Load this tile's pollution adds (tile.pollution × distance weight × industry weight). */
   pollutionLoad: number;
   /** Simulation population on this tile whose sewage reaches the river untreated. */
   untreatedPopulation: number;
@@ -279,7 +294,7 @@ export function getGangaTileEffectInfo(
   const population = producesSewage(tile) ? tile.building.population : 0;
   const treatedPopulation = Math.min(population, effects.treated[idx]);
   return {
-    pollutionLoad: Math.max(0, tile.pollution) * GANGA.industryWeight,
+    pollutionLoad: Math.max(0, tile.pollution) * pollutionWeightAt(distance[idx]) * GANGA.industryWeight,
     untreatedPopulation: Math.max(0, population - treatedPopulation),
     treatedPopulation,
     riversideGreen: GANGA_GREEN_TYPES.has(tile.building.type) && RIVERSIDE_ZONE_CODES.has(zone[idx]),

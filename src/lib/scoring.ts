@@ -17,6 +17,12 @@ export const SCORING_CONFIG = {
     scoreMax: 100,
     /** A park counts as this fraction (%) of a tree toward green coverage. */
     parkWeightPercent: 50,
+    /**
+     * Environment points lost per point of average tile pollution over the map. Tile pollution settles
+     * at about each building's pollution stat (see POLLUTION_CONFIG in simulation.ts), so a map average
+     * of 1 is already a busy city and 3+ a heavily industrial one.
+     */
+    pollutionPenaltyPerPoint: 10,
   },
   safety: {
     /** Police coverage weight. */
@@ -29,6 +35,8 @@ export const SCORING_CONFIG = {
     coverage: 0.8,
     /** Clean-air (inverse pollution) weight. */
     cleanAir: 0.2,
+    /** Clean-air points (0-100) lost per point of average tile pollution over the map. */
+    cleanAirPenaltyPerPoint: 10,
   },
   /** Weights for the Happiness composite. Should sum to 1.0. */
   happiness: {
@@ -45,22 +53,35 @@ export const SCORING_CONFIG = {
   ganga: {
     /** Land tiles within this many tiles of the Ganga drain into it. */
     catchmentRadius: 8,
-    /** Each point of tile pollution in the catchment adds this much load. */
-    industryWeight: 1.0,
-    /** Each untreated resident/worker in the catchment adds this much load. */
-    sewagePerPerson: 0.02,
+    /**
+     * Each point of tile pollution on the bank adds this much load. Tile pollution settles at about the
+     * building's pollution stat (factory_medium 28, factory_large 55, road 2), so four medium factories on
+     * the bank add ~13 load (about -11 health, enough to drop a clean river out of the 'good' band) and
+     * a dozen big ones on the bank saturate the river. Streets, flats and shops spread over the catchment
+     * add ~1 weighted point per 100 residents, which a green belt can offset.
+     */
+    industryWeight: 0.12,
+    /** Tiles at most this far from the Ganga count their pollution in full. */
+    bankDistance: 2,
+    /** Pollution weight at the edge of the catchment (falls linearly from 1 beyond `bankDistance`). */
+    catchmentEdgeWeight: 0.25,
+    /**
+     * Each untreated resident/worker in the catchment adds this much load: 10,000 simulation people
+     * (1 lakh shown) of untreated sewage add 50 load.
+     */
+    sewagePerPerson: 0.005,
     /** Load the river already carries when it reaches the city. */
     upstreamLoad: 30,
-    /** Each riverside tree/park tile removes this much load. */
-    riversideGreenCredit: 0.5,
+    /** Each riverside tree/park tile removes this much load (a 40-tile green belt offsets the upstream load). */
+    riversideGreenCredit: 0.75,
     /** Net load at which the river's target health reaches 0. */
     riverCapacity: 120,
     /** Each in-game day, health moves this fraction of the way to its target (slow stock). */
     dailyApproach: 0.05,
     /** Trend arrow shows up/down when target differs from current by more than this. */
     trendThreshold: 2,
-    /** Population one powered Sewage Treatment Plant can treat. */
-    stpCapacity: 2000,
+    /** Population one powered Sewage Treatment Plant can treat (simulation people; 50,000 shown). */
+    stpCapacity: 5000,
     /** Radius (tiles) an STP collects sewage from. */
     stpRadius: 14,
     /** Below this health, residents in the catchment suffer a health-coverage penalty. */
@@ -108,7 +129,7 @@ export function calculateEnvironmentScore(
   const scaledTreeCoverage = treeCount * 100 + parkCount * ENV.parkWeightPercent;
   const scaledTargetCoverage = totalTiles * ENV.targetTreePercent;
   const greenScore = Math.floor((scaledTreeCoverage * ENV.scoreMax) / scaledTargetCoverage);
-  const pollutionPenalty = Math.floor(totalPollution / totalTiles);
+  const pollutionPenalty = Math.floor((Math.max(0, totalPollution) / totalTiles) * ENV.pollutionPenaltyPerPoint);
 
   return Math.min(ENV.scoreMax, Math.max(0, greenScore - pollutionPenalty));
 }
@@ -118,13 +139,20 @@ export function calculateSafetyScore(avgPoliceCoverage: number, avgFireCoverage:
   return Math.min(ENV.scoreMax, avgPoliceCoverage * SAFETY.police + avgFireCoverage * SAFETY.fire);
 }
 
+/** Clean-air sub-score (0-100) from the map's average tile pollution. */
+export function calculateCleanAir(totalPollution: number, totalTiles: number): number {
+  if (totalTiles <= 0) return 100;
+  const cleanAir = 100 - (Math.max(0, totalPollution) / totalTiles) * HEALTH.cleanAirPenaltyPerPoint;
+  return Math.min(100, Math.max(0, cleanAir));
+}
+
 /** Health rating (0-100) from hospital coverage and clean air. */
 export function calculateHealthScore(
   avgHealthCoverage: number,
   totalPollution: number,
   totalTiles: number
 ): number {
-  const cleanAir = totalTiles > 0 ? 100 - totalPollution / totalTiles : 100;
+  const cleanAir = calculateCleanAir(totalPollution, totalTiles);
   return Math.min(ENV.scoreMax, avgHealthCoverage * HEALTH.coverage + cleanAir * HEALTH.cleanAir);
 }
 
@@ -252,7 +280,7 @@ export function calculateRatings(input: RatingsInput): Ratings {
 const GANGA = SCORING_CONFIG.ganga;
 
 export interface GangaLoadInput {
-  /** Sum of tile pollution over catchment land tiles. */
+  /** Sum of tile pollution over catchment land tiles, weighted by `getGangaPollutionWeight` (closer counts more). */
   catchmentPollution: number;
   /** Residents and workers in the catchment whose sewage is NOT treated by an STP. */
   untreatedPopulation: number;
@@ -279,6 +307,16 @@ export function calculateGangaTargetHealth(input: GangaLoadInput): GangaLoadResu
   const netLoad = Math.max(0, industrialLoad + sewageLoad + upstreamLoad - greenCredit);
   const targetHealth = 100 * (1 - Math.min(1, netLoad / GANGA.riverCapacity));
   return { industrialLoad, sewageLoad, upstreamLoad, greenCredit, netLoad, targetHealth };
+}
+
+/**
+ * How much of a catchment tile's pollution reaches the Ganga, by its distance (tiles) from the river:
+ * 1 on the bank (up to `bankDistance`), falling linearly to `catchmentEdgeWeight` at `catchmentRadius`.
+ */
+export function getGangaPollutionWeight(distance: number): number {
+  if (distance <= GANGA.bankDistance) return 1;
+  const t = Math.min(1, (distance - GANGA.bankDistance) / (GANGA.catchmentRadius - GANGA.bankDistance));
+  return 1 - (1 - GANGA.catchmentEdgeWeight) * t;
 }
 
 /** One in-game day of the slow stock: move a fixed fraction of the way toward the target. */

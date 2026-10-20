@@ -186,6 +186,105 @@ function buildPollutionCleanupTargets(radius: number, strength: number, width: n
   return Float64Array.from(targets);
 }
 
+/**
+ * Tile pollution model. Each tick a tile moves `approachRate` of the way toward its building's pollution
+ * stat (negative stats count as 0), so a factory's tile settles at about its stat. Green reducers then
+ * remove `strength * approachRate` per tick from nearby tiles, which lowers that steady state by
+ * about `strength` per reducer in range. (The old rule `p * 0.95 + stat` settled at 20x the stat.)
+ */
+export const POLLUTION_CONFIG = {
+  approachRate: 0.05,
+  /** Pollution below this snaps to 0, so cleared tiles return to the fast paths in simulateTick. */
+  snapToZero: 0.01,
+} as const;
+
+/** One tick of a tile's pollution toward its building's stat (see POLLUTION_CONFIG). */
+export function stepTilePollution(current: number, stat: number): number {
+  const next = current + (stat - current) * POLLUTION_CONFIG.approachRate;
+  return next < POLLUTION_CONFIG.snapToZero ? 0 : next;
+}
+
+/**
+ * Land value (S-env): every land tile's value is `base` plus the summed `BUILDING_STATS.landValue` of the
+ * non-zoned buildings and industry within `radius` tiles (a square), times `scale`, clamped to
+ * [maxPenalty, maxBonus]. Parks, temples and services raise it; factories, power plants and settlements
+ * lower it. Homes and shops are left out (their stat describes themselves, and counting them would make
+ * every dense block upgrade itself). Water is left out too, so riverside value is unchanged. Computed once
+ * per tick with a separable box sum (O(tiles), independent of the radius); only changed tiles are copied.
+ */
+export const LAND_VALUE_CONFIG = {
+  base: 50,
+  radius: 3,
+  /** A park (stat 20) adds 7, a hospital 8.75; a large factory (-18) takes 6.3 off, a power plant 7. */
+  scale: 0.35,
+  maxBonus: 15,
+  maxPenalty: -20,
+} as const;
+
+/** The per-tile land-value source of a tile: its building's landValue stat, or 0 when it does not count. */
+function getLandValueSource(tile: Tile): number {
+  const type = tile.building.type;
+  if (type === 'water' || type === 'empty' || tile.zone === 'residential' || tile.zone === 'commercial') return 0;
+  return BUILDING_STATS[type]?.landValue ?? 0;
+}
+
+/** Land value of a land tile from the box sum of nearby sources (see LAND_VALUE_CONFIG). */
+export function getLandValueFromInfluence(sourceSum: number): number {
+  const influence = Math.min(
+    LAND_VALUE_CONFIG.maxBonus,
+    Math.max(LAND_VALUE_CONFIG.maxPenalty, sourceSum * LAND_VALUE_CONFIG.scale)
+  );
+  return Math.round(LAND_VALUE_CONFIG.base + influence);
+}
+
+let landValueScratch: { source: Float32Array; rowSum: Float32Array } | null = null;
+
+function getLandValueScratch(tileCount: number): { source: Float32Array; rowSum: Float32Array } {
+  if (!landValueScratch || landValueScratch.source.length < tileCount) {
+    landValueScratch = { source: new Float32Array(tileCount), rowSum: new Float32Array(tileCount) };
+  }
+  return landValueScratch;
+}
+
+/**
+ * Sets every land tile's landValue from `source` (filled by scanGridTotals). Writes through `writable`
+ * only where the value changes, so a city whose buildings did not change copies no tiles.
+ */
+function applyLandValues(
+  grid: Tile[][],
+  size: number,
+  source: Float32Array,
+  rowSum: Float32Array,
+  writable: (x: number, y: number) => Tile
+): void {
+  const r = LAND_VALUE_CONFIG.radius;
+  // Horizontal running window sum
+  for (let y = 0; y < size; y++) {
+    const rowStart = y * size;
+    let sum = 0;
+    for (let x = 0; x < r && x < size; x++) sum += source[rowStart + x];
+    for (let x = 0; x < size; x++) {
+      if (x + r < size) sum += source[rowStart + x + r];
+      rowSum[rowStart + x] = sum;
+      if (x - r >= 0) sum -= source[rowStart + x - r];
+    }
+  }
+  // Vertical running window sum, then compare and write
+  for (let x = 0; x < size; x++) {
+    let sum = 0;
+    for (let y = 0; y < r && y < size; y++) sum += rowSum[y * size + x];
+    for (let y = 0; y < size; y++) {
+      if (y + r < size) sum += rowSum[(y + r) * size + x];
+      const tile = grid[y][x];
+      if (tile.building.type !== 'water') {
+        const value = getLandValueFromInfluence(sum);
+        if (tile.landValue !== value) writable(x, y).landValue = value;
+      }
+      if (y - r >= 0) sum -= rowSum[(y - r) * size + x];
+    }
+  }
+}
+
 // Reusable per-tick buffers for the pollution cleanup in simulateTick (grown when the map grows).
 let pollutionCleanupScratch: { pollution: Float64Array; changed: Uint8Array } | null = null;
 
@@ -211,7 +310,10 @@ function getPollutionCleanupEntry(buildingType: BuildingType): PollutionCleanupE
           strength: profile.strength,
           width: footprint.width,
           height: footprint.height,
-          targets: buildPollutionCleanupTargets(profile.radius, profile.strength, footprint.width, footprint.height),
+          // Per-tick amounts are scaled by the approach rate so each reducer lowers the steady state by `strength`
+          targets: buildPollutionCleanupTargets(
+            profile.radius, profile.strength * POLLUTION_CONFIG.approachRate, footprint.width, footprint.height
+          ),
         }
       : null;
     pollutionCleanupEntries.set(buildingType, entry);
@@ -2189,6 +2291,8 @@ interface UtilityTotals {
 interface PollutionCapture {
   pollution: Float64Array;
   reducerIndices: number[];
+  /** When set, filled with each tile's land-value source (getLandValueSource). */
+  landValueSource?: Float32Array;
 }
 
 function scanGridTotals(
@@ -2267,6 +2371,7 @@ function scanGridTotals(
           lastIsReducer = getPollutionCleanupEntry(type) !== null;
         }
         if (lastIsReducer) capture.reducerIndices.push(index);
+        if (capture.landValueSource) capture.landValueSource[index] = getLandValueSource(tile);
       }
 
       // --- stats ---
@@ -3149,6 +3254,10 @@ export function simulateTick(
       
       // PERF: Roads and bridges are static unless bulldozed - skip if no utility update needed
       if ((originalBuilding.type === 'road' || originalBuilding.type === 'bridge') && !needsPowerWaterUpdate) {
+        // Saves from before the pollution fix stored up to 20x the stat on roads, which this fast path
+        // never decayed: settle such a tile at its stat once.
+        const roadPollution = BUILDING_STATS[originalBuilding.type].pollution;
+        if (originalTile.pollution > roadPollution) cowGrid.writable(x, y).pollution = roadPollution;
         continue;
       }
       
@@ -3326,9 +3435,9 @@ export function simulateTick(
         }
       }
 
-      // Update pollution from buildings
-      const buildingStats = BUILDING_STATS[tile.building.type];
-      tile.pollution = Math.max(0, tile.pollution * 0.95 + (buildingStats?.pollution || 0));
+      // Update pollution from buildings: the tile moves part of the way toward its building's
+      // pollution stat each tick, so it settles at about the stat (minus nearby green cleanup).
+      tile.pollution = stepTilePollution(tile.pollution, BUILDING_STATS[tile.building.type]?.pollution || 0);
 
       // Fire simulation -- only trucks can extinguish fires; coverage only slows spread
       if (state.disastersEnabled && tile.building.onFire) {
@@ -3406,7 +3515,12 @@ export function simulateTick(
   // only pollution, so everything else counted here is final. The same pass copies every tile's
   // pollution into a typed array and lists the green pollution reducers for the cleanup.
   const cleanupScratch = getPollutionCleanupScratch(size * size);
-  const pollutionCapture: PollutionCapture = { pollution: cleanupScratch.pollution, reducerIndices: [] };
+  const landValueBuffers = getLandValueScratch(size * size);
+  const pollutionCapture: PollutionCapture = {
+    pollution: cleanupScratch.pollution,
+    reducerIndices: [],
+    landValueSource: landValueBuffers.source,
+  };
   const gridTotals = scanGridTotals(
     newGrid, size, pollutionCapture, utilityCapacityEnabled ? baseServices : undefined
   );
@@ -3451,6 +3565,9 @@ export function simulateTick(
     for (let i = 0; i < size * size; i++) totalPollution += pollution[i];
     gridTotals.totalPollution = totalPollution;
   }
+
+  // Land value from nearby amenities and industry (read by building evolution next tick)
+  applyLandValues(newGrid, size, landValueBuffers.source, landValueBuffers.rowSum, (x, y) => cowGrid.writable(x, y));
 
   // Drop copies whose values did not change, so unchanged tiles and rows keep their identity
   cowGrid.finish();
