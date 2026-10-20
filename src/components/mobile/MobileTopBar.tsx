@@ -1,26 +1,13 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Tile } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
-import { Separator } from '@/components/ui/separator';
-import {
-  PlayIcon,
-  PauseIcon,
-  PopulationIcon,
-  MoneyIcon,
-  HappyIcon,
-  HealthIcon,
-  EducationIcon,
-  SafetyIcon,
-  EnvironmentIcon,
-  CloseIcon,
-} from '@/components/ui/Icons';
+import { PlayIcon, PauseIcon, CloseIcon } from '@/components/ui/Icons';
 import { Users } from 'lucide-react';
 import {
   Dialog,
@@ -31,38 +18,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
-import { formatINR, formatINRPerMonth, formatPopulation } from '@/lib/format';
-import { TAX_RATE_MAX, TAX_RATE_MIN, TAX_RATE_WARN_ABOVE } from '@/lib/tax';
-import { GangaHealthChip } from '@/components/game/GangaHealthChip';
-import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
+import { formatPopulation } from '@/lib/format';
+import { CalendarPanelBody, TopBarGroups, TopBarPanelShell, type TopBarPanelId } from '@/components/game/TopBarGroups';
 import type { OverlayMode } from '@/components/game/types';
-import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FogChip, SeasonDateLabel } from '@/components/game/SeasonCalendar';
 import { FestivalChip } from '@/components/game/FestivalPanel';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
 const UI_LABELS = {
   pop: msg('Pop'),
-  funds: msg('Funds'),
-  tax: msg('Tax'),
-  taxRate: msg('Tax Rate'),
   emptyLot: msg('Empty Lot'),
-  jobsLower: msg('jobs'),
   jobs: msg('Jobs'),
-  hasPower: msg('Has power'),
   noPower: msg('No power'),
-  hasWater: msg('Has water'),
   noWater: msg('No water'),
-  happiness: msg('Happiness'),
-  health: msg('Health'),
-  education: msg('Education'),
-  safety: msg('Safety'),
-  environment: msg('Environ'),
-  population: msg('Population'),
-  monthlyIncome: msg('Monthly Income'),
-  monthlyExpenses: msg('Monthly Expenses'),
-  netPerMonth: msg('Net per month'),
-  exitToMainMenu: msg('Exit to Main Menu'),
   exitDialogTitle: msg('Exit to Main Menu'),
   exitDialogDescription: msg('Would you like to save your city before exiting?'),
   exitWithoutSaving: msg('Exit Without Saving'),
@@ -76,6 +45,7 @@ const UI_LABELS = {
   pause: msg('Pause'),
   resume: msg('Resume'),
   speed: msg('Game speed'),
+  calendar: msg('Calendar'),
 };
 
 // Sun/Moon icon for time of day
@@ -103,23 +73,6 @@ function TimeOfDayIcon({ hour }: { hour: number }) {
       </svg>
     );
   }
-}
-
-function DemandBar({ label, demand, color }: { label: string; demand: number; color: string }) {
-  const percentage = Math.min(100, Math.abs(demand));
-  const isPositive = demand >= 0;
-
-  return (
-    <div className="flex items-center gap-1">
-      <span className={`text-[9px] font-bold ${color} w-2`}>{label}</span>
-      <div className="w-4 h-1.5 bg-chrome-border rounded-none overflow-hidden">
-        <div
-          className={`h-full rounded-none ${isPositive ? color.replace('text-', 'bg-') : 'bg-red-500'}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
-  );
 }
 
 export function MobileTopBar({ 
@@ -150,11 +103,11 @@ export function MobileTopBar({
   onShare?: () => void;
   onExit?: () => void;
 }) {
-  const { state, setSpeed, setTaxRate, visualHour, saveCity, discardUnsavedChanges } = useGame();
-  const { stats, year, month, day, speed, taxRate, cityName } = state;
-  const [showDetails, setShowDetails] = useState(false);
+  const { state, setSpeed, visualHour, saveCity, discardUnsavedChanges } = useGame();
+  const { year, month, day, speed, cityName } = state;
+  // One panel open at a time: a group chip's details or the calendar.
+  const [openId, setOpenId] = useState<TopBarPanelId | null>(null);
   const [showExitDialog, setShowExitDialog] = useState(false);
-  const [showTaxSlider, setShowTaxSlider] = useState(false);
   // Speed to resume at after a pause (the speed button shows it while paused)
   const [lastRunSpeed, setLastRunSpeed] = useState<1 | 2 | 3>(1);
   const shownSpeed: 1 | 2 | 3 = speed === 0 ? lastRunSpeed : speed;
@@ -176,17 +129,11 @@ export function MobileTopBar({
     onExit?.();
   }, [discardUnsavedChanges, onExit]);
 
-  // Esc closes the calendar/details popover
-  useEffect(() => {
-    if (!showDetails) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowDetails(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showDetails]);
+  const handleCalendarEvent = useCallback((id: string) => {
+    setOpenId(null);
+    onCalendarEventClick?.(id);
+  }, [onCalendarEventClick]);
 
-  const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
   // S2-T8: "Effect on Ganga" for catchment tiles (memoized per grid inside ganga.ts).
   const gangaEffectInfo = selectedTile
     ? getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, selectedTile.x, selectedTile.y)
@@ -201,8 +148,11 @@ export function MobileTopBar({
           {/* Left: city name, then the date and season (always shown, abbreviated); event chips share the date line and truncate first */}
           <button
             className="flex min-h-11 min-w-[7.5rem] flex-1 flex-col items-start justify-center overflow-hidden p-0 m-0 text-left active:opacity-70"
-            onClick={() => setShowDetails(!showDetails)}
-            aria-label={cityName}
+            id="topbar-trigger-calendar"
+            onClick={() => setOpenId(openId === 'calendar' ? null : 'calendar')}
+            aria-expanded={openId === 'calendar'}
+            aria-controls="topbar-panel-calendar"
+            aria-label={`${cityName}, ${String(m(UI_LABELS.calendar)).toLowerCase()}`}
           >
             <span className="block max-w-full min-w-[3rem] truncate font-sans font-semibold text-[15px] leading-none text-chrome-text pt-0.5">
               {cityName}
@@ -281,94 +231,23 @@ export function MobileTopBar({
 
         </div>
 
-        {/* Demand indicators row */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 px-3 py-1 border-t border-chrome-border bg-chrome-well">
-          <span
-            className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-mono font-semibold text-chrome-text"
-            title={String(m(UI_LABELS.population))}
-            aria-label={`${m(UI_LABELS.population)} ${formatPopulation(stats.population)}`}
-          >
-            <PopulationIcon size={11} className="text-chrome-muted" />
-            {formatPopulation(stats.population)}
-          </span>
-          <span
-            className={`flex shrink-0 items-baseline gap-1 whitespace-nowrap text-[11px] font-mono font-semibold ${stats.money < 0 ? 'text-red-700' : stats.money < 1000 ? 'text-amber-700' : 'text-chrome-text'}`}
-            title={String(m(UI_LABELS.funds))}
-            aria-label={`${m(UI_LABELS.funds)} ${formatINR(stats.money)}`}
-          >
-            {formatINR(stats.money)}
-            <span className={`hidden min-[430px]:inline text-[10px] font-normal ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-              {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
-            </span>
-          </span>
-          <div className="flex shrink-0 items-center gap-2">
-            <DemandBar label="R" demand={stats.demand.residential} color="text-green-700" />
-            <DemandBar label="C" demand={stats.demand.commercial} color="text-blue-700" />
-            <DemandBar label="I" demand={stats.demand.industrial} color="text-amber-700" />
-          </div>
-
-          {gangaHealth !== undefined && onToggleGangaOverlay && (
-            <GangaHealthChip
-              variant="mobile"
-              gangaHealth={gangaHealth}
-              gangaHealthTarget={stats.gangaHealthTarget}
-              gangaLoad={stats.gangaLoad}
-              active={gangaOverlayActive}
-              onClick={onToggleGangaOverlay}
-            />
-          )}
-          {(['power', 'water'] as const).map((kind) => {
-            const supply = stats[kind];
-            const onToggle = kind === 'power' ? onTogglePowerOverlay : onToggleWaterOverlay;
-            if (!onToggle || !shouldShowUtilityChip(supply, 'mobile')) return null;
-            return (
-              <UtilityChip
-                key={kind}
-                kind={kind}
-                variant="mobile"
-                stats={supply}
-                active={overlayMode === kind}
-                onClick={onToggle}
-              />
-            );
-          })}
-
-          <button
-            className="flex shrink-0 items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-1 -my-3"
-            onClick={() => {
-              const newShowTaxSlider = !showTaxSlider;
-              setShowTaxSlider(newShowTaxSlider);
-              if (newShowTaxSlider && selectedTile) {
-                onCloseTile();
-              }
-            }}
-          >
-            <span className="text-[9px] text-chrome-muted">{m(UI_LABELS.tax)}</span>
-            <span className={`text-[10px] font-mono ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
-          </button>
+        {/* Group chips: one headline number each; the details open as a panel under the bar. */}
+        <div className="flex items-center border-t border-chrome-border bg-chrome-well px-2">
+          <TopBarGroups
+            variant="mobile"
+            className="w-full"
+            openId={openId}
+            onOpenChange={setOpenId}
+            gangaOverlayActive={gangaOverlayActive}
+            onToggleGangaOverlay={onToggleGangaOverlay}
+            overlayMode={overlayMode}
+            onTogglePowerOverlay={onTogglePowerOverlay}
+            onToggleWaterOverlay={onToggleWaterOverlay}
+          />
         </div>
-
-        {/* Tax Slider Row */}
-        {showTaxSlider && !selectedTile && (
-          <div className="border-t border-chrome-border bg-chrome-well px-3 py-0.5 flex items-center gap-2 text-[10px]">
-            <span className="text-chrome-muted whitespace-nowrap">{m(UI_LABELS.taxRate)}</span>
-            <Slider
-              value={[taxRate]}
-              onValueChange={(value) => setTaxRate(value[0])}
-              min={TAX_RATE_MIN}
-              max={TAX_RATE_MAX}
-              step={1}
-              className="flex-1"
-            />
-            <span className={`font-mono w-8 text-right shrink-0 ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
-            <button 
-              onClick={() => setShowTaxSlider(false)} 
-              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
-            >
-              <CloseIcon size={12} />
-            </button>
-          </div>
-        )}
+        <TopBarPanelShell id="calendar" openId={openId} onOpenChange={setOpenId} variant="mobile" label={String(m(UI_LABELS.calendar))}>
+          <CalendarPanelBody onEventClick={handleCalendarEvent} />
+        </TopBarPanelShell>
 
         {/* Tile Info Row - Mobile Only: labelled stats that wrap; the close button is pinned and never clipped */}
         {selectedTile && (
@@ -441,113 +320,6 @@ export function MobileTopBar({
         )}
       </Card>
 
-      {/* Expanded Details Panel */}
-      {showDetails && (
-        <div
-          className="fixed inset-0 z-30 bg-[hsl(25_30%_10%/0.4)] animate-fadeIn pt-[72px]"
-          onClick={() => setShowDetails(false)}
-        >
-          <Card
-            className="hud-panel animate-rise-in mx-2 mt-2 rounded-none overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Season calendar (S4-T1) */}
-            <div className="px-4 pt-4">
-              <SeasonStrip month={month} year={year} day={day} events={state.forecasts} variant="full" onEventClick={onCalendarEventClick} />
-            </div>
-
-            {/* Stats grid */}
-            <div className="p-4 grid grid-cols-5 gap-3">
-              <StatItem
-                icon={<HappyIcon size={16} />}
-                label={String(m(UI_LABELS.happiness))}
-                value={stats.happiness}
-                empty={stats.population <= 0}
-                color={stats.happiness >= 70 ? 'text-green-800' : stats.happiness >= 40 ? 'text-amber-800' : 'text-red-800'}
-              />
-              <StatItem
-                icon={<HealthIcon size={16} />}
-                label={String(m(UI_LABELS.health))}
-                value={stats.health}
-                empty={stats.population <= 0}
-                color={stats.health >= 70 ? 'text-green-800' : stats.health >= 40 ? 'text-amber-800' : 'text-red-800'}
-              />
-              <StatItem
-                icon={<EducationIcon size={16} />}
-                label={String(m(UI_LABELS.education))}
-                value={stats.education}
-                empty={stats.population <= 0}
-                color={stats.education >= 70 ? 'text-green-800' : stats.education >= 40 ? 'text-amber-800' : 'text-red-800'}
-              />
-              <StatItem
-                icon={<SafetyIcon size={16} />}
-                label={String(m(UI_LABELS.safety))}
-                value={stats.safety}
-                empty={stats.population <= 0}
-                color={stats.safety >= 70 ? 'text-green-800' : stats.safety >= 40 ? 'text-amber-800' : 'text-red-800'}
-              />
-              <StatItem
-                icon={<EnvironmentIcon size={16} />}
-                label={String(m(UI_LABELS.environment))}
-                value={stats.environment}
-                empty={stats.population <= 0}
-                color={stats.environment >= 70 ? 'text-green-800' : stats.environment >= 40 ? 'text-amber-800' : 'text-red-800'}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Detailed finances */}
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.population)}</span>
-                <span className="text-sm font-mono text-chrome-text">{formatPopulation(stats.population)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.jobs)}</span>
-                <span className="text-sm font-mono text-chrome-text">{formatPopulation(stats.jobs)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyIncome)}</span>
-                <span className="text-sm font-mono text-green-700">{formatINRPerMonth(stats.income)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyExpenses)}</span>
-                <span className="text-sm font-mono text-red-700">{formatINRPerMonth(stats.expenses)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.netPerMonth)}</span>
-                <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {formatINRPerMonth(stats.income - stats.expenses, true)}
-                </span>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Tax slider */}
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.taxRate)}</span>
-                <span className={`text-sm font-mono ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
-              </div>
-              <Slider
-                value={[taxRate]}
-                onValueChange={(value) => setTaxRate(value[0])}
-                min={TAX_RATE_MIN}
-                max={TAX_RATE_MAX}
-                step={1}
-                className="w-full"
-              />
-              <div className="flex justify-between mt-1 text-[10px] text-chrome-muted">
-                <span>{TAX_RATE_MIN}%</span>
-                <span>{TAX_RATE_MAX}%</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
       {/* Exit confirmation dialog */}
       <Dialog open={showExitDialog} onOpenChange={setShowExitDialog}>
         <DialogContent className="sm:max-w-md">
@@ -582,29 +354,6 @@ export function MobileTopBar({
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function StatItem({
-  icon,
-  label,
-  value,
-  color,
-  empty = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-  /** Empty city: nothing to measure yet, show a dash. */
-  empty?: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-chrome-muted">{icon}</span>
-      <span className={`text-sm font-mono font-semibold ${empty ? 'text-chrome-muted' : color}`}>{empty ? '—' : `${Math.round(value)}%`}</span>
-      <span className="text-[9px] text-chrome-muted">{label}</span>
-    </div>
   );
 }
 
