@@ -61,7 +61,7 @@ import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
 
 /** Shared look for a sidebar category row. */
 const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg';
-const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold';
+const CATEGORY_ICON = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold';
 const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-xl overflow-hidden animate-submenu-in';
 const FLYOUT_SHADOW = '0 18px 44px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 hsl(40 90% 88% / 0.07)';
 
@@ -734,7 +734,7 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     }`}
                     title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
                   >
-                    <ToolGlyph tool={tool} size={28} className={isSelected ? 'bg-black/10 text-primary-foreground ring-black/10' : 'text-gold'} />
+                    <ToolGlyph tool={tool} size={32} className={isSelected ? 'bg-black/10 text-primary-foreground ring-black/10' : 'text-gold'} />
                     <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>
                     {info.cost > 0 && (
                       <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{formatINR(info.cost)}</span>
@@ -800,10 +800,10 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
       <div className="border-t border-gold/15 p-2 gold-hairline">
         <div className="grid grid-cols-4 gap-1 hud-well rounded-xl p-1">
           {[
-            { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
-            { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
-            { panel: 'advisors' as const, icon: <AdvisorIcon size={16} />, labelKey: 'advisors' as const },
-            { panel: 'settings' as const, icon: <SettingsIcon size={16} />, labelKey: 'settings' as const },
+            { panel: 'budget' as const, icon: <BudgetIcon size={22} />, labelKey: 'budget' as const },
+            { panel: 'statistics' as const, icon: <ChartIcon size={22} />, labelKey: 'statistics' as const },
+            { panel: 'advisors' as const, icon: <AdvisorIcon size={22} />, labelKey: 'advisors' as const },
+            { panel: 'settings' as const, icon: <SettingsIcon size={22} />, labelKey: 'settings' as const },
           ].map(({ panel, icon, labelKey }) => (
             <Button
               key={panel}
