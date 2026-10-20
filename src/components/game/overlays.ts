@@ -268,10 +268,13 @@ export const OVERLAY_LEGEND: Record<OverlayMode, OverlayLegendStop[]> = {
   none: [],
   power: [{ color: null, label: 'Powered' }, { color: UNCOVERED_WARNING, label: 'No power' }],
   water: [{ color: null, label: 'Has water' }, { color: UNCOVERED_WARNING, label: 'No water' }],
-  fire: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No fire cover' }],
-  police: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No police cover' }],
-  health: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No clinic cover' }],
-  education: [{ color: null, label: 'Covered' }, { color: UNCOVERED_WARNING, label: 'No school cover' }],
+  fire: [
+    { color: 'rgba(251, 146, 60, 0.45)', label: 'Fire station range' },
+    { color: UNCOVERED_WARNING, label: 'Building with no fire cover' },
+  ],
+  police: [{ color: 'rgba(147, 197, 253, 0.6)', label: 'Police range' }, { color: UNCOVERED_WARNING, label: 'No police cover' }],
+  health: [{ color: 'rgba(134, 239, 172, 0.6)', label: 'Clinic range' }, { color: UNCOVERED_WARNING, label: 'No clinic cover' }],
+  education: [{ color: 'rgba(196, 181, 253, 0.6)', label: 'School range' }, { color: UNCOVERED_WARNING, label: 'No school cover' }],
   subway: [{ color: 'rgba(245, 158, 11, 0.7)', label: 'Subway' }, { color: 'rgba(40, 30, 20, 0.4)', label: 'None' }],
   ganga: [
     { color: GANGA_CLEANS, label: 'Cleans' },
@@ -321,7 +324,7 @@ export const OVERLAY_CIRCLE_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 0.8)',    // Amber
   water: 'rgba(96, 165, 250, 0.8)',    // Blue
-  fire: 'rgba(248, 113, 113, 0.8)',    // Light red
+  fire: 'rgba(251, 146, 60, 0.85)',   // Orange: station range (red is kept for 'not covered')
   police: 'rgba(147, 197, 253, 0.8)',  // Light blue
   health: 'rgba(134, 239, 172, 0.8)',  // Light green
   education: 'rgba(196, 181, 253, 0.8)', // Light purple
@@ -335,7 +338,7 @@ export const OVERLAY_HIGHLIGHT_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 1)',      // Amber
   water: 'rgba(96, 165, 250, 1)',      // Blue  
-  fire: 'rgba(239, 68, 68, 1)',        // Red
+  fire: 'rgba(234, 88, 12, 1)',        // Deep orange
   police: 'rgba(59, 130, 246, 1)',     // Blue
   health: 'rgba(34, 197, 94, 1)',      // Green
   education: 'rgba(168, 85, 247, 1)',  // Purple
@@ -349,7 +352,7 @@ export const OVERLAY_CIRCLE_FILL_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 0.12)',
   water: 'rgba(96, 165, 250, 0.12)',
-  fire: 'rgba(248, 113, 113, 0.12)',
+  fire: 'rgba(251, 146, 60, 0.12)',
   police: 'rgba(147, 197, 253, 0.12)',
   health: 'rgba(134, 239, 172, 0.12)',
   education: 'rgba(196, 181, 253, 0.12)',

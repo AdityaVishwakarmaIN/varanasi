@@ -2536,6 +2536,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
           const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
           const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
+          const rangePath = new Path2D();
           
           // Find all service buildings of this type and draw their radii
           for (let y = 0; y < gridSize; y++) {
@@ -2572,15 +2573,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               const radiusX = range * halfTileWidth;
               const radiusY = range * halfTileHeight;
               
-              buildingsCtx.strokeStyle = circleColor;
-              buildingsCtx.lineWidth = 2 / zoom; // Keep line width consistent at different zoom levels
-              buildingsCtx.beginPath();
-              buildingsCtx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-              buildingsCtx.stroke();
-              
-              // Draw a subtle filled ellipse for better visibility
-              buildingsCtx.fillStyle = circleFillColor;
-              buildingsCtx.fill();
+              // Collect every range into one path, filled once below, so overlapping stations
+              // don't stack their tints into a wash that hides the uncovered-building warning
+              rangePath.moveTo(centerX + radiusX, centerY);
+              rangePath.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
               
               // Draw highlight glow around the service building
               buildingsCtx.strokeStyle = highlightColor;
@@ -2600,6 +2596,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               buildingsCtx.fill();
             }
           }
+          buildingsCtx.fillStyle = circleFillColor;
+          buildingsCtx.fill(rangePath);
+          buildingsCtx.strokeStyle = circleColor;
+          buildingsCtx.lineWidth = 2 / zoom; // Keep line width consistent at different zoom levels
+          buildingsCtx.stroke(rangePath);
         }
         
         buildingsCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2774,6 +2775,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
             const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
             const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
+            const rangePath = new Path2D(); // one union path, filled once (see the canvas path above)
             for (let yy = 0; yy < gridSize; yy++) {
               for (let xx = 0; xx < gridSize; xx++) {
                 const tile = grid[yy][xx];
@@ -2787,13 +2789,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 const { screenX: bldgScreenX, screenY: bldgScreenY } = gridToScreen(xx, yy, 0, 0);
                 const centerX = bldgScreenX + halfTileWidth;
                 const centerY = bldgScreenY + halfTileHeight;
-                gpuMain.strokeStyle = circleColor;
-                gpuMain.lineWidth = 2 / zoom;
-                gpuMain.beginPath();
-                gpuMain.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
-                gpuMain.stroke();
-                gpuMain.fillStyle = circleFillColor;
-                gpuMain.fill();
+                rangePath.moveTo(centerX + range * halfTileWidth, centerY);
+                rangePath.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
                 gpuMain.strokeStyle = highlightColor;
                 gpuMain.lineWidth = 3 / zoom;
                 gpuMain.beginPath();
@@ -2809,6 +2806,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 gpuMain.fill();
               }
             }
+            gpuMain.fillStyle = circleFillColor;
+            gpuMain.fill(rangePath);
+            gpuMain.strokeStyle = circleColor;
+            gpuMain.lineWidth = 2 / zoom;
+            gpuMain.stroke(rangePath);
           }
           if (waterBodies && waterBodies.length > 0) {
             gpuMain.font = `${Math.max(10, 12 / zoom)}px sans-serif`;
