@@ -74,6 +74,7 @@ import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
 import { acceptEmergencyLoan as acceptLoan, declineEmergencyLoan as declineLoan } from '@/lib/failure';
 import { playSfx } from '@/lib/audio';
 import { sfxForTool } from '@/lib/audio/audioConfig';
+import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
 import {
   addForecast as addForecastToState,
   pushNotifications,
@@ -337,9 +338,11 @@ async function loadGameState(): Promise<GameState | null> {
           parsed.hour = 12; // Default to noon
         }
         // Ensure effectiveTaxRate exists for lagging tax effect
+        parsed.taxRate = clampTaxRate(parsed.taxRate ?? 9);
         if (parsed.effectiveTaxRate === undefined) {
-          parsed.effectiveTaxRate = parsed.taxRate ?? 9; // Start at current tax rate
+          parsed.effectiveTaxRate = parsed.taxRate; // Start at current tax rate
         }
+        parsed.effectiveTaxRate = clampEffectiveTaxRate(parsed.effectiveTaxRate);
         // Migrate constructionProgress for existing buildings (they're already built)
         if (parsed.grid) {
           for (let y = 0; y < parsed.grid.length; y++) {
@@ -968,7 +971,7 @@ export function GameProvider({
   }, []);
 
   const setTaxRate = useCallback((rate: number) => {
-    setState((prev) => ({ ...prev, taxRate: clamp(rate, 0, 100) }));
+    setState((prev) => ({ ...prev, taxRate: clampTaxRate(rate) }));
   }, []);
 
   const setActivePanel = useCallback(
@@ -1165,7 +1168,7 @@ export function GameProvider({
           {
             id: `city-connect-${Date.now()}`,
             title: 'City Connected!',
-            description: `Trade route established with ${city.name}. +$${tradeBonus} bonus and +$${tradeIncome}/month income.`,
+            description: `Trade route established with ${city.name}. +₹${tradeBonus} bonus and +₹${tradeIncome}/month income.`,
             icon: 'road',
             timestamp: Date.now(),
           },
@@ -1391,9 +1394,11 @@ export function GameProvider({
           }];
         }
         // Ensure effectiveTaxRate exists for lagging tax effect
+        parsed.taxRate = clampTaxRate(parsed.taxRate ?? 9);
         if (parsed.effectiveTaxRate === undefined) {
-          parsed.effectiveTaxRate = parsed.taxRate ?? 9;
+          parsed.effectiveTaxRate = parsed.taxRate;
         }
+        parsed.effectiveTaxRate = clampEffectiveTaxRate(parsed.effectiveTaxRate);
         // Migrate constructionProgress for existing buildings (they're already built)
         if (parsed.grid) {
           for (let y = 0; y < parsed.grid.length; y++) {
@@ -1779,9 +1784,11 @@ export function GameProvider({
         color: '#3b82f6',
       }];
     }
+    cityState.taxRate = clampTaxRate(cityState.taxRate ?? 9);
     if (cityState.effectiveTaxRate === undefined) {
-      cityState.effectiveTaxRate = cityState.taxRate ?? 9;
+      cityState.effectiveTaxRate = cityState.taxRate;
     }
+    cityState.effectiveTaxRate = clampEffectiveTaxRate(cityState.effectiveTaxRate);
     if (cityState.grid) {
       for (let y = 0; y < cityState.grid.length; y++) {
         for (let x = 0; x < cityState.grid[y].length; x++) {

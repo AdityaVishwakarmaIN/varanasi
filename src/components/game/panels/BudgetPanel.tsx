@@ -6,7 +6,7 @@ import { useGame } from '@/context/GameContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { formatINR } from '@/lib/format';
+import { formatINR, formatINRPerMonth } from '@/lib/format';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -50,7 +50,7 @@ export function BudgetPanel() {
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.income)}</div>
-              <div className="text-green-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINR(stats.income)}/mo</div>
+              <div className="text-green-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINRPerMonth(stats.income)}</div>
               <div className="mt-1 space-y-0.5 text-xs">
                 <div className="flex justify-between gap-2">
                   <span className="text-chrome-muted">{m(UI_LABELS.taxes)}</span>
@@ -66,12 +66,12 @@ export function BudgetPanel() {
             </div>
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.expenses)}</div>
-              <div className="text-red-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINR(stats.expenses)}/mo</div>
+              <div className="text-red-800 font-mono font-semibold text-xs sm:text-base leading-tight break-words">{formatINRPerMonth(stats.expenses)}</div>
             </div>
             <div className="hud-well rounded-md p-2.5 sm:p-3 min-w-0">
               <div className="hud-label mb-1.5">{m(UI_LABELS.net)}</div>
               <div className={`font-mono font-semibold text-xs sm:text-base leading-tight break-words ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                {formatINR(stats.income - stats.expenses)}/mo
+                {formatINRPerMonth(stats.income - stats.expenses, true)}
               </div>
             </div>
           </div>
@@ -79,7 +79,7 @@ export function BudgetPanel() {
           <div className="space-y-4">
             {categories.map(cat => (
               <div key={cat.key} className="flex items-center gap-4">
-                <Label className="w-28 text-sm text-chrome-text">{cat.name}</Label>
+                <Label className="w-24 sm:w-28 shrink-0 text-sm text-chrome-text">{cat.name}</Label>
                 <Slider
                   value={[cat.funding]}
                   onValueChange={(value) => setBudgetFunding(cat.key as keyof typeof budget, value[0])}
@@ -88,7 +88,12 @@ export function BudgetPanel() {
                   step={5}
                   className="flex-1"
                 />
-                <span className="w-12 text-right font-mono text-sm text-chrome-text">{cat.funding}%</span>
+                <span className="w-20 shrink-0 text-right font-mono leading-tight">
+                  <span className="block text-sm text-chrome-text">{cat.funding}%</span>
+                  <span className="block text-[11px] text-chrome-muted" title={`Full funding costs ${formatINRPerMonth(cat.cost)}`}>
+                    {formatINRPerMonth(Math.floor((cat.cost * cat.funding) / 100))}
+                  </span>
+                </span>
               </div>
             ))}
           </div>

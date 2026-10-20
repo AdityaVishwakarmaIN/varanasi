@@ -322,3 +322,28 @@ export function getGangaHealthLevel(gangaHealth: number): 'good' | 'fair' | 'poo
 }
 
 export const GANGA_TREND_ARROW = { up: '↑', down: '↓', flat: '→' } as const;
+
+/**
+ * The top causes of a falling Ganga Health, biggest first (at most `limit`), each with the fix.
+ * Uses the loads the score already computed; `formatPeople` turns simulation population into the displayed number.
+ */
+export function describeGangaCauses(
+  load: { industrial: number; sewage: number; untreatedPopulation: number },
+  formatPeople: (simPopulation: number) => string,
+  limit = 3
+): string[] {
+  const causes: { weight: number; text: string }[] = [];
+  if (load.sewage > 0 && load.untreatedPopulation > 0) {
+    causes.push({
+      weight: load.sewage,
+      text: `Untreated sewage from ${formatPeople(load.untreatedPopulation)} people (build a Sewage Treatment Plant nearby)`,
+    });
+  }
+  if (load.industrial > 0) {
+    causes.push({
+      weight: load.industrial,
+      text: 'Factories, power plants and traffic near the river (move them inland, plant trees on the bank)',
+    });
+  }
+  return causes.sort((a, b) => b.weight - a.weight).slice(0, limit).map((c) => c.text);
+}

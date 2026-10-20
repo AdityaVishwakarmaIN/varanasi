@@ -6,12 +6,12 @@ import { useGame } from '@/context/GameContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatINR, formatIndianNumber, formatPopulation, POPULATION_DISPLAY_SCALE } from '@/lib/format';
+import { formatINR, formatINRPerMonth, formatIndianNumber, formatPopulation, POPULATION_DISPLAY_SCALE } from '@/lib/format';
 import { getNextLandmark, getPeakDisplayedPopulation } from '@/lib/landmarks';
 import { TOOL_INFO } from '@/types/game';
 import { RiverIcon } from '@/components/ui/Icons';
 import { getGangaTrend } from '@/lib/scoring';
-import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
+import { GANGA_TREND_ARROW, describeGangaCauses, getGangaHealthLevel } from '@/lib/ganga';
 
 type StatsTab = 'population' | 'money' | 'happiness' | 'ganga';
 
@@ -23,7 +23,8 @@ const UI_LABELS = {
   population: msg('Population'),
   jobs: msg('Jobs'),
   treasury: msg('Treasury'),
-  weekly: msg('Weekly'),
+  netPerMonth: msg('Net / month'),
+  quarterly: msg('One point per quarter'),
   money: msg('Money'),
   happiness: msg('Happiness'),
   gangaHealth: msg('Ganga Health'),
@@ -65,6 +66,7 @@ export function StatisticsPanel() {
     const width = canvas.width;
     const height = canvas.height;
     const padding = 40;
+    const padX = 64; // room for the min/max value labels
     
     ctx.fillStyle = '#ece0c8';
     ctx.fillRect(0, 0, width, height);
@@ -84,6 +86,7 @@ export function StatisticsPanel() {
         break;
       case 'happiness':
         color = '#be185d';
+        formatValue = (v: number) => `${Math.round(v)}%`;
         break;
       case 'ganga':
         color = '#0e7490';
@@ -100,7 +103,7 @@ export function StatisticsPanel() {
     for (let i = 0; i <= 4; i++) {
       const y = padding + (height - padding * 2) * (i / 4);
       ctx.beginPath();
-      ctx.moveTo(padding, y);
+      ctx.moveTo(padX, y);
       ctx.lineTo(width - padding, y);
       ctx.stroke();
     }
@@ -109,10 +112,10 @@ export function StatisticsPanel() {
     ctx.lineWidth = 2;
     ctx.beginPath();
     
-    const stepX = (width - padding * 2) / (data.length - 1);
+    const stepX = (width - padX - padding) / (data.length - 1);
     
     data.forEach((val, i) => {
-      const x = padding + i * stepX;
+      const x = padX + i * stepX;
       const y = padding + (height - padding * 2) * (1 - (val - minVal) / range);
       
       if (i === 0) {
@@ -123,6 +126,14 @@ export function StatisticsPanel() {
     });
     
     ctx.stroke();
+
+    // Axis labels: the value range on the left (an empty axis tells the player nothing)
+    ctx.fillStyle = '#6b5b3e';
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(formatValue(maxVal), padX - 6, padding);
+    ctx.fillText(formatValue(minVal), padX - 6, height - padding);
   }, [series, activeTab]);
   
   return (
@@ -147,9 +158,9 @@ export function StatisticsPanel() {
               <div className="font-mono tabular-nums font-semibold text-chrome-text text-sm sm:text-base truncate">{formatINR(stats.money)}</div>
             </Card>
             <Card className="hud-well bg-transparent shadow-none p-2 sm:p-3">
-              <div className="hud-label mb-1.5">{m(UI_LABELS.weekly)}</div>
+              <div className="hud-label mb-1.5">{m(UI_LABELS.netPerMonth)}</div>
               <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
+                {formatINRPerMonth(stats.income - stats.expenses, true)}
               </div>
             </Card>
           </div>
@@ -160,6 +171,7 @@ export function StatisticsPanel() {
               headingTo={String(m(UI_LABELS.headingTo))}
               gangaHealth={stats.gangaHealth ?? 0}
               gangaHealthTarget={stats.gangaHealthTarget}
+              causes={stats.gangaLoad ? describeGangaCauses(stats.gangaLoad, formatPopulation) : []}
             />
           )}
 
@@ -190,7 +202,10 @@ export function StatisticsPanel() {
                 {m(UI_LABELS.notEnoughData)}
               </div>
             ) : (
-              <canvas ref={canvasRef} width={536} height={200} className="w-full rounded-md" />
+              <>
+                <canvas ref={canvasRef} width={536} height={200} className="w-full rounded-md" />
+                <p className="mt-1 text-center text-[11px] text-chrome-muted">{m(UI_LABELS.quarterly)}</p>
+              </>
             )}
           </Card>
         </div>
@@ -204,11 +219,13 @@ function GangaHealthCard({
   headingTo,
   gangaHealth,
   gangaHealthTarget,
+  causes,
 }: {
   label: string;
   headingTo: string;
   gangaHealth: number;
   gangaHealthTarget: number | undefined;
+  causes: string[];
 }) {
   const target = gangaHealthTarget ?? gangaHealth;
   const trend = getGangaTrend(gangaHealth, target);
@@ -224,6 +241,11 @@ function GangaHealthCard({
             ({headingTo} {Math.round(target)})
           </span>
         </div>
+        {causes.length > 0 && target < 70 && (
+          <ul className="mt-1 list-disc pl-4 text-xs font-normal text-chrome-muted">
+            {causes.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        )}
       </div>
     </Card>
   );

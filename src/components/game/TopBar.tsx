@@ -31,7 +31,8 @@ import {
 } from '@/components/ui/Icons';
 import { HudStat } from '@/components/game/HudStat';
 import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
-import { formatINR, formatPopulation } from '@/lib/format';
+import { formatINR, formatINRSigned, formatPopulation } from '@/lib/format';
+import { TAX_RATE_MAX, TAX_RATE_MIN, TAX_RATE_WARN_ABOVE } from '@/lib/tax';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
@@ -43,7 +44,7 @@ const UI_LABELS = {
   population: msg('Population'),
   jobs: msg('Jobs'),
   funds: msg('Funds'),
-  monthly: msg('Monthly'),
+  monthly: msg('Net / month'),
   tax: msg('Tax'),
   happiness: msg('Happiness'),
   health: msg('Health'),
@@ -154,9 +155,21 @@ interface MiniStatProps {
   icon: React.ReactNode;
   label: string;
   value: number;
+  /** Nothing to measure yet (empty city): show a dash instead of a made-up percentage. */
+  empty?: boolean;
 }
 
-export function MiniStat({ icon, label, value }: MiniStatProps) {
+export function MiniStat({ icon, label, value, empty = false }: MiniStatProps) {
+  if (empty) {
+    return (
+      <div className="flex items-center gap-2" role="group" aria-label={`${label}: no data yet`}>
+        <span className="text-chrome-muted">{icon}</span>
+        <span className="text-chrome-muted">{label}</span>
+        <span className="relative h-1 w-12 overflow-hidden rounded-sm bg-chrome-border" aria-hidden />
+        <span className="font-mono font-semibold w-8 text-chrome-muted">—</span>
+      </div>
+    );
+  }
   const pct = Math.max(0, Math.min(100, Math.round(value)));
   const color = value >= 70 ? 'text-green-700' : value >= 40 ? 'text-amber-700' : 'text-red-700';
   const bar = value >= 70 ? 'bg-green-600' : value >= 40 ? 'bg-amber-600' : 'bg-red-600';
@@ -183,11 +196,11 @@ export const StatsPanel = React.memo(function StatsPanel() {
   
   return (
     <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-chrome-border bg-chrome-well">
-      <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} />
-      <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} />
-      <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} />
-      <MiniStat icon={<SafetyIcon size={12} />} label={String(m(UI_LABELS.safety))} value={stats.safety} />
-      <MiniStat icon={<EnvironmentIcon size={12} />} label={String(m(UI_LABELS.environment))} value={stats.environment} />
+      <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} empty={stats.population <= 0} />
+      <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} empty={stats.population <= 0} />
+      <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} empty={stats.population <= 0} />
+      <MiniStat icon={<SafetyIcon size={12} />} label={String(m(UI_LABELS.safety))} value={stats.safety} empty={stats.population <= 0} />
+      <MiniStat icon={<EnvironmentIcon size={12} />} label={String(m(UI_LABELS.environment))} value={stats.environment} empty={stats.population <= 0} />
     </div>
   );
 });
@@ -313,7 +326,7 @@ export const TopBar = React.memo(function TopBar({
         <HudStat
           icon={<span className="text-sm font-bold leading-none">{monthly >= 0 ? '▲' : '▼'}</span>}
           tint={monthly >= 0 ? 'good' : 'bad'}
-          value={`${monthly >= 0 ? '+' : ''}${formatINR(monthly)}`}
+          value={formatINRSigned(monthly)}
           label={String(m(UI_LABELS.monthly))}
           tone={monthly >= 0 ? 'success' : 'destructive'}
         />
@@ -322,6 +335,7 @@ export const TopBar = React.memo(function TopBar({
             variant="desktop"
             gangaHealth={gangaHealth}
             gangaHealthTarget={stats.gangaHealthTarget}
+            gangaLoad={stats.gangaLoad}
             active={gangaOverlayActive}
             onClick={onToggleGangaOverlay}
           />
@@ -355,13 +369,13 @@ export const TopBar = React.memo(function TopBar({
           <Slider
             value={[taxRate]}
             onValueChange={(value) => setTaxRate(value[0])}
-            min={0}
-            max={100}
+            min={TAX_RATE_MIN}
+            max={TAX_RATE_MAX}
             step={1}
             className="w-14"
             aria-label={String(m(UI_LABELS.tax))}
           />
-          <span className="text-chrome-text text-xs font-mono font-semibold w-7">{taxRate}%</span>
+          <span className={`text-xs font-mono font-semibold w-7 ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
         </div>
         
         <DropdownMenu>

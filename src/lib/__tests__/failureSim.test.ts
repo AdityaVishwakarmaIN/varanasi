@@ -83,7 +83,8 @@ describe('failure states in the simulation (S4-T11)', () => {
 
   it('an exodus abandons 2% of homes each month', () => {
     let state = addHomes(newCity(), 100);
-    state = { ...state, taxRate: 100, effectiveTaxRate: 100 };
+    // The top rate the game allows (tax is clamped to 0-20%)
+    state = { ...state, taxRate: 20, effectiveTaxRate: 20 };
     state = {
       ...state,
       failure: {
@@ -96,8 +97,17 @@ describe('failure states in the simulation (S4-T11)', () => {
       },
     };
     const before = countAbandonedHomes(state);
-    state = endMonth(state);
-    expect(state.stats.happiness).toBeLessThan(FAILURE_CONFIG.criticalHappiness);
+    // Tax is capped at 20%, which alone leaves happiness a little above the critical line,
+    // so raise the line for this test (the config object is only readonly at compile time).
+    const config = FAILURE_CONFIG as { criticalHappiness: number };
+    const originalCritical = config.criticalHappiness;
+    config.criticalHappiness = 40;
+    try {
+      state = endMonth(state);
+      expect(state.stats.happiness).toBeLessThan(config.criticalHappiness);
+    } finally {
+      config.criticalHappiness = originalCritical;
+    }
     expect(state.failure?.exodusActive).toBe(true);
     expect(countAbandonedHomes(state) - before).toBe(2);
     expect(state.notifications.some((n) => n.title === 'People are leaving the city')).toBe(true);

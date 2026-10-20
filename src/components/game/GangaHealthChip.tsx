@@ -4,7 +4,9 @@ import React from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { RiverIcon } from '@/components/ui/Icons';
 import { getGangaTrend } from '@/lib/scoring';
-import { GANGA_TREND_ARROW, getGangaHealthLevel } from '@/lib/ganga';
+import { GANGA_TREND_ARROW, describeGangaCauses, getGangaHealthLevel } from '@/lib/ganga';
+import { formatPopulation } from '@/lib/format';
+import type { GangaLoadStats } from '@/types/game';
 import { HUD_CHIP_CLASS, HudIconBadge } from '@/components/game/HudStat';
 
 const LEVEL_TEXT_CLASS = {
@@ -18,6 +20,8 @@ const TREND_LABEL = { up: 'improving', down: 'getting worse', flat: 'steady' } a
 interface GangaHealthChipProps {
   gangaHealth: number;
   gangaHealthTarget: number | undefined;
+  /** What is loading the river now; the tooltip lists the biggest causes. */
+  gangaLoad?: GangaLoadStats;
   /** Whether the Ganga overlay is currently on (the chip toggles it). */
   active: boolean;
   onClick: () => void;
@@ -25,12 +29,16 @@ interface GangaHealthChipProps {
 }
 
 /** Top-bar river chip (S2-T8): Ganga Health with a trend arrow. Clicking it shows the Ganga overlay. */
-export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClick, variant }: GangaHealthChipProps) {
+export function GangaHealthChip({ gangaHealth, gangaHealthTarget, gangaLoad, active, onClick, variant }: GangaHealthChipProps) {
   const health = Math.round(gangaHealth);
   const target = Math.round(gangaHealthTarget ?? gangaHealth);
   const trend = getGangaTrend(gangaHealth, gangaHealthTarget ?? gangaHealth);
   const colorClass = LEVEL_TEXT_CLASS[getGangaHealthLevel(gangaHealth)];
-  const tooltip = `Ganga Health: ${health} (heading to ${target}). Click to see what's polluting the river.`;
+  const causes = gangaLoad && target < 70 ? describeGangaCauses(gangaLoad, formatPopulation) : [];
+  const tooltip =
+    `Ganga Health: ${health} (heading to ${target}).` +
+    (causes.length > 0 ? ` Main causes: ${causes.map((c, i) => `${i + 1}) ${c}`).join('; ')}.` : '') +
+    ` Click to see what's polluting the river.`;
   const ariaLabel = `Ganga Health ${health}, ${TREND_LABEL[trend]}. ${active ? 'Hide' : 'Show'} the Ganga overlay.`;
 
   if (variant === 'mobile') {
@@ -79,7 +87,7 @@ export function GangaHealthChip({ gangaHealth, gangaHealthTarget, active, onClic
         </button>
       </TooltipTrigger>
       <TooltipContent>
-        <p>{tooltip}</p>
+        <p className="max-w-xs">{tooltip}</p>
       </TooltipContent>
     </Tooltip>
   );

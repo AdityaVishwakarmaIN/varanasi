@@ -15,6 +15,7 @@ import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
 import { getGhatPlacement, isWaterWorksPlacementValid } from '@/lib/ganga';
 import { isEmbankmentSiteInRange } from '@/lib/floods';
+import { getDistanceToGanga, getRiverZone } from '@/games/isocity/maps/riverZones';
 import { canPlaceLandmark, getLandmarkPlacementContext, isLandmarkType } from '@/lib/landmarks';
 import {
   bulldozeTile,
@@ -52,6 +53,7 @@ export const PLACEMENT_REASONS = {
   notWater: msg('Only works on water'),
   outsideMap: msg('Outside the map'),
   needsRoad: msg('Needs road access to grow'),
+  industrialByRiver: msg('Industry here pollutes the Ganga. Zone it inland, away from the river and floodplain'),
   ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
   waterWorksNearGanga: msg('Jal Sansthan Water Works must be within 3 tiles of the Ganga'),
   embankmentNearGanga: msg('Embankments must be on land within 4 tiles of the Ganga'),
@@ -181,6 +183,13 @@ function footprintTouchesWater(state: GameState, x: number, y: number, w: number
 
 /** Zones can be painted anywhere, but only grow with road access: warn (not block) when missing. */
 function getZoneWarning(state: GameState, x: number, y: number, zone: ZoneType): string | undefined {
+  // Factories on the riverbank or floodplain load the Ganga (and flood): hint only, never block
+  if (zone === 'industrial' && state.mapId === 'varanasi') {
+    const riverZone = getRiverZone(x, y, state.gridSize, state.mapId);
+    if (riverZone === 'westRiverfront' || riverZone === 'eastFloodplain' || getDistanceToGanga(x, y, state.gridSize, state.mapId) <= 4) {
+      return PLACEMENT_REASONS.industrialByRiver;
+    }
+  }
   // Evaluate the existing development rules on a copy where only this tile is zoned.
   const row = state.grid[y].slice();
   row[x] = { ...row[x], zone };

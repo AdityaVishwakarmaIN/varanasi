@@ -299,7 +299,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Retro Cheat Activated!'),
-          gt('Your accountants are confused but not complaining. You received $50,000!'),
+          gt('Your accountants are confused but not complaining. You received ₹50,000!'),
           'trophy'
         );
         clearTriggeredCheat();
@@ -309,7 +309,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Motherlode!'),
-          gt('Your treasury just got a lot heavier. You received $1,000,000!'),
+          gt('Your treasury just got a lot heavier. You received ₹50,000!'),
           'trophy'
         );
         clearTriggeredCheat();
