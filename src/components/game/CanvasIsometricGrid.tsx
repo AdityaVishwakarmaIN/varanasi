@@ -183,6 +183,8 @@ import { getInitialFocusTile } from '@/lib/mapConfig';
 const LIGHTING_GRID_RESEND_MS = 3000;
 /** Hour sent to the lighting pass when night lighting is off (daylight: nothing is drawn). */
 const LIGHTING_OFF_HOUR = 12;
+/** PERF: during a drag-pan, shift the static layers by CSS up to this fraction of the view, then redraw. */
+const PAN_LAYER_SHIFT_MAX_FRACTION = 0.25;
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -314,15 +316,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lastSlowFrameLogRef = useRef(0);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
-  const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const buildingsCanvasRef = useRef<HTMLCanvasElement>(null); // Buildings rendered on top of cars/trains
-  const airCanvasRef = useRef<HTMLCanvasElement>(null); // Air-low: incident/recreation peds, helicopters, seaplanes
-  const ambientCanvasRef = useRef<HTMLCanvasElement>(null); // Wind dust + clouds (dedicated layer; future render-worker target)
-  const airHighCanvasRef = useRef<HTMLCanvasElement>(null); // Air-high: airplanes + fireworks (above clouds)
+  // Sky layer, drawn bottom to top: air-low (incident/recreation peds, helicopters, seaplanes), then
+  // ambient (wind dust + clouds), then air-high (airplanes + fireworks). PERF: these were three
+  // full-viewport canvases (and wind trees a fourth, now drawn on the cars canvas). Every canvas that
+  // is touched in a frame is re-uploaded and re-composited, so each extra layer cost a full-screen
+  // copy + blend per frame. All their draws are source-over, so one canvas gives identical pixels.
+  const airCanvasRef = useRef<HTMLCanvasElement>(null);
   const lightingCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderPendingRef = useRef<number | null>(null); // PERF: Track pending render frame
   const lastMainRenderTimeRef = useRef<number>(0); // PERF: Throttle main renders at high speed
+  // PERF (cheap pan path): what the static layers (terrain + buildings canvases) were last fully
+  // drawn with. While a drag-pan only moves the camera, those canvases are shifted with a CSS
+  // transform instead of being redrawn and re-uploaded every frame; full detail is redrawn when the
+  // pan settles, when the shift gets large, or when anything else in the scene changes.
+  const staticLayerRenderRef = useRef<{ offset: { x: number; y: number }; deps: unknown[]; shifted: boolean } | null>(null);
   const [offset, setOffset] = useState({ x: isMobile ? 200 : 620, y: isMobile ? 100 : 160 });
   // Latest offset for the smooth camera move (S4-T4), which must not restart on every frame
   const offsetRef = useRef(offset);
@@ -1187,10 +1196,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           carsCanvasRef.current.style.width = `${rect.width}px`;
           carsCanvasRef.current.style.height = `${rect.height}px`;
         }
-        if (windCanvasRef.current) {
-          windCanvasRef.current.style.width = `${rect.width}px`;
-          windCanvasRef.current.style.height = `${rect.height}px`;
-        }
         if (buildingsCanvasRef.current) {
           buildingsCanvasRef.current.style.width = `${rect.width}px`;
           buildingsCanvasRef.current.style.height = `${rect.height}px`;
@@ -1198,14 +1203,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         if (airCanvasRef.current) {
           airCanvasRef.current.style.width = `${rect.width}px`;
           airCanvasRef.current.style.height = `${rect.height}px`;
-        }
-        if (ambientCanvasRef.current) {
-          ambientCanvasRef.current.style.width = `${rect.width}px`;
-          ambientCanvasRef.current.style.height = `${rect.height}px`;
-        }
-        if (airHighCanvasRef.current) {
-          airHighCanvasRef.current.style.width = `${rect.width}px`;
-          airHighCanvasRef.current.style.height = `${rect.height}px`;
         }
         if (lightingCanvasRef.current) {
           lightingCanvasRef.current.style.width = `${rect.width}px`;
@@ -1364,6 +1361,28 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         return; // Skip this render, next tick will trigger a new one
       }
       lastMainRenderTimeRef.current = now;
+
+      const buildingsLayer = buildingsCanvasRef.current;
+      const sceneDeps: unknown[] = [grid, gridSize, zoom, overlayMode, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask];
+      const lastStatic = staticLayerRenderRef.current;
+      if (isPanning && lastStatic && lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i])) {
+        const dx = offset.x - lastStatic.offset.x;
+        const dy = offset.y - lastStatic.offset.y;
+        const cssWidth = canvas.clientWidth || canvas.width;
+        const cssHeight = canvas.clientHeight || canvas.height;
+        if (Math.abs(dx) <= cssWidth * PAN_LAYER_SHIFT_MAX_FRACTION && Math.abs(dy) <= cssHeight * PAN_LAYER_SHIFT_MAX_FRACTION) {
+          const transform = `translate3d(${dx}px, ${dy}px, 0)`;
+          canvas.style.transform = transform;
+          if (buildingsLayer) buildingsLayer.style.transform = transform;
+          lastStatic.shifted = true;
+          return;
+        }
+      }
+      if (lastStatic?.shifted) {
+        canvas.style.transform = '';
+        if (buildingsLayer) buildingsLayer.style.transform = '';
+      }
+      staticLayerRenderRef.current = { offset: { x: offset.x, y: offset.y }, deps: sceneDeps, shifted: false };
       
       const dpr = getRenderDpr();
     
@@ -2423,9 +2442,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // Render buildings on the buildings canvas (on top of cars/trains)
     const buildingsCanvas = buildingsCanvasRef.current;
     if (buildingsCanvas) {
-      // Set canvas size in memory (scaled for DPI)
-      buildingsCanvas.width = canvasSize.width;
-      buildingsCanvas.height = canvasSize.height;
+      // Set canvas size in memory (scaled for DPI). PERF: only when it changed - assigning
+      // width/height reallocates (and clears) the backing store even when the value is the same.
+      if (buildingsCanvas.width !== canvasSize.width) buildingsCanvas.width = canvasSize.width;
+      if (buildingsCanvas.height !== canvasSize.height) buildingsCanvas.height = canvasSize.height;
       
       const buildingsCtx = buildingsCanvas.getContext('2d');
       if (buildingsCtx) {
@@ -2842,7 +2862,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   // The tile a placement just succeeded on (mouse-up or tap). The hovered tile is now built, so the
@@ -3182,44 +3202,30 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
-    const windCanvas = windCanvasRef.current;
     const airCanvas = airCanvasRef.current;
-    const ambientCanvas = ambientCanvasRef.current;
-    const airHighCanvas = airHighCanvasRef.current;
-    if (!canvas || !windCanvas || !airCanvas || !ambientCanvas || !airHighCanvas) return;
+    if (!canvas || !airCanvas) return;
     const ctx = canvas.getContext('2d');
-    const windCtx = windCanvas.getContext('2d');
     const airCtx = airCanvas.getContext('2d');
-    const ambientCtx = ambientCanvas.getContext('2d');
-    const airHighCtx = airHighCanvas.getContext('2d');
-    if (!ctx || !windCtx || !airCtx || !ambientCtx || !airHighCtx) return;
+    if (!ctx || !airCtx) return;
+    // PERF: wind trees share the cars canvas; wind dust, clouds, airplanes and fireworks share the
+    // air canvas (see airCanvasRef). Draw order is unchanged, so the composited result is the same.
+    const windCtx = ctx;
+    const ambientCtx = airCtx;
+    const airHighCtx = airCtx;
     
     ctx.imageSmoothingEnabled = false;
-    windCtx.imageSmoothingEnabled = false;
     airCtx.imageSmoothingEnabled = false;
-    ambientCtx.imageSmoothingEnabled = false;
-    airHighCtx.imageSmoothingEnabled = false;
 
-    const clearWindCanvas = () => {
-      windCtx.setTransform(1, 0, 0, 1, 0, 0);
-      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+    // Each former layer started from a fresh identity state; keep that when they share a canvas.
+    const resetLayerState = (layerCtx: CanvasRenderingContext2D) => {
+      layerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      layerCtx.globalAlpha = 1;
+      layerCtx.imageSmoothingEnabled = false;
     };
 
     const clearAirCanvas = () => {
       airCtx.setTransform(1, 0, 0, 1, 0, 0);
       airCtx.clearRect(0, 0, airCanvas.width, airCanvas.height);
-    };
-
-    // Wind dust + clouds layer (dedicated canvas; future render-worker target)
-    const clearAmbientCanvas = () => {
-      ambientCtx.setTransform(1, 0, 0, 1, 0, 0);
-      ambientCtx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
-    };
-
-    // Airplanes + fireworks layer (above clouds)
-    const clearAirHighCanvas = () => {
-      airHighCtx.setTransform(1, 0, 0, 1, 0, 0);
-      airHighCtx.clearRect(0, 0, airHighCanvas.width, airHighCanvas.height);
     };
     
     const festivalInput = (): FestivalDrawInput => {
@@ -3353,10 +3359,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // In GPU mode Pixi owns animated entities; keep legacy CPU layers empty to avoid double work.
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        clearWindCanvas();
         clearAirCanvas();
-        clearAmbientCanvas();
-        clearAirHighCanvas();
       } else {
         drawCars(ctx);
         drawBuses(ctx);
@@ -3370,11 +3373,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         drawPedestrians(ctx); // Draw walking pedestrians (below buildings)
         drawEmergencyVehicles(ctx); // Draw emergency vehicles!
-        clearWindCanvas();
-        drawWindTrees(windCtx); // Draw swaying trees on their own lightweight layer
+        resetLayerState(windCtx);
+        drawWindTrees(windCtx); // Draw swaying trees above the vehicles (cars canvas)
         clearAirCanvas();
-        clearAmbientCanvas();
-        clearAirHighCanvas();
+        resetLayerState(airCtx);
         
         // Draw incident indicators on air canvas (above buildings so tooltips are visible)
         drawIncidentIndicators(airCtx, delta); // Draw fire/crime incident indicators!
@@ -3388,8 +3390,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
           drawSeaplanes(airCtx); // Draw seaplanes (skip when panning zoomed out on desktop)
         }
+        resetLayerState(ambientCtx);
         drawWindDust(ambientCtx); // Draw lightweight wind dust on the ambient layer
         drawClouds(ambientCtx, visualHour); // Draw atmospheric clouds on the ambient layer
+        resetLayerState(airHighCtx);
         drawAirplanes(airHighCtx); // Draw airplanes above clouds (air-high layer)
         drawFireworks(airHighCtx); // Draw fireworks above everything (air-high layer)
       }
@@ -4229,6 +4233,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ref={containerRef}
       className="overflow-hidden relative w-full h-full touch-none select-none"
       style={{ 
+        background: '#141c24', // shows in the strip uncovered while static layers are shifted during a pan
         cursor: isPanning ? 'grabbing' : isDragging ? 'crosshair' : 'default',
         WebkitTouchCallout: 'none', // no iOS callout on long-press (long-press inspects the tile)
       }}
@@ -4263,12 +4268,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         className="absolute top-0 left-0 pointer-events-none"
       />
       <canvas
-        ref={windCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      <canvas
         ref={buildingsCanvasRef}
         width={canvasSize.width}
         height={canvasSize.height}
@@ -4276,20 +4275,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       />
       <canvas
         ref={airCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      {/* Ambient layer: wind dust + clouds (dedicated canvas; future render-worker target) */}
-      <canvas
-        ref={ambientCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      {/* Air-high layer: airplanes + fireworks, above clouds */}
-      <canvas
-        ref={airHighCanvasRef}
         width={canvasSize.width}
         height={canvasSize.height}
         className="absolute top-0 left-0 pointer-events-none"
