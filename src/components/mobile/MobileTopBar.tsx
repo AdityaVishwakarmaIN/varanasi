@@ -31,7 +31,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
-import { formatINR, formatPopulation } from '@/lib/format';
+import { formatINR, formatINRPerMonth, formatPopulation } from '@/lib/format';
+import { TAX_RATE_MAX, TAX_RATE_MIN, TAX_RATE_WARN_ABOVE } from '@/lib/tax';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
@@ -60,7 +61,7 @@ const UI_LABELS = {
   population: msg('Population'),
   monthlyIncome: msg('Monthly Income'),
   monthlyExpenses: msg('Monthly Expenses'),
-  weeklyNet: msg('Weekly Net'),
+  netPerMonth: msg('Net per month'),
   exitToMainMenu: msg('Exit to Main Menu'),
   exitDialogTitle: msg('Exit to Main Menu'),
   exitDialogDescription: msg('Would you like to save your city before exiting?'),
@@ -311,6 +312,7 @@ export function MobileTopBar({
               variant="mobile"
               gangaHealth={gangaHealth}
               gangaHealthTarget={stats.gangaHealthTarget}
+              gangaLoad={stats.gangaLoad}
               active={gangaOverlayActive}
               onClick={onToggleGangaOverlay}
             />
@@ -342,7 +344,7 @@ export function MobileTopBar({
             }}
           >
             <span className="text-[9px] text-chrome-muted">{m(UI_LABELS.tax)}</span>
-            <span className="text-[10px] font-mono text-chrome-text">{taxRate}%</span>
+            <span className={`text-[10px] font-mono ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
           </button>
         </div>
 
@@ -353,12 +355,12 @@ export function MobileTopBar({
             <Slider
               value={[taxRate]}
               onValueChange={(value) => setTaxRate(value[0])}
-              min={0}
-              max={100}
+              min={TAX_RATE_MIN}
+              max={TAX_RATE_MAX}
               step={1}
               className="flex-1"
             />
-            <span className="font-mono text-chrome-text w-8 text-right shrink-0">{taxRate}%</span>
+            <span className={`font-mono w-8 text-right shrink-0 ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
             <button 
               onClick={() => setShowTaxSlider(false)} 
               className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-chrome-muted hover:text-chrome-text transition-colors shrink-0"
@@ -392,19 +394,21 @@ export function MobileTopBar({
                 <span className="text-chrome-muted">{m(UI_LABELS.jobs)} <span className="font-mono text-chrome-text">{formatPopulation(selectedTile.building.jobs)}</span></span>
               )}
 
-              {/* Utilities: green when served, red when missing */}
+              {/* Utilities: green when served, red when missing (not for river water) */}
+              {selectedTile.building.type !== 'water' && (<>
               <span className={selectedTile.building.powered ? 'text-green-800' : 'text-red-800'}>
                 {selectedTile.building.powered ? `✓ ${m(UI_LABELS.power)}` : m(UI_LABELS.noPower)}
               </span>
               <span className={selectedTile.building.watered ? 'text-green-800' : 'text-red-800'}>
                 {selectedTile.building.watered ? `✓ ${m(UI_LABELS.water)}` : m(UI_LABELS.noWater)}
               </span>
+              </>)}
 
               <span className="text-chrome-muted">{m(UI_LABELS.landValue)} <span className="font-mono text-chrome-text">{selectedTile.landValue}</span></span>
 
               {selectedTile.pollution > 0 && (
                 <span className={selectedTile.pollution > 50 ? 'text-red-800' : selectedTile.pollution > 25 ? 'text-amber-800' : 'text-green-800'}>
-                  {m(UI_LABELS.pollution)} <span className="font-mono">{Math.round(selectedTile.pollution)}%</span>
+                  {m(UI_LABELS.pollution)} <span className="font-mono">{Math.min(100, Math.round(selectedTile.pollution))}%</span>
                 </span>
               )}
             </div>
@@ -458,30 +462,35 @@ export function MobileTopBar({
                 icon={<HappyIcon size={16} />}
                 label={String(m(UI_LABELS.happiness))}
                 value={stats.happiness}
+                empty={stats.population <= 0}
                 color={stats.happiness >= 70 ? 'text-green-800' : stats.happiness >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<HealthIcon size={16} />}
                 label={String(m(UI_LABELS.health))}
                 value={stats.health}
+                empty={stats.population <= 0}
                 color={stats.health >= 70 ? 'text-green-800' : stats.health >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<EducationIcon size={16} />}
                 label={String(m(UI_LABELS.education))}
                 value={stats.education}
+                empty={stats.population <= 0}
                 color={stats.education >= 70 ? 'text-green-800' : stats.education >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<SafetyIcon size={16} />}
                 label={String(m(UI_LABELS.safety))}
                 value={stats.safety}
+                empty={stats.population <= 0}
                 color={stats.safety >= 70 ? 'text-green-800' : stats.safety >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
               <StatItem
                 icon={<EnvironmentIcon size={16} />}
                 label={String(m(UI_LABELS.environment))}
                 value={stats.environment}
+                empty={stats.population <= 0}
                 color={stats.environment >= 70 ? 'text-green-800' : stats.environment >= 40 ? 'text-amber-800' : 'text-red-800'}
               />
             </div>
@@ -500,16 +509,16 @@ export function MobileTopBar({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyIncome)}</span>
-                <span className="text-sm font-mono text-green-700">{formatINR(stats.income)}</span>
+                <span className="text-sm font-mono text-green-700">{formatINRPerMonth(stats.income)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-chrome-muted">{m(UI_LABELS.monthlyExpenses)}</span>
-                <span className="text-sm font-mono text-red-700">{formatINR(stats.expenses)}</span>
+                <span className="text-sm font-mono text-red-700">{formatINRPerMonth(stats.expenses)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-chrome-muted">{m(UI_LABELS.weeklyNet)}</span>
+                <span className="text-sm text-chrome-muted">{m(UI_LABELS.netPerMonth)}</span>
                 <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
+                  {formatINRPerMonth(stats.income - stats.expenses, true)}
                 </span>
               </div>
             </div>
@@ -520,19 +529,19 @@ export function MobileTopBar({
             <div className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-chrome-muted">{m(UI_LABELS.taxRate)}</span>
-                <span className="text-sm font-mono text-chrome-text">{taxRate}%</span>
+                <span className={`text-sm font-mono ${taxRate > TAX_RATE_WARN_ABOVE ? 'text-amber-700' : 'text-chrome-text'}`}>{taxRate}%</span>
               </div>
               <Slider
                 value={[taxRate]}
                 onValueChange={(value) => setTaxRate(value[0])}
-                min={0}
-                max={100}
+                min={TAX_RATE_MIN}
+                max={TAX_RATE_MAX}
                 step={1}
                 className="w-full"
               />
               <div className="flex justify-between mt-1 text-[10px] text-chrome-muted">
-                <span>0%</span>
-                <span>100%</span>
+                <span>{TAX_RATE_MIN}%</span>
+                <span>{TAX_RATE_MAX}%</span>
               </div>
             </div>
           </Card>
@@ -581,16 +590,19 @@ function StatItem({
   label,
   value,
   color,
+  empty = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   color: string;
+  /** Empty city: nothing to measure yet, show a dash. */
+  empty?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-chrome-muted">{icon}</span>
-      <span className={`text-sm font-mono font-semibold ${color}`}>{Math.round(value)}%</span>
+      <span className={`text-sm font-mono font-semibold ${empty ? 'text-chrome-muted' : color}`}>{empty ? '—' : `${Math.round(value)}%`}</span>
       <span className="text-[9px] text-chrome-muted">{label}</span>
     </div>
   );

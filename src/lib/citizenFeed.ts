@@ -110,7 +110,7 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
 
   // Power and water
   const cut = stats.power?.cut ?? [];
-  if (cut.length > 0) {
+  if (cut.length > 0 && (stats.power?.ratio ?? 1) < 1) {
     const b = getFeederBounds(cut[0], state.gridSize);
     add('power_cut', { x: b.centerX, y: b.centerY });
   } else if (stats.power && stats.power.ratio >= 1 && (c?.no_power ?? 0) === 0) {

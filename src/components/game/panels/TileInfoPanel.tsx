@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { msg, useMessages } from 'gt-next';
-import { Tile, BuildingType, TOOL_INFO, Tool } from '@/types/game';
+import { Tile, BuildingType, TOOL_INFO, Tool, BUILDING_STATS } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,14 @@ export function TileInfoPanel({
   const m = useMessages();
   const displayName = getBuildingDisplayName(tile.building.type, state.mapId);
   
+  // Which rows make sense for this tile: river water has no utilities, and a power plant has no residents
+  const isWater = tile.building.type === 'water';
+  const stats = BUILDING_STATS[tile.building.type];
+  const isZoned = tile.zone !== 'none';
+  const showLevel = isZoned || (stats ? stats.maxPop > 0 || stats.maxJobs > 0 : false);
+  const showPopulation = tile.building.population > 0 || (stats?.maxPop ?? 0) > 0 || tile.zone === 'residential';
+  const showJobs = tile.building.jobs > 0 || (stats?.maxJobs ?? 0) > 0 || tile.zone === 'commercial' || tile.zone === 'industrial';
+
   // Check if this is a service building
   const isServiceBuilding = SERVICE_BUILDING_TYPES.has(tile.building.type);
   
@@ -136,6 +144,7 @@ export function TileInfoPanel({
             {isInformal ? 'Informal settlement' : displayName ? m(displayName) : tile.building.type.replace(/_/g, ' ')}
           </span>
         </div>
+        {!isWater && isZoned && (
         <div className="flex justify-between">
           <span className="text-chrome-muted">Zone</span>
           <Badge variant={
@@ -150,18 +159,25 @@ export function TileInfoPanel({
             {tile.zone === 'none' ? 'Unzoned' : tile.zone}
           </Badge>
         </div>
-        <div className="flex justify-between">
-          <span className="text-chrome-muted">Level</span>
-          <span>{tile.building.level}/5</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-chrome-muted">Population</span>
-          <span>{formatPopulation(tile.building.population)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-chrome-muted">Jobs</span>
-          <span>{formatPopulation(tile.building.jobs)}</span>
-        </div>
+        )}
+        {!isWater && showLevel && (
+          <div className="flex justify-between">
+            <span className="text-chrome-muted">Level</span>
+            <span>{tile.building.level}/5</span>
+          </div>
+        )}
+        {!isWater && showPopulation && (
+          <div className="flex justify-between">
+            <span className="text-chrome-muted">Population</span>
+            <span>{formatPopulation(tile.building.population)}</span>
+          </div>
+        )}
+        {!isWater && showJobs && (
+          <div className="flex justify-between">
+            <span className="text-chrome-muted">Jobs</span>
+            <span>{formatPopulation(tile.building.jobs)}</span>
+          </div>
+        )}
         {isMixedUse(tile.building.type, tile.building.level) && tile.building.population > 0 && (
           <div className="text-xs text-chrome-muted">
             {m(msg('Shops: {jobs} jobs · Homes above: {residents} residents', {
@@ -171,6 +187,7 @@ export function TileInfoPanel({
           </div>
         )}
         
+        {!isWater && (<>
         <Separator />
         
         <div className="flex justify-between">
@@ -192,9 +209,10 @@ export function TileInfoPanel({
         <div className="flex justify-between">
           <span className="text-chrome-muted">Pollution</span>
           <span className={tile.pollution > 50 ? 'text-red-800' : tile.pollution > 25 ? 'text-amber-800' : 'text-green-800'}>
-            {Math.round(tile.pollution)}%
+            {Math.max(0, Math.min(100, Math.round(tile.pollution)))}%
           </span>
         </div>
+        </>)}
         {state.mapId === 'varanasi' && tile.building.type !== 'water' && (
           <div className="flex justify-between gap-2">
             <span className="text-chrome-muted">Floods in</span>
@@ -240,6 +258,7 @@ export function TileInfoPanel({
           </>
         )}
         
+        {!isWater && (<>
         <Separator />
         <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-2">Service Coverage</div>
         
@@ -261,6 +280,7 @@ export function TileInfoPanel({
             <span>{Math.round(services.education[y][x])}%</span>
           </div>
         </div>
+        </>)}
         
         {upgradeInfo && (
           <>

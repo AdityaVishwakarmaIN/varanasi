@@ -2,6 +2,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { GameState, Tile, Building, ZoneType, BuildingType } from '@/types/game';
 import { createDefaultFireState } from './fireConfig';
+import { clampEffectiveTaxRate, clampTaxRate } from './tax';
 
 // Short key mappings for maximum compression
 const ZONE_MAP: Record<ZoneType, number> = { 'none': 0, 'residential': 1, 'commercial': 2, 'industrial': 3 };
@@ -172,8 +173,8 @@ export function decompressGameState(compressed: string): Partial<GameState> | nu
       month: min.m,
       day: min.d,
       hour: min.h,
-      taxRate: min.t,
-      effectiveTaxRate: min.t,
+      taxRate: clampTaxRate(min.t),
+      effectiveTaxRate: clampEffectiveTaxRate(min.t),
       grid,
       adjacentCities,
       stats: {

@@ -43,8 +43,8 @@ const crises = (s: SystemTipState) => s.disastersEnabled !== false;
 const today = (s: SystemTipState) => absoluteDay(s.year, s.month, s.day);
 
 export const SYSTEM_TIP_CHECKS: Record<SystemTipId, (state: SystemTipState) => boolean> = {
-  first_power_cut: (s) => (s.stats.power?.cut.length ?? 0) > 0,
-  first_water_shortage: (s) => s.stats.population > 0 && !!s.stats.water && (s.stats.water.ratio < 1 || s.stats.water.cut.length > 0),
+  first_power_cut: (s) => (s.stats.power?.cut.length ?? 0) > 0 && (s.stats.power?.ratio ?? 1) < 1,
+  first_water_shortage: (s) => s.stats.population > 0 && !!s.stats.water && s.stats.water.ratio < 1,
   first_informal_settlement: (s) => hasBuilding(s, 'informal_housing'),
   monsoon_forecast: (s) =>
     crises(s) && s.mapId === 'varanasi' &&

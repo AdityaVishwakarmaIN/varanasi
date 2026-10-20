@@ -58,7 +58,7 @@ import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import { advanceFailureState, applyLoanRepayment, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
-import { POPULATION_DISPLAY_SCALE } from '@/lib/format';
+import { POPULATION_DISPLAY_SCALE, formatINR } from '@/lib/format';
 import {
   applyFloodToServices,
   getCityFloodMask,
@@ -89,6 +89,7 @@ import {
   POWER_CONFIG, WATER_CONFIG, calculatePowerSupply, calculatePowerDemand, calculateWaterSupply, calculateWaterDemand,
   supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
 } from '@/lib/utilities';
+import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
 import { getFeederBounds, getFeederIndex } from '@/lib/feederZones';
 import { applyFeederCuts } from '@/lib/utilityCuts';
 import { INFORMAL_CONFIG } from '@/lib/informal';
@@ -2391,6 +2392,8 @@ export function calculateTaxIncome(population: number, jobs: number, taxRate: nu
   return Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
 }
 
+const DEFICIT_NOTE_TITLE = 'Monthly budget is in the red';
+
 function calculateStats(
   grid: Tile[][],
   size: number,
@@ -2406,6 +2409,9 @@ function calculateStats(
   /** Extra demand multipliers on top of the season's, e.g. a heatwave (S4-T7). */
   extraDemand?: { power: number; water: number }
 ): Stats {
+  // Tax is capped at TAX_RATE_MAX, whatever the (possibly old or edited) state says
+  taxRate = clampTaxRate(taxRate);
+  effectiveTaxRate = clampEffectiveTaxRate(effectiveTaxRate);
   const seasonFx = season && seasonalEffectsEnabled ? SEASON_CONFIG[season] : undefined;
   const {
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
@@ -2489,19 +2495,25 @@ function calculateStats(
   const taxIncome = calculateTaxIncome(population - totals.informalPopulation, jobs - cutJobLoss, taxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
-  let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
+  let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'gangaLoad' | 'tourismIncome'> = {};
   let gangaRatingsInput: { health: number; catchmentPopulationShare: number } | undefined;
   let tourismIncome = 0;
   if (river && river.mapId === 'varanasi') {
     const inputs = gatherGangaInputs(grid, size, totals.stps);
-    const target = calculateGangaTargetHealth(inputs).targetHealth;
+    const gangaLoad = calculateGangaTargetHealth(inputs);
+    const target = gangaLoad.targetHealth;
     const floodMask = river.floodMask;
     const openGhats = floodMask ? totals.ghats.filter((g) => !floodMask[g.y * size + g.x]) : totals.ghats;
     const tourGhats = landmarkFx ? [...openGhats, ...landmarkFx.extraGhats] : openGhats;
     tourismIncome = Math.floor(
       calculateTourismIncome(grid, size, tourGhats, river.gangaHealth, seasonFx?.tourism ?? 1) + (landmarkFx?.tourismIncome ?? 0)
     );
-    gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
+    gangaStats = {
+      gangaHealth: river.gangaHealth,
+      gangaHealthTarget: target,
+      gangaLoad: { industrial: gangaLoad.industrialLoad, sewage: gangaLoad.sewageLoad, untreatedPopulation: inputs.untreatedPopulation },
+      tourismIncome,
+    };
     gangaRatingsInput = {
       health: river.gangaHealth,
       catchmentPopulationShare: population > 0 ? inputs.catchmentPopulation / population : 0,
@@ -2685,7 +2697,7 @@ function generateAdvisorMessages(
     messages.push({
       name: 'Finance Advisor',
       icon: 'cash',
-      messages: [`City is running a deficit of $${Math.abs(netIncome)}/month. Consider raising taxes or cutting services.`],
+      messages: [`City is running a deficit of ₹${Math.abs(netIncome)}/month. Consider raising taxes or cutting services.`],
       priority: netIncome < -500 ? 'critical' : 'high',
     });
   }
@@ -3391,11 +3403,12 @@ export function simulateTick(
   // Gradually move effectiveTaxRate toward taxRate
   // This creates a lagging effect so tax changes don't immediately impact demand
   // Rate of change: 3% of difference per tick, so large changes take ~50-80 ticks (~2-3 game days)
-  const taxRateDiff = state.taxRate - state.effectiveTaxRate;
-  const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
+  const taxRateNow = clampTaxRate(state.taxRate);
+  const taxRateDiff = taxRateNow - clampEffectiveTaxRate(state.effectiveTaxRate);
+  const newEffectiveTaxRate = clampEffectiveTaxRate(state.effectiveTaxRate) + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, riverContextWithFlood(state, floodMask), {
+  const newStats = calculateStats(newGrid, size, newBudget, taxRateNow, newEffectiveTaxRate, services, gridTotals, riverContextWithFlood(state, floodMask), {
     power: Array.from(powerCut).sort((a, b) => a - b),
     water: Array.from(waterCut).sort((a, b) => a - b),
   }, season, crisesOn ? getHeatwaveDemandMultipliers(state.heatwave, tickDay) : undefined);
@@ -3441,9 +3454,12 @@ export function simulateTick(
       newStats.gangaHealth = stepGangaHealth(newStats.gangaHealth, newStats.gangaHealthTarget, recovery);
     }
     // Weekly income/expense (deposit every 7 days at 1/4 monthly rate)
-    // Only deposit when day changes to a multiple of 7
+    // Only deposit when day changes to a multiple of 7. The 4th deposit (day 28) takes the rounding
+    // remainder, so a month's deposits add up exactly to the monthly net the UI shows.
     if (newDay % 7 === 0) {
-      newStats.money += Math.floor((newStats.income - newStats.expenses) / 4);
+      const net = newStats.income - newStats.expenses;
+      const weekly = Math.floor(net / 4);
+      newStats.money += newDay === 28 ? net - weekly * 3 : weekly;
     }
     // Informal settlements (S3-T9): daily formalisation, weekly spawns when housing is short
     if (informalSettlementsEnabled) {
@@ -3495,6 +3511,18 @@ export function simulateTick(
   if (newMonth > 12) {
     newMonth = 1;
     newYear++;
+  }
+
+  // Budget warning: once the monthly net is negative at a month change (and no such warning is still on screen)
+  if (newMonth !== state.month && newStats.income - newStats.expenses < 0 && !state.notifications.some((n) => n.title === DEFICIT_NOTE_TITLE)) {
+    informalNotifications.push({
+      id: `deficit-${newYear}-${newMonth}`,
+      title: DEFICIT_NOTE_TITLE,
+      description: `The city now spends ${formatINR(newStats.expenses - newStats.income)}/mo more than it earns. Raise taxes a little or trim a budget line.`,
+      icon: 'alert',
+      severity: 'warning',
+      timestamp: Date.now(),
+    });
   }
 
   // Failure states (S4-T11): once per in-game month, debt → emergency loan → bankruptcy, and exodus.

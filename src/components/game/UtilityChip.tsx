@@ -19,10 +19,19 @@ const KIND = {
   water: { label: 'Water', icon: WaterIcon, iconClass: 'text-sky-800', config: WATER_CONFIG, cutText: 'with dry taps' },
 } as const;
 
-/** Supply as a percentage of demand, capped so a huge surplus stays readable. */
+/** Above this a surplus is shown as ">200%": the exact figure means nothing to the player. */
+const SUPPLY_PERCENT_CAP = 200;
+
+/** Supply as a percentage of demand, capped at SUPPLY_PERCENT_CAP + 1 so a huge surplus stays readable. */
 export function getSupplyPercent(stats: UtilitySupplyStats): number {
   if (!(stats.demand > 0)) return 100;
-  return Math.min(999, Math.round((stats.supply / stats.demand) * 100));
+  return Math.max(0, Math.min(SUPPLY_PERCENT_CAP + 1, Math.round((stats.supply / stats.demand) * 100)));
+}
+
+/** "85%", or ">200%" for a big surplus. */
+export function getSupplyLabel(stats: UtilitySupplyStats): string {
+  const percent = getSupplyPercent(stats);
+  return percent > SUPPLY_PERCENT_CAP ? `>${SUPPLY_PERCENT_CAP}%` : `${percent}%`;
 }
 
 /** Whether a chip should be shown: desktop whenever there is demand, mobile only when supply is short. */
@@ -43,7 +52,7 @@ interface UtilityChipProps {
 /** Top-bar power / water chip (S3-T7/T8): supply as % of demand; amber below 100%, red below 80%. */
 export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityChipProps) {
   const { label, icon: Icon, iconClass, config, cutText } = KIND[kind];
-  const percent = getSupplyPercent(stats);
+  const percentLabel = getSupplyLabel(stats);
   const colorClass = STATUS_TEXT_CLASS[getSupplyStatus(stats.ratio, config)];
   const cutCount = stats.cut.length;
   const detail =
@@ -52,8 +61,8 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
       : 'Supply covers demand.';
   const tooltip = `${label}: ${formatIndianNumber(Math.round(stats.supply))} supply for ${formatIndianNumber(
     Math.round(stats.demand)
-  )} demand (${percent}%). ${detail} Click to see the ${label.toLowerCase()} overlay.`;
-  const ariaLabel = `${label} supply ${percent} percent. ${active ? 'Hide' : 'Show'} the ${label.toLowerCase()} overlay.`;
+  )} demand (${percentLabel}). ${detail} Click to see the ${label.toLowerCase()} overlay.`;
+  const ariaLabel = `${label} supply ${percentLabel.replace('%', ' percent')}. ${active ? 'Hide' : 'Show'} the ${label.toLowerCase()} overlay.`;
 
   if (variant === 'mobile') {
     return (
@@ -71,7 +80,7 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
           }`}
         >
           <Icon size={11} className={iconClass} />
-          <span className={`text-[10px] font-mono font-semibold tabular-nums ${colorClass}`}>{percent}%</span>
+          <span className={`text-[10px] font-mono font-semibold tabular-nums ${colorClass}`}>{percentLabel}</span>
         </span>
       </button>
     );
@@ -91,7 +100,7 @@ export function UtilityChip({ kind, stats, active, onClick, variant }: UtilityCh
         >
           <HudIconBadge tint={kind}><Icon size={16} /></HudIconBadge>
           <span className="flex min-w-0 flex-col items-start leading-none">
-            <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>{percent}%</span>
+            <span className={`text-[15px] font-mono font-semibold ${colorClass}`}>{percentLabel}</span>
             <span className="mt-1 max-w-full truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted max-[1439px]:tracking-[0.06em]">{label}</span>
           </span>
         </button>
