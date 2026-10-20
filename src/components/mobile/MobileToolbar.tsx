@@ -213,7 +213,7 @@ const CATEGORY_LABELS: Record<string, unknown> = {
   'TOOLS': msg('Tools'),
   'ZONES': msg('Zones'),
   'EXPAND_CITY': msg('Expand City'),
-  'ZONING': msg('Zoning'),
+  'ZONING': msg('Land tools'),
   'UTILITIES': msg('Utilities'),
   'SERVICES': msg('Services'),
   'PARKS': msg('Parks'),

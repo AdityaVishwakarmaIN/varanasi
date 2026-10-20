@@ -50,6 +50,7 @@ import { PausedIndicator } from '@/components/game/PausedIndicator';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
+import { formatINR } from '@/lib/format';
 import { CitizenFeed } from '@/components/game/CitizenFeed';
 import { OverlayLegendChip } from '@/components/game/OverlayLegendChip';
 import type { AdvisorNote } from '@/lib/advisors';
@@ -332,7 +333,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Retro Cheat Activated!'),
-          gt('Your accountants are confused but not complaining. You received $50,000!'),
+          gt('Your accountants are confused but not complaining. You received ₹50,000!'),
           'trophy'
         );
         clearTriggeredCheat();
@@ -342,7 +343,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Motherlode!'),
-          gt('Your treasury just got a lot heavier. You received $1,000,000!'),
+          gt('Your treasury just got a lot heavier. You received ₹50,000!'),
           'trophy'
         );
         clearTriggeredCheat();
@@ -376,7 +377,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
       const cargoName = CARGO_TYPE_NAMES[cargoType] || msg('cargo');
       addNotification(
         gt('Cargo Delivered'),
-        gt('A shipment of {cargoName} has arrived at the marina. +${cargoValue} trade revenue.', { cargoName: m(cargoName), cargoValue }),
+        gt('A shipment of {cargoName} has arrived at the marina. +{cargoValue} trade revenue.', { cargoName: m(cargoName), cargoValue: formatINR(cargoValue) }),
         'ship'
       );
     }

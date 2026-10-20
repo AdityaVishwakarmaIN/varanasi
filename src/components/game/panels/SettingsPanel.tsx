@@ -24,6 +24,8 @@ import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
 import { getShowProblemIcons, resetShownTips, setShowProblemIcons, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import { localizeExampleState } from '@/lib/names';
+import { DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -128,7 +130,7 @@ async function loadExampleState(
       alert(`Failed to load example state: ${response.status}`);
       return;
     }
-    const exampleState = await response.json();
+    const exampleState = localizeExampleState(await response.json());
     const success = loadState(JSON.stringify(exampleState));
     if (success) {
       setActivePanel('none');
@@ -146,6 +148,8 @@ async function loadExampleState(
 export function SettingsPanel() {
   const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity, addNotification } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
+  // Only the Varanasi art is offered; the other packs stay in the code but are hidden (unless one is already selected).
+  const visibleSpritePacks = availableSpritePacks.filter((p) => p.id === DEFAULT_SPRITE_PACK_ID || p.id === currentSpritePack.id);
   const showProblemIcons = useSyncExternalStore(subscribeFeedbackPrefs, getShowProblemIcons, () => true);
   const [tipsWereReset, setTipsWereReset] = useState(false);
   const m = useMessages();
@@ -474,11 +478,12 @@ export function SettingsPanel() {
               </Button>
             </div>
             
+            {visibleSpritePacks.length > 1 && (
             <div className="py-2">
               <Label>{m(UI_LABELS.spritePack)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
               <div className="grid grid-cols-1 gap-2">
-                {availableSpritePacks.map((pack) => (
+                {visibleSpritePacks.map((pack) => (
                   <button
                     key={pack.id}
                     onClick={() => setSpritePack(pack.id)}
@@ -500,7 +505,6 @@ export function SettingsPanel() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">{pack.name}</div>
-                      <div className="text-xs text-chrome-muted truncate">{pack.src}</div>
                     </div>
                     {currentSpritePack.id === pack.id && (
                       <div className="w-2 h-2 rounded-full bg-chrome-accent flex-shrink-0" />
@@ -509,6 +513,7 @@ export function SettingsPanel() {
                 ))}
               </div>
             </div>
+            )}
 
             <div className="py-2">
               <Label>{m(UI_LABELS.language)}</Label>

@@ -34,7 +34,7 @@ export function VinnieDialog({ open, onOpenChange }: VinnieDialogProps) {
     addMoney(10000);
     addNotification(
       'Integrity Bonus',
-      'You declined Vinnie\'s offer. A mysterious benefactor rewards your honesty with $10,000.',
+      'You declined Vinnie\'s offer. A mysterious benefactor rewards your honesty with ₹10,000.',
       'trophy'
     );
     onOpenChange(false);

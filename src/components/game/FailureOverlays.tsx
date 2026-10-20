@@ -55,6 +55,7 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
   const gt = useGT();
   const [autosaveMissing, setAutosaveMissing] = useState(false);
   const failure = state.failure;
+  const monthsToExodus = Math.max(0, FAILURE_CONFIG.exodusAfterMonths - (failure?.lowHappinessMonths ?? 0));
   const gameOver = state.gameOver;
 
   const inDebt = !gameOver && state.stats.money < 0;
@@ -64,9 +65,9 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
   if (inDebt && failure) {
     const toBankruptcy = monthsUntilBankruptcy(failure);
     const toLoan = monthsUntilLoanOffer(failure);
-    const parts = [gt('In debt for {months} months', { months: failure.monthsInDebt })];
-    if (toBankruptcy !== null) parts.push(gt('{months} months until bankruptcy', { months: toBankruptcy }));
-    else if (toLoan !== null && toLoan > 0) parts.push(gt('{months} months until an emergency loan is offered', { months: toLoan }));
+    const parts = [gt(failure.monthsInDebt === 1 ? 'In debt for {months} month' : 'In debt for {months} months', { months: failure.monthsInDebt })];
+    if (toBankruptcy !== null) parts.push(gt(toBankruptcy === 1 ? '{months} month until bankruptcy' : '{months} months until bankruptcy', { months: toBankruptcy }));
+    else if (toLoan !== null && toLoan > 0) parts.push(gt(toLoan === 1 ? '{months} month until an emergency loan is offered' : '{months} months until an emergency loan is offered', { months: toLoan }));
     debtDetail = parts.join(' · ');
   }
 
@@ -94,12 +95,12 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
               <div className="min-w-0">
                 {failure.exodusActive && <p className="text-sm font-semibold">{m(LABELS.peopleLeaving)}</p>}
                 <p className={cn(failure.exodusActive ? 'text-xs opacity-80' : 'text-sm font-medium')}>
-                  {gt('Happiness has been critical for {months} months', { months: failure.lowHappinessMonths })}
+                  {gt(failure.lowHappinessMonths === 1 ? 'Happiness has been critical for {months} month' : 'Happiness has been critical for {months} months', { months: failure.lowHappinessMonths })}
                 </p>
                 {!failure.exodusActive && (
                   <p className="text-xs opacity-80">
-                    {gt('{months} months until people start leaving', {
-                      months: Math.max(0, FAILURE_CONFIG.exodusAfterMonths - failure.lowHappinessMonths),
+                    {gt(monthsToExodus === 1 ? '{months} month until people start leaving' : '{months} months until people start leaving', {
+                      months: monthsToExodus,
                     })}
                   </p>
                 )}

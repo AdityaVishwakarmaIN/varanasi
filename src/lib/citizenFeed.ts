@@ -176,9 +176,17 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
   return out;
 }
 
-/** Neighbourhood for a message: the mohalla of the place, a random mohalla on Varanasi, or the city name. */
+/** Stored in a feed line instead of the city name, so the line shows the city's current name (it can be renamed). */
+export const FEED_CITY_TOKEN = '{city}';
+
+/** Replaces FEED_CITY_TOKEN in a stored feed line with the city's current name. */
+export function resolveFeedText(text: string, cityName: string | undefined): string {
+  return text.split(FEED_CITY_TOKEN).join(cityName || 'the city');
+}
+
+/** Neighbourhood for a message: the mohalla of the place, a random mohalla on Varanasi, or the city name (as a token). */
 export function getFeedArea(state: Pick<GameState, 'gridSize' | 'mapId' | 'cityName'>, rng: Rng, at?: { x?: number; y?: number }): string {
-  if (state.mapId !== 'varanasi') return state.cityName || 'the city';
+  if (state.mapId !== 'varanasi') return FEED_CITY_TOKEN;
   if (at && at.x !== undefined && at.y !== undefined) return getInformalAreaName(at.x, at.y, state.gridSize, state.mapId);
   return VARANASI_MOHALLAS[Math.min(VARANASI_MOHALLAS.length - 1, Math.floor(rng() * VARANASI_MOHALLAS.length))].name;
 }
