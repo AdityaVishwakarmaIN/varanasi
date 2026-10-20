@@ -432,14 +432,14 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
               {setOverlayMode && (
                 <div className="flex flex-col gap-1.5">
                   <span className="hud-label shrink-0">{m(UI_LABELS.viewOverlays)}</span>
-                  <div className="flex min-w-0 flex-1 flex-wrap gap-1.5" role="group" aria-label={String(m(UI_LABELS.viewOverlays))}>
+                  <div className="grid min-w-0 grid-cols-5 gap-1" role="group" aria-label={String(m(UI_LABELS.viewOverlays))}>
                     {OVERLAY_BUTTONS.filter(([mode]) => state.mapId === 'varanasi' || (mode !== 'ganga' && mode !== 'flood')).map(([mode, label, activeClass]) => (
                       <Button
                         key={mode}
                         variant="ghost"
                         size="sm"
                         aria-pressed={overlayMode === mode}
-                        className={`press h-9 shrink-0 px-3 text-xs rounded-none focus-visible:ring-chrome-text ${overlayMode === mode ? activeClass : 'hud-well text-chrome-text'}`}
+                        className={`press h-9 min-w-0 px-1 text-[11px] rounded-none focus-visible:ring-chrome-text ${overlayMode === mode ? activeClass : 'hud-well text-chrome-text'}`}
                         onClick={() => setOverlayMode(mode)}
                       >
                         {m(label)}

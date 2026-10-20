@@ -628,12 +628,12 @@ function GroupChip({
       >
         <span
           className={cn(
-            'hud-well flex h-7 w-full min-w-0 flex-col justify-center overflow-hidden rounded-none px-1.5 text-left leading-none',
+            'hud-well flex h-7 w-full min-w-0 flex-col justify-center overflow-hidden rounded-none px-1 text-left leading-none',
             LEVEL_FRAME[summary.level],
             open && '!border-chrome-accent'
           )}
         >
-          <span className={cn('truncate text-[10px] font-semibold uppercase tracking-[0.04em]', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
+          <span className={cn('truncate text-[10px] font-semibold uppercase tracking-normal', alert ? LEVEL_TEXT[summary.level] : 'text-chrome-muted')}>
             {caption}
           </span>
           <span className={cn('mt-[2px] truncate font-mono text-[12px] font-semibold tabular-nums', VALUE_TEXT[summary.level])}>
