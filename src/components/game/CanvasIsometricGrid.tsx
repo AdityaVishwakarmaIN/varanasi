@@ -2863,10 +2863,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
+  // The tile a placement just succeeded on (mouse-up or tap). The hovered tile is now built, so the
+  // dry run would say "Already built here" in red right after a success: show no verdict instead.
+  const [justPlaced, setJustPlaced] = useState<{ x: number; y: number; tool: Tool } | null>(null);
+  const hoveredTileRef = useRef(hoveredTile);
+  // Did the preview say "ok" when the current press started? (A failed press must keep its reason.)
+  const pressWasValidRef = useRef(false);
   const placementPreview = useMemo(() => {
-    if (isMobile || isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
+    if (isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
+    if (justPlaced && justPlaced.tool === selectedTool && justPlaced.x === hoveredTile.x && justPlaced.y === hoveredTile.y) return null;
     return getPlacementCheck(state, selectedTool, hoveredTile.x, hoveredTile.y);
-  }, [isMobile, isDragging, hoveredTile, selectedTool, state]);
+  }, [isDragging, hoveredTile, selectedTool, state, justPlaced]);
+  const placementPreviewRef = useRef(placementPreview);
+  useEffect(() => {
+    hoveredTileRef.current = hoveredTile;
+    placementPreviewRef.current = placementPreview;
+  }, [hoveredTile, placementPreview]);
 
   // PERF: Lightweight hover/selection overlay - renders ONLY tile highlights
   // This runs frequently (on mouse move) but is extremely fast since it only draws simple shapes
@@ -3587,12 +3599,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           return;
         } else if (showsDragGrid) {
           panCandidateRef.current = null;
+          pressWasValidRef.current = !!placementPreviewRef.current?.ok;
           // Start drag rectangle selection for zoning tools
           setDragStartTile({ x: gridX, y: gridY });
           setDragEndTile({ x: gridX, y: gridY });
           setIsDragging(true);
         } else if (supportsDragPlace) {
           panCandidateRef.current = null;
+          pressWasValidRef.current = !!placementPreviewRef.current?.ok;
           // For roads, bulldoze, and other tools, start drag-to-place
           setDragStartTile({ x: gridX, y: gridY });
           setDragEndTile({ x: gridX, y: gridY });
@@ -3751,6 +3765,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
         // Only update hovered tile if it actually changed to avoid unnecessary re-renders
         setHoveredTile(prev => (prev?.x === gridX && prev?.y === gridY) ? prev : { x: gridX, y: gridY });
+        setJustPlaced(prev => (prev && (prev.x !== gridX || prev.y !== gridY)) ? null : prev);
         
         // Check for fire or crime incidents at this tile for tooltip display
         const tile = grid[gridY]?.[gridX];
@@ -3910,6 +3925,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }, 50);
     }
     
+    // The press placed something (valid at the start, or a drag over several tiles): the tile under
+    // the cursor is now built, so do not flag it red as "Already built here".
+    const hovered = hoveredTileRef.current;
+    if (isDragging && selectedTool !== 'select' && hovered) {
+      const draggedAcross = !!dragStartTile && !!dragEndTile && (dragStartTile.x !== dragEndTile.x || dragStartTile.y !== dragEndTile.y);
+      setJustPlaced(pressWasValidRef.current || draggedAcross ? { x: hovered.x, y: hovered.y, tool: selectedTool } : null);
+    }
+
     // Clear drag state
     setIsDragging(false);
     setDragStartTile(null);
@@ -4044,15 +4067,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return;
     }
     const check = getPlacementCheck(state, selectedTool, tile.x, tile.y);
+    // The ghost follows the tap; a refused tap keeps its red ghost and reason, a placed one shows none.
+    setHoveredTile((prev) => (prev?.x === tile.x && prev?.y === tile.y ? prev : tile));
     if (check.ok && needsTapConfirm(check.cost, state.stats.money)) {
+      setJustPlaced(null);
       setPendingPlacement({ x: tile.x, y: tile.y, tool: selectedTool, cost: check.cost });
       return;
     }
+    setJustPlaced(check.ok ? { x: tile.x, y: tile.y, tool: selectedTool } : null);
     placeAtTile(tile.x, tile.y);
   }, [activePendingPlacement, clientToTile, selectedTool, findBuildingOrigin, setSelectedTile, state, placeAtTile]);
 
   const confirmPendingPlacement = useCallback(() => {
-    if (activePendingPlacement) placeAtTile(activePendingPlacement.x, activePendingPlacement.y);
+    if (activePendingPlacement) {
+      setJustPlaced({ x: activePendingPlacement.x, y: activePendingPlacement.y, tool: activePendingPlacement.tool });
+      placeAtTile(activePendingPlacement.x, activePendingPlacement.y);
+    }
     setPendingPlacement(null);
   }, [activePendingPlacement, placeAtTile]);
 
@@ -4420,7 +4450,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
         return (
-          <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
+          <div data-testid="placement-label" className={`absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] text-center px-4 py-2 rounded-md text-sm z-10 ${
             isPlacementInvalid
               ? 'border bg-red-700 border-red-900 text-white'
               : 'hud-panel text-chrome-text'
@@ -4452,8 +4482,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 {placementPreview?.warning && (
                   <span className="text-amber-700">{' - '}{m(placementPreview.warning)}</span>
                 )}
-                {showsDragGrid && gt(' - Drag to zone area')}
-                {supportsDragPlace && !showsDragGrid && gt(' - Drag to place')}
+                {showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to zone' : ' - Drag to zone area')}
+                {supportsDragPlace && !showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to place' : ' - Drag to place')}
               </>
             )}
           </div>
