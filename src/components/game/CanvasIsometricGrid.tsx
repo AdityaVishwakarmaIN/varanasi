@@ -2495,7 +2495,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           const isBuilding = tile.building.type !== 'grass' && tile.building.type !== 'empty';
           if (isBuilding) {
             const size = getBuildingSize(tile.building.type);
-            const depth = x + y + size.width + size.height - 2;
+            // Sort by footprint centre, not front corner: a front-corner key paints 3x3/4x4 lots over the
+            // smaller neighbours beside their front edges (footprints are square, so this stays integral)
+            const depth = x + y + (size.width + size.height - 2) / 2;
             buildingQueue.push({ screenX, screenY, tile, depth });
           }
         }
@@ -2783,10 +2785,23 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Code-drawn Indian trees: one cached canvas per (variant, resolution tier)
         const treeArtTilePx = pickArtTilePx(TILE_WIDTH * zoom * getRenderDpr());
         
+        // Suspension towers and cables are interleaved by depth: above buildings behind the bridge,
+        // below buildings in front of it
+        let bridgeCursor = 0;
+        const drawBridgeTopsTo = (maxDepth: number) => {
+          for (; bridgeCursor < bridgeQueue.length && bridgeQueue[bridgeCursor].depth <= maxDepth; bridgeCursor++) {
+            const b = bridgeQueue[bridgeCursor];
+            if (b.tile.building.bridgeType !== 'suspension') continue;
+            drawSuspensionBridgeTowers(buildingsCtx, b.screenX, b.screenY, b.tile.building, zoom);
+            drawSuspensionBridgeOverlay(buildingsCtx, b.screenX, b.screenY, b.tile.building, zoom);
+          }
+        };
+
         // Draw buildings on the buildings canvas
         // PERF: Use for loop instead of forEach
         for (let i = 0; i < buildingQueue.length; i++) {
           const { tile, screenX, screenY, depth } = buildingQueue[i];
+          drawBridgeTopsTo(depth - 1);
           // S1-T7: with tree sway off (quality preset) trees are drawn here once, like other sprites
           if (tile.building.type === 'tree' && treeSway) {
             try {
@@ -2835,22 +2850,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
         }
 
-        // Draw suspension bridge towers ON TOP of buildings
-        // These need to appear above nearby buildings for proper visual layering
-        for (let i = 0; i < bridgeQueue.length; i++) {
-          const { tile, screenX, screenY } = bridgeQueue[i];
-          if (tile.building.bridgeType === 'suspension') {
-            drawSuspensionBridgeTowers(buildingsCtx, screenX, screenY, tile.building, zoom);
-          }
-        }
-        
-        // Draw suspension bridge cables ON TOP of towers
-        for (let i = 0; i < bridgeQueue.length; i++) {
-          const { tile, screenX, screenY } = bridgeQueue[i];
-          if (tile.building.bridgeType === 'suspension') {
-            drawSuspensionBridgeOverlay(buildingsCtx, screenX, screenY, tile.building, zoom);
-          }
-        }
+        drawBridgeTopsTo(Infinity);
         
         // NOTE: Recreation pedestrians are now drawn in the animation loop on the air canvas
         // so their animations are smooth (the buildings canvas only updates when grid changes)
@@ -3088,21 +3088,26 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         gpuMain.redrawLayer('buildings', () => {
           gpuMain.save();
           applyWorld(gpuMain);
+          // Suspension towers and cables interleaved by depth, as on the Canvas2D path
+          let bridgeCursor = 0;
+          const drawBridgeTopsTo = (maxDepth: number) => {
+            for (; bridgeCursor < bridgeQueue.length && bridgeQueue[bridgeCursor].depth <= maxDepth; bridgeCursor++) {
+              const b = bridgeQueue[bridgeCursor];
+              if (b.tile.building.bridgeType !== 'suspension') continue;
+              drawSuspensionBridgeTowers(gpuMain, b.screenX, b.screenY, b.tile.building, zoom);
+              drawSuspensionBridgeOverlay(gpuMain, b.screenX, b.screenY, b.tile.building, zoom);
+            }
+          };
           for (let i = 0; i < buildingQueue.length; i++) {
-            const { tile, screenX, screenY } = buildingQueue[i];
+            const { tile, screenX, screenY, depth } = buildingQueue[i];
+            drawBridgeTopsTo(depth - 1);
             if (tile.building.type === 'tree' && treeSway) {
               if (tile.building.onFire) drawTileFireEffect(gpuMain, screenX, screenY);
               continue;
             }
             drawBuilding(gpuMain, screenX, screenY, tile);
           }
-          for (let i = 0; i < bridgeQueue.length; i++) {
-            const { tile, screenX, screenY } = bridgeQueue[i];
-            if (tile.building.bridgeType === 'suspension') {
-              drawSuspensionBridgeTowers(gpuMain, screenX, screenY, tile.building, zoom);
-              drawSuspensionBridgeOverlay(gpuMain, screenX, screenY, tile.building, zoom);
-            }
-          }
+          drawBridgeTopsTo(Infinity);
           for (let i = 0; i < overlayQueue.length; i++) {
             const { tile, screenX, screenY } = overlayQueue[i];
             const coverage = {
