@@ -1063,14 +1063,40 @@ export function createEffectsSystems(
   };
 
   // Draw clouds from the shared sprite sheet instead of generating puffs at draw time.
-  // #1 perf: reusable offscreen layer so clouds are blurred ONCE per frame (not per sprite).
-  // PERF: the full-viewport blur was still the most expensive thing on screen (it runs when the
-  // ambient canvas is flushed, every frame, ~20-30 ms in software compositing). Clouds drift a few
-  // world px per second, so the blurred result is cached and only re-rendered every
-  // CLOUD_CACHE_REFRESH_MS (or on zoom / size / dpr change). Between refreshes the cached image is
-  // blitted, shifted by the camera pan since the refresh (clouds live in world space).
-  let cloudBlurLayer: OffscreenCanvas | null = null;
+  // PERF: clouds drift a few world px per second, so they are drawn into a cache that is only
+  // re-rendered every CLOUD_CACHE_REFRESH_MS (or on zoom / size / dpr change). Between refreshes the
+  // cached image is blitted, shifted by the camera pan since the refresh (clouds live in world space).
   let cloudCache: OffscreenCanvas | null = null;
+  // PERF: blur the sprite sheet once at load instead of blurring the whole viewport on every refresh
+  // (~10.7 -> ~5.7 ms per refresh). Each 3x3 cell is blurred on its own so neighbours don't bleed in;
+  // sheet px ~= 1.6x world px at scale 1, so the baked radius roughly matches the old world-space blur.
+  let bakedCloudSheet: OffscreenCanvas | null = null;
+  let bakedFrom: CanvasImageSource | null = null;
+  const getBakedCloudSheet = (src: HTMLImageElement | ImageBitmap | HTMLCanvasElement): CanvasImageSource => {
+    if (bakedCloudSheet && bakedFrom === src) return bakedCloudSheet;
+    const w = (src as HTMLImageElement).naturalWidth || src.width;
+    const h = (src as HTMLImageElement).naturalHeight || src.height;
+    if (!w || !h) return src;
+    const baked = new OffscreenCanvas(w, h);
+    const bctx = baked.getContext('2d');
+    if (!bctx) return src;
+    const cells = 3;
+    const cw = w / cells, ch = h / cells;
+    bctx.filter = `blur(${CLOUD_SPRITE_BLUR_PX * 1.6 * (w / 960)}px)`;
+    for (let r = 0; r < cells; r++) {
+      for (let c = 0; c < cells; c++) {
+        bctx.save();
+        bctx.beginPath();
+        bctx.rect(c * cw, r * ch, cw, ch);
+        bctx.clip();
+        bctx.drawImage(src, c * cw, r * ch, cw, ch, c * cw, r * ch, cw, ch);
+        bctx.restore();
+      }
+    }
+    bakedCloudSheet = baked;
+    bakedFrom = src;
+    return baked;
+  };
   const cloudCacheState = { at: -Infinity, offsetX: 0, offsetY: 0, zoom: 0, dpr: 0, empty: true };
   const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
@@ -1117,25 +1143,21 @@ export function createEffectsSystems(
       const viewRight = viewWidth - currentOffset.x / currentZoom + cloudDrawPadding;
       const viewBottom = viewHeight - currentOffset.y / currentZoom + cloudDrawPadding;
     
-      // #1 perf: render clouds unblurred onto a reusable offscreen layer (same world transform),
-      // then composite that whole layer with a SINGLE blur. Previously each of up to ~36x3 clouds
-      // was drawn with ctx.filter=blur active (one expensive blurred drawImage per cloud per frame).
-      if (!cloudBlurLayer || cloudBlurLayer.width !== canvas.width || cloudBlurLayer.height !== canvas.height) {
-        cloudBlurLayer = new OffscreenCanvas(Math.max(1, canvas.width), Math.max(1, canvas.height));
-      }
+      // Clouds come pre-blurred from the baked sheet, so they draw straight into the cache: no extra
+      // layer and no per-refresh viewport blur.
       if (sizeChanged) {
         cloudCache = new OffscreenCanvas(Math.max(1, canvas.width), Math.max(1, canvas.height));
       }
-      const layerCtx = cloudBlurLayer.getContext('2d');
-      const cacheCtx = cloudCache ? cloudCache.getContext('2d') : null;
-      if (layerCtx && cacheCtx) {
+      const layerCtx = cloudCache ? cloudCache.getContext('2d') : null;
+      if (layerCtx) {
         layerCtx.setTransform(1, 0, 0, 1, 0, 0);
-        layerCtx.clearRect(0, 0, cloudBlurLayer.width, cloudBlurLayer.height);
+        layerCtx.clearRect(0, 0, cloudCache!.width, cloudCache!.height);
         layerCtx.imageSmoothingEnabled = true;
         // Match the world-space transform used for the clouds above.
         layerCtx.scale(dpr * currentZoom, dpr * currentZoom);
         layerCtx.translate(currentOffset.x / currentZoom, currentOffset.y / currentZoom);
 
+        const bakedSheet = getBakedCloudSheet(cloudSpriteSheet as HTMLImageElement);
         let drawn = 0;
         for (let layer = 0; layer < CLOUD_LAYER_SPEEDS.length; layer++) {
           for (const cloud of cloudsRef.current) {
@@ -1153,7 +1175,7 @@ export function createEffectsSystems(
 
             layerCtx.globalAlpha = finalOpacity;
             layerCtx.drawImage(
-              cloudSpriteSheet,
+              bakedSheet,
               sprite.sx,
               sprite.sy,
               sprite.sw,
@@ -1167,16 +1189,7 @@ export function createEffectsSystems(
           }
         }
 
-        // Composite the cloud layer in device-pixel space with a single blur. The blur radius is
-        // scaled by dpr*zoom so the on-screen softness matches the previous world-space blur(2.5px).
-        cacheCtx.setTransform(1, 0, 0, 1, 0, 0);
-        cacheCtx.clearRect(0, 0, cloudCache!.width, cloudCache!.height);
-        if (drawn > 0) {
-          cacheCtx.filter = `blur(${CLOUD_SPRITE_BLUR_PX * dpr * currentZoom}px)`;
-          cacheCtx.globalAlpha = 1;
-          cacheCtx.drawImage(cloudBlurLayer, 0, 0);
-          cacheCtx.filter = 'none';
-        }
+        layerCtx.globalAlpha = 1;
         cloudCacheState.at = now;
         cloudCacheState.offsetX = currentOffset.x;
         cloudCacheState.offsetY = currentOffset.y;

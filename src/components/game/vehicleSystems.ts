@@ -32,9 +32,11 @@ import {
 } from './pedestrianSystem';
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
 import { FESTIVAL_CROWD_CONFIG } from '@/lib/festivals';
-import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
+import { TRAFFIC_CONFIG, VEHICLE_MIX, getFollowGap, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
 import { getSeason, getVehicleSpeedMultiplier as getSeasonVehicleSpeed, type SimWeather } from '@/lib/seasons';
 import { drawVehicleBody } from './drawVehicleKinds';
+import { setVehicleTransform } from './vehicleTransform';
+import { CongestionMap } from './trafficModel';
 import { COW_CONFIG, getMaxCows } from '@/lib/trafficConfig';
 import { drawCow, getCowSlowdown, getStandingCowTiles, spawnCow, stepCow, type Cow } from './cowSystem';
 import type { MapId } from '@/games/isocity/maps/varanasi';
@@ -1129,6 +1131,8 @@ export function createVehicleSystems(
     cowsRef.current = cows;
   };
 
+  const congestion = new CongestionMap();
+  let congestionCounts = new Uint16Array(0);
   const updateCars = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
@@ -1200,6 +1204,12 @@ export function createVehicleSystems(
       if (!carsByTile.has(key)) carsByTile.set(key, []);
       carsByTile.get(key)!.push(car);
     }
+    // Per-tile jam level (smoothed) so wandering cars prefer free exits over jammed ones.
+    const tileCount = currentGridSize * currentGridSize;
+    if (congestionCounts.length !== tileCount) congestionCounts = new Uint16Array(tileCount);
+    else congestionCounts.fill(0);
+    for (const [key, list] of carsByTile) congestionCounts[key] = list.length;
+    congestion.update(congestionCounts, delta * speedMultiplier);
     
     const updatedCars: Car[] = [];
     for (const car of [...carsRef.current]) {
@@ -1297,7 +1307,7 @@ export function createVehicleSystems(
           // Same direction (same lane) and ahead of us
           if (other.direction === car.direction && other.progress > car.progress) {
             const gap = other.progress - car.progress;
-            if (gap < 0.25 && !other.overtaking) {
+            if (gap < getFollowGap(car.kind, other.kind) && !other.overtaking) {
               shouldStop = true;
               blockedByVehicle = true;
               break;
@@ -1373,7 +1383,7 @@ export function createVehicleSystems(
         }
         
         // Pick next direction
-        const nextDirection = pickNextDirection(car.direction, currentGrid, currentGridSize, car.tileX, car.tileY);
+        const nextDirection = pickNextDirection(car.direction, currentGrid, currentGridSize, car.tileX, car.tileY, congestion.level);
         if (nextDirection) {
           if (nextDirection !== car.direction) {
             const baseLaneOffset = 4 + Math.random() * 2;
@@ -1731,13 +1741,8 @@ export function createVehicleSystems(
         return;
       }
 
-      ctx.save();
-      ctx.translate(carX, carY);
-      ctx.rotate(meta.angle);
-
+      setVehicleTransform(ctx, carX, carY, Math.cos(meta.angle), Math.sin(meta.angle), dpr * currentZoom, dpr * currentOffset.x, dpr * currentOffset.y);
       drawVehicleBody(ctx, car, detailed);
-      
-      ctx.restore();
     });
 
     ctx.restore();
