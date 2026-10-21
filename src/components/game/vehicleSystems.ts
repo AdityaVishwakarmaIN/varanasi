@@ -1228,6 +1228,11 @@ export function createVehicleSystems(
   };
 
   const updateCars = (delta: number) => {
+    // The siren sets are module-scoped; with no emergency vehicle they must not carry ids over (e.g. after a load)
+    if (emergencyVehiclesRef.current.length === 0 && (yieldingCarIds.size > 0 || kerbCarIds.size > 0)) {
+      yieldingCarIds.clear();
+      kerbCarIds.clear();
+    }
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     // Clear cars if zoomed out too far (use mobile threshold on mobile for better perf)

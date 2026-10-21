@@ -111,6 +111,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, buttonHeight: 0, openUpward: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
+  const bridgeRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const m = useMessages();
@@ -196,14 +197,33 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
     }, 100);
   }, [clearCloseTimeout]);
   
-  // Place the flyout from its real height: keep it below the TopBar and inside the viewport.
+  // Place the flyout from its real height: keep it below the TopBar and inside the viewport,
+  // and stretch the hover bridge so it spans both the button and the flyout.
   useLayoutEffect(() => {
     const el = submenuRef.current;
     if (!isOpen || !el) return;
-    const h = el.offsetHeight;
-    const wanted = menuPosition.openUpward ? menuPosition.top - h : menuPosition.top;
-    const maxTop = window.innerHeight - h - FLYOUT_EDGE;
-    el.style.top = `${Math.max(FLYOUT_TOP_INSET, Math.min(wanted, maxTop))}px`;
+    const place = () => {
+      const h = el.offsetHeight;
+      const wanted = menuPosition.openUpward ? menuPosition.top - h : menuPosition.top;
+      const maxTop = window.innerHeight - h - FLYOUT_EDGE;
+      const top = Math.max(FLYOUT_TOP_INSET, Math.min(wanted, maxTop));
+      el.style.top = `${top}px`;
+      const bridge = bridgeRef.current;
+      if (bridge) {
+        const buttonTop = menuPosition.openUpward ? menuPosition.top - menuPosition.buttonHeight : menuPosition.top;
+        const bridgeTop = Math.min(buttonTop, top);
+        bridge.style.top = `${bridgeTop}px`;
+        bridge.style.height = `${Math.max(buttonTop + menuPosition.buttonHeight, top + h) - bridgeTop}px`;
+      }
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    window.addEventListener('resize', place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', place);
+    };
   }, [isOpen, menuPosition]);
 
   // Esc closes the open flyout
@@ -253,13 +273,15 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
       {/* Invisible bridge/safe-zone between button and submenu for triangle rule */}
       {isOpen && createPortal(
         <div
+          ref={bridgeRef}
           className="fixed"
           style={{
+            // Top and height are set in the layout effect to span the button and the flyout.
             top: `${menuPosition.top}px`,
             left: `${menuPosition.left - SUBMENU_GAP}px`,
             width: `${SUBMENU_GAP + 8}px`, // Overlap slightly with submenu
             height: `${Math.max(menuPosition.buttonHeight, 200)}px`, // Tall enough to cover path
-            zIndex: 9998,
+            zIndex: 44, // above the z-40 sidebar and TopBar, below z-50 dialogs
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
@@ -273,7 +295,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            zIndex: 9999,
+            zIndex: 45,
             // Final top is set in the layout effect, once the real height is known.
             top: `${menuPosition.openUpward ? menuPosition.top - SUBMENU_MAX_HEIGHT : menuPosition.top}px`,
             left: `${menuPosition.left}px`,
