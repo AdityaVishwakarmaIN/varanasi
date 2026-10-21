@@ -41,6 +41,7 @@ import { drawVehicleBody } from './drawVehicleKinds';
 import { setVehicleTransform } from './vehicleTransform';
 import { CongestionMap } from './trafficModel';
 import { COW_CONFIG, getMaxCows } from '@/lib/trafficConfig';
+import { FIRE_CROWD_CONFIG, getWatchSeconds, type FirePoint } from '@/lib/fireCrowd';
 import { drawCow, getCowSlowdown, getStandingCowTiles, spawnCow, stepCow, type Cow } from './cowSystem';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
@@ -1653,6 +1654,8 @@ export function createVehicleSystems(
     busesRef.current = updatedBuses;
   };
 
+  let onlookerFireTimer = 0;
+  let onlookerFires: FirePoint[] = [];
   const updatePedestrians = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
@@ -1727,9 +1730,26 @@ export function createVehicleSystems(
     const trafficTime = trafficLightTimerRef.current;
     const lightState = getTrafficLightState(trafficTime);
     
+    // Onlookers (arena CHAOS): a cached list of fires, refreshed every few seconds
+    onlookerFireTimer -= delta;
+    if (onlookerFireTimer <= 0) {
+      onlookerFireTimer = FIRE_CROWD_CONFIG.refreshSeconds;
+      onlookerFires = findFiresCallback();
+    }
+    const watching = onlookerFires.length > 0 && currentSpeed > 0;
+
     for (let i = 0; i < allPedestrians.length; i++) {
       const ped = allPedestrians[i];
-      
+
+      if (watching && ped.state === 'walking' && ((ped.id + Math.floor(ped.age * 4)) & 7) === 0) {
+        const secs = getWatchSeconds(onlookerFires, ped.tileX, ped.tileY, Math.random(), Math.random());
+        if (secs > 0) {
+          ped.state = 'idle';
+          ped.activityDuration = secs;
+          ped.activityProgress = 0;
+        }
+      }
+
       // Use the new state machine for pedestrian updates
       const alive = updatePedestrianState(
         ped,
