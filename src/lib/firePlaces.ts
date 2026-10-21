@@ -22,8 +22,15 @@ export function getNeighbourhoodName(x: number, y: number, gridSize: number): st
   return best.name;
 }
 
-function titleCase(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+/** "factory_small" -> "a small factory", "fire_station" -> "a fire station". */
+function plainLabel(type: string): string {
+  const words = type.split('_');
+  const size = words[words.length - 1];
+  if (words.length > 1 && (size === 'small' || size === 'medium' || size === 'large')) {
+    words.unshift(words.pop()!);
+  }
+  const label = words.join(' ');
+  return `${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}`;
 }
 
 /** "<building> in <neighbourhood>" for a tile, using the building as it stood (pass the type that burned). */
@@ -36,6 +43,6 @@ export function describeFirePlace(
   buildingType?: string
 ): string {
   const type = buildingType ?? grid[y]?.[x]?.building.type ?? 'building';
-  const name = getBuildingDisplayName(type, mapId as never) ?? titleCase(type);
+  const name = getBuildingDisplayName(type, mapId as never) ?? plainLabel(type);
   return `${name} in ${getNeighbourhoodName(x, y, gridSize)}`;
 }
