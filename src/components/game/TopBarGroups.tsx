@@ -654,7 +654,7 @@ function GroupChip({
     >
       {/* Status stripe: the same colour as the number, so the state reads before the digits do. */}
       <span className={cn('absolute inset-y-0 left-0 w-1', LEVEL_BAR[summary.level])} aria-hidden />
-      <span className="shrink-0 text-chrome-muted"><GroupIcon id={id} size={16} /></span>
+      <span className="shrink-0 text-chrome-muted max-[1279px]:hidden"><GroupIcon id={id} size={16} /></span>
       <span className="flex min-w-0 flex-col leading-none">
         <span className={cn('truncate font-mono text-[15px] font-semibold tabular-nums', VALUE_TEXT[summary.level])}>
           {summary.value}
@@ -699,7 +699,7 @@ export function TopBarGroups({
     <div className={cn(variant === 'desktop' ? 'flex min-w-0 items-center gap-1.5 min-[1440px]:gap-2' : 'flex items-stretch gap-1', className)}>
       {GROUPS.map((id) => (
         // Desktop: each panel hangs under its own chip. Mobile: `contents`, so the panel anchors to the whole bar.
-        <div key={id} className={variant === 'desktop' ? 'relative min-w-0 shrink' : 'contents'}>
+        <div key={id} className={variant === 'desktop' ? 'relative flex min-w-0 shrink' : 'contents'}>
           <GroupChip id={id} variant={variant} open={openId === id} onClick={() => onOpenChange(openId === id ? null : id)} />
           <TopBarPanelShell id={id} openId={openId} onOpenChange={onOpenChange} variant={variant} label={`${GROUP_LABEL[id]} details`}>
             {id === 'people' && <PeoplePanel />}

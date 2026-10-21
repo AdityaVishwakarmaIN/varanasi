@@ -123,12 +123,13 @@ export const TopBar = React.memo(function TopBar({
   return (
     <div className="relative z-20 h-14 flex items-center gap-2 px-3 min-[1440px]:gap-3 min-[1440px]:px-4 border-b border-chrome-border bg-chrome-panel">
       <div className="flex shrink-0 items-center gap-3 min-[1440px]:gap-4">
-        {/* Fixed-width slot: festival / fog chips clip inside it instead of pushing the speed buttons sideways.
+        {/* Bounded slot: it grows to fit a festival / fog chip, up to a cap, instead of pushing the speed
+            buttons sideways; past the cap a long city name truncates, never the chip.
             The date line opens the calendar panel (the season strip lives there now). */}
-        <div className="relative w-48 min-[1440px]:w-56 shrink-0">
+        <div className="relative min-w-48 max-w-60 min-[1440px]:min-w-56 min-[1440px]:max-w-72 shrink-0">
           <div className="flex items-center gap-1.5">
-            <h1 className="max-w-full shrink-0 font-sans font-semibold text-chrome-text text-[19px] leading-none truncate" title={cityName}>{cityName}</h1>
-            <span className="flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap">
+            <h1 className="min-w-0 shrink font-sans font-semibold text-chrome-text text-[19px] leading-none truncate" title={cityName}>{cityName}</h1>
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
               <FogChip weather={state.weather} hour={visualHour} />
               <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
             </span>
