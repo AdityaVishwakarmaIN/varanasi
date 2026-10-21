@@ -2126,6 +2126,9 @@ export function createVehicleSystems(
   };
 
   const incidentAnimTimeRef = { current: 0 };
+  // Burning tiles, rescanned only when the grid object changes (once per tick, not once per frame).
+  // Fire trucks put fires out in place on the same grid, so the draw loop re-checks onFire.
+  const burningTilesCache: { grid: unknown; size: number; tiles: number[] } = { grid: null, size: 0, tiles: [] };
 
   const drawIncidentIndicators = (ctx: IsoRenderer, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
@@ -2203,8 +2206,22 @@ export function createVehicleSystems(
       ctx.restore();
     }
     
-    for (let y = 0; y < currentGridSize; y++) {
-      for (let x = 0; x < currentGridSize; x++) {
+    if (burningTilesCache.grid !== currentGrid || burningTilesCache.size !== currentGridSize) {
+      const tiles: number[] = [];
+      for (let y = 0; y < currentGridSize; y++) {
+        const row = currentGrid[y];
+        for (let x = 0; x < currentGridSize; x++) {
+          if (row[x].building.onFire) tiles.push(x, y);
+        }
+      }
+      burningTilesCache.grid = currentGrid;
+      burningTilesCache.size = currentGridSize;
+      burningTilesCache.tiles = tiles;
+    }
+    const burningTiles = burningTilesCache.tiles;
+    for (let i = 0; i < burningTiles.length; i += 2) {
+      {
+        const x = burningTiles[i], y = burningTiles[i + 1];
         const tile = currentGrid[y][x];
         if (!tile.building.onFire) continue;
         

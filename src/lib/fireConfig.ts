@@ -96,28 +96,26 @@ export function getFirePressure(
   y: number,
   windStrength: number
 ): number {
+  // Most tiles have no burning neighbour: look for one before doing any wind arithmetic.
+  const last = gridSize - 1;
+  const row = grid[y];
+  const west = x > 0 ? row[x - 1].building : null;
+  const east = x < last ? row[x + 1].building : null;
+  const north = y > 0 ? grid[y - 1][x].building : null;
+  const south = y < last ? grid[y + 1][x].building : null;
+  const w = west !== null && west.onFire, e = east !== null && east.onFire;
+  const n = north !== null && north.onFire, so = south !== null && south.onFire;
+  if (!w && !e && !n && !so) return 0;
+
   const k = 2 * windStrength;
   const wx = FIRE_WIND_DIRECTION.x * k;
   const wy = FIRE_WIND_DIRECTION.y * k;
   let sum = 0;
-  if (y >= 0 && y < gridSize) {
-    const row = grid[y];
-    if (x - 1 >= 0 && x - 1 < gridSize && row[x - 1].building.onFire) {
-      sum += Math.max(0.2, 1 + wx) * getBurnStageSpread(row[x - 1].building.fireProgress);
-    }
-    if (x + 1 >= 0 && x + 1 < gridSize && row[x + 1].building.onFire) {
-      sum += Math.max(0.2, 1 - wx) * getBurnStageSpread(row[x + 1].building.fireProgress);
-    }
-  }
-  if (x >= 0 && x < gridSize) {
-    // A fire to the north (y - 1) spreads south: direction (0, +1)
-    if (y - 1 >= 0 && y - 1 < gridSize && grid[y - 1][x].building.onFire) {
-      sum += Math.max(0.2, 1 + wy) * getBurnStageSpread(grid[y - 1][x].building.fireProgress);
-    }
-    if (y + 1 >= 0 && y + 1 < gridSize && grid[y + 1][x].building.onFire) {
-      sum += Math.max(0.2, 1 - wy) * getBurnStageSpread(grid[y + 1][x].building.fireProgress);
-    }
-  }
+  if (w) sum += Math.max(0.2, 1 + wx) * getBurnStageSpread(west!.fireProgress);
+  if (e) sum += Math.max(0.2, 1 - wx) * getBurnStageSpread(east!.fireProgress);
+  // A fire to the north (y - 1) spreads south: direction (0, +1)
+  if (n) sum += Math.max(0.2, 1 + wy) * getBurnStageSpread(north!.fireProgress);
+  if (so) sum += Math.max(0.2, 1 - wy) * getBurnStageSpread(south!.fireProgress);
   return sum;
 }
 

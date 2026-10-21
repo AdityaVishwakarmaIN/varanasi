@@ -3384,7 +3384,8 @@ export function simulateTick(
       }
 
       // Check for road access and grow buildings in zones
-      if (tile.zone !== 'none' && tile.building.type === 'grass') {
+      // A scorched lot from a fire builds nothing until it has cooled (see the fire block below)
+      if (tile.zone !== 'none' && tile.building.type === 'grass' && !(tile.building.fireProgress > 0)) {
         const roadAccess = hasRoadAccess(newGrid, x, y, size);
         const hasPower = newPowered;
         const hasWater = newWatered;
@@ -3413,9 +3414,7 @@ export function simulateTick(
         const hasUtilities = hasPower && hasWater;
         
         const flooded = (floodMask !== null && floodMask[y * size + x] === 1) || (outbreakMask !== null && outbreakMask[y * size + x] === 1);
-        if (tile.building.fireProgress > 0) {
-          // Scorched lot from a fire: nothing is built until the ground has cooled (see the fire block below)
-        } else if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
+        if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
           const candidateSize = getBuildingSize(candidate);
           if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
           didStructureChange = true;
