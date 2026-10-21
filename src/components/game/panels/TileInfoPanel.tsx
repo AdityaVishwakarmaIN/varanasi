@@ -130,6 +130,7 @@ export function TileInfoPanel({
   return (
     <Card 
       ref={scrollRef}
+      data-no-wheel-zoom
       className={`${isMobile ? 'fixed left-0 right-0 w-full rounded-none border-x-0 border-t border-b z-30' : 'absolute top-4 right-4 w-72 z-50 max-h-[calc(100%-15rem)] overflow-y-auto'}`} 
       style={isMobile ? { top: 'calc(72px + env(safe-area-inset-top, 0px))', ...scrollFadeStyle } : scrollFadeStyle}
       onClick={handleCardClick}
@@ -215,8 +216,8 @@ export function TileInfoPanel({
         </>)}
         {state.mapId === 'varanasi' && tile.building.type !== 'water' && (
           <div className="flex justify-between gap-2">
-            <span className="text-chrome-muted">Floods in</span>
-            <span className={isFlooded ? 'text-red-800' : floodsIn.length > 0 ? 'text-amber-800' : 'text-green-800'}>
+            <span className="text-chrome-muted shrink-0">Floods in</span>
+            <span className={`text-right ${isFlooded ? 'text-red-800' : floodsIn.length > 0 ? 'text-amber-800' : 'text-green-800'}`}>
               {isFlooded ? 'Under water now' : floodsIn.length > 0 ? `${floodsIn.join(' / ')} monsoons` : 'Never'}
             </span>
           </div>

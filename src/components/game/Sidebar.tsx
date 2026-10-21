@@ -5,6 +5,7 @@ import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMe
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
+import { useScrollFade } from '@/hooks/useScrollFade';
 import { Tool, TOOL_INFO } from '@/types/game';
 
 // Translatable category labels
@@ -112,6 +113,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
   const bridgeRef = useRef<HTMLDivElement>(null);
+  const [setScrollEl, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const m = useMessages();
@@ -306,7 +308,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
-          <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(460px,65vh)] overflow-y-auto" role="menu">
+          <div ref={setScrollEl} style={scrollFadeStyle} className="p-1.5 flex flex-col gap-0.5 max-h-[min(460px,65vh)] overflow-y-auto overscroll-contain" role="menu">
             {tools.map(tool => {
               if (!TOOL_INFO[tool]) return null;
               const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);

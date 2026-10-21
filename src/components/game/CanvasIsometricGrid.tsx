@@ -4281,6 +4281,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
   
   const handleWheel = useCallback((e: WheelEvent) => {
+    // Scrollable panels laid over the canvas (tile info) take the wheel themselves
+    if (e.target instanceof Element && e.target.closest('[data-no-wheel-zoom]')) return;
     e.preventDefault();
     
     const rect = containerRef.current?.getBoundingClientRect();
