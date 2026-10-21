@@ -59,7 +59,7 @@ const DialogContent = React.forwardRef<
       {showClose && (
         <DialogPrimitive.Close
           aria-label="Close"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-none text-chrome-muted transition-colors hover:bg-chrome-well hover:text-chrome-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-3 top-3 max-sm:right-1.5 max-sm:top-1.5 flex h-8 w-8 max-sm:h-11 max-sm:w-11 items-center justify-center rounded-none text-chrome-muted transition-colors hover:bg-chrome-well hover:text-chrome-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <svg className="h-4 w-4" aria-hidden fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
