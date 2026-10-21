@@ -271,7 +271,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
-          <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(340px,60vh)] overflow-y-auto" role="menu">
+          <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(460px,65vh)] overflow-y-auto" role="menu">
             {tools.map(tool => {
               if (!TOOL_INFO[tool]) return null;
               const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
@@ -302,7 +302,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                       {m(info.name)}
                     </span>
                     <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : status?.locked || status?.built ? 'text-chrome-muted' : canAfford ? 'text-chrome-text' : 'text-red-700'}`}>{statusNote ?? formatINR(info.cost)}</span>
-                    <span className={`line-clamp-2 w-full whitespace-normal text-left text-[11px] font-normal leading-snug ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{m(info.description)}</span>
+                    <span className={`w-full whitespace-normal text-left text-[11px] font-normal leading-snug ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{m(info.description)}</span>
                   </span>
                 </Button>
               );

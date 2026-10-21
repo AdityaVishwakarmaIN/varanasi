@@ -79,6 +79,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   // S5-T9: music, sound effects and ambient
   useGameAudio(state, latestStateRef);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [topPanelOpen, setTopPanelOpen] = useState(false);
   // S2-T8: the top-bar Ganga Health chip toggles the Ganga overlay.
   const toggleGangaOverlay = useCallback(() => {
     setOverlayMode(mode => (mode === 'ganga' ? 'none' : 'ganga'));
@@ -530,6 +531,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onTogglePowerOverlay={togglePowerOverlay}
             onToggleWaterOverlay={toggleWaterOverlay}
             onCalendarEventClick={openCalendarEvent}
+            onPanelOpenChange={setTopPanelOpen}
           />
           <div className="flex-1 relative overflow-visible">
             <CanvasIsometricGrid 
@@ -570,7 +572,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
             
             {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
-            <div className="absolute top-3 right-4 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none">
+            {/* The tile info card (w-72, right-4) is opened on purpose, so the column steps left of it. */}
+            <div className={`absolute top-3 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none ${selectedTile && state.selectedTool === 'select' ? 'right-[19.75rem]' : 'right-4'}`}>
             <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} />
             {isMultiplayer && (
               <div className="pointer-events-auto">
@@ -608,7 +611,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
               <TipToast
                 message={currentTip || ''}
-                isVisible={isTipVisible}
+                isVisible={isTipVisible && state.activePanel === 'none' && !topPanelOpen}
                 onContinue={onTipContinue}
                 onSkipAll={onTipSkipAll}
                 className="w-full"

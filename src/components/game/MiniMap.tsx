@@ -227,22 +227,22 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       />
-      <div className="mt-2 grid grid-cols-4 gap-1 text-[8px]">
+      <div className="mt-2 grid grid-cols-4 gap-1 text-[10px] leading-none">
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-green-500 rounded-none" />
-          <span className="text-chrome-muted">R</span>
+          <div className="w-2.5 h-2.5 bg-green-500 rounded-none" />
+          <span className="text-chrome-text">R</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-blue-500 rounded-none" />
-          <span className="text-chrome-muted">C</span>
+          <div className="w-2.5 h-2.5 bg-blue-500 rounded-none" />
+          <span className="text-chrome-text">C</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-amber-500 rounded-none" />
-          <span className="text-chrome-muted">I</span>
+          <div className="w-2.5 h-2.5 bg-amber-500 rounded-none" />
+          <span className="text-chrome-text">I</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-pink-500 rounded-none" />
-          <span className="text-chrome-muted">S</span>
+          <div className="w-2.5 h-2.5 bg-pink-500 rounded-none" />
+          <span className="text-chrome-text">S</span>
         </div>
       </div>
     </Card>

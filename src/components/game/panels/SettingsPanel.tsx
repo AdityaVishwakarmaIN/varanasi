@@ -260,12 +260,12 @@ export function SettingsPanel() {
   
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent showClose className="max-w-[400px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent showClose className="max-w-[400px] max-h-[min(85vh,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(UI_LABELS.settings)}</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-6">
           {/* Saved Cities Section */}
           <div>
             <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>

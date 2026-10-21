@@ -129,8 +129,8 @@ export function StatisticsPanel() {
     ctx.stroke();
 
     // Axis labels: the value range on the left (an empty axis tells the player nothing)
-    ctx.fillStyle = '#6b5b3e';
-    ctx.font = '11px ui-monospace, monospace';
+    ctx.fillStyle = '#4a3b24';
+    ctx.font = '12px ui-monospace, monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText(formatValue(maxVal), padX - 6, padding);
@@ -139,13 +139,13 @@ export function StatisticsPanel() {
   
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent showClose className="max-w-[600px]">
-        <DialogHeader>
+      <DialogContent showClose className="max-w-[640px] max-h-[min(85vh,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(UI_LABELS.cityStatistics)}</DialogTitle>
           <DialogDescription className="sr-only">{m(UI_LABELS.cityStatisticsDesc)}</DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.population)}</div>
@@ -161,7 +161,7 @@ export function StatisticsPanel() {
             </Card>
             <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.netPerMonth)}</div>
-              <div className={`font-mono tabular-nums font-semibold text-sm sm:text-base truncate ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+              <div className={`font-mono tabular-nums font-semibold text-sm whitespace-nowrap ${stats.income - stats.expenses >= 0 ? 'text-green-800' : 'text-red-800'}`}>
                 {formatINRPerMonth(stats.income - stats.expenses, true)}
               </div>
             </Card>

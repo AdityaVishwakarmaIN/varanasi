@@ -125,13 +125,13 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent showClose className="max-w-[520px] max-h-[85vh] sm:max-h-[640px]">
-        <DialogHeader>
+      <DialogContent showClose className="max-w-[520px] max-h-[min(85vh,calc(100dvh-2rem))] sm:max-h-[min(640px,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(UI_LABELS.cityAdvisors)}</DialogTitle>
           <DialogDescription className="sr-only">{m(UI_LABELS.cityAdvisorsDesc)}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
           <Card className=" flex items-center gap-4 p-4 bg-chrome-well">
             <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-none ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}

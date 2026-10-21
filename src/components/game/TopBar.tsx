@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { msg, useMessages } from 'gt-next';
 import { useLocale, useSetLocale } from 'gt-next/client';
@@ -91,6 +91,8 @@ interface TopBarProps {
   onToggleWaterOverlay?: () => void;
   /** Calendar-strip event clicked (festivals open the Event panel, S5-T4). */
   onCalendarEventClick?: (id: string) => void;
+  /** Fires when a detail popover opens or closes, so passive toasts can step aside. */
+  onPanelOpenChange?: (open: boolean) => void;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -104,6 +106,7 @@ export const TopBar = React.memo(function TopBar({
   onTogglePowerOverlay,
   onToggleWaterOverlay,
   onCalendarEventClick,
+  onPanelOpenChange,
 }: TopBarProps) {
   const { state, setSpeed, visualHour } = useGame();
   const { year, month, day, speed, cityName } = state;
@@ -112,6 +115,8 @@ export const TopBar = React.memo(function TopBar({
   const setLocale = useSetLocale();
   // One panel open at a time: a group chip's details or the calendar.
   const [openId, setOpenId] = useState<TopBarPanelId | null>(null);
+  const panelOpen = openId !== null;
+  useEffect(() => { onPanelOpenChange?.(panelOpen); }, [panelOpen, onPanelOpenChange]);
 
   const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
   const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
@@ -121,7 +126,7 @@ export const TopBar = React.memo(function TopBar({
   }, [onCalendarEventClick]);
 
   return (
-    <div className="relative z-20 h-14 flex items-center gap-2 px-3 min-[1440px]:gap-3 min-[1440px]:px-4 border-b border-chrome-border bg-chrome-panel">
+    <div className="relative z-40 h-14 flex items-center gap-2 px-3 min-[1440px]:gap-3 min-[1440px]:px-4 border-b border-chrome-border bg-chrome-panel">
       <div className="flex shrink-0 items-center gap-3 min-[1440px]:gap-4">
         {/* Bounded slot: it grows to fit a festival / fog chip, up to a cap, instead of pushing the speed
             buttons sideways; past the cap a long city name truncates, never the chip.
