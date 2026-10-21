@@ -1949,7 +1949,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
     function drawTileFireEffect(ctx: IsoRenderer, x: number, y: number) {
       const fireX = x + TILE_WIDTH / 2;
-      const fireY = y - 10;
+      // Centre the flames on the burning tile rather than its back corner
+      const fireY = y + TILE_HEIGHT / 2 - 10;
 
       ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
       ctx.beginPath();
@@ -3709,9 +3710,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         drawBarges(ctx); // Draw ocean barges (larger, keep visible)
         drawTrainsCallback(ctx); // Draw trains on rail network
-        if (!skipSmallElements) {
-          drawSmog(ctx); // Draw factory smog (skip when panning zoomed out on desktop)
-        }
         drawPedestrians(ctx); // Draw walking pedestrians (below buildings)
         drawEmergencyVehicles(ctx); // Draw emergency vehicles!
         resetLayerState(windCtx);
@@ -3726,6 +3724,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Draw recreation pedestrians on air canvas (above parks, not other buildings)
         drawRecreationPedestrians(airCtx); // Draw recreation pedestrians (at parks, benches, etc.)
         festivalVisuals.draw(airCtx, festivalInput()); // S5-T3 festival lights and Holi colours
+        if (!skipSmallElements) {
+          drawSmog(airCtx); // Smog rises from rooftop chimneys, so it draws above buildings
+        }
         
         if (!skipSmallElements) {
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
@@ -3757,7 +3758,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         if (!skipSmallElements) drawBoats(pixi);
         drawBarges(pixi);
         drawTrainsCallback(pixi);
-        if (!skipSmallElements) drawSmog(pixi);
         drawPedestrians(pixi);
         drawEmergencyVehicles(pixi);
         pixi.setLayer('wind');
@@ -3767,6 +3767,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         drawProblemIcons(pixi, delta, time);
         drawRecreationPedestrians(pixi);
         festivalVisuals.draw(pixi, festivalInput());
+        if (!skipSmallElements) drawSmog(pixi);
         if (!skipSmallElements) {
           drawHelicopters(pixi);
           drawSeaplanes(pixi);

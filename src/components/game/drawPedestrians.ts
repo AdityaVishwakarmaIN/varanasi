@@ -86,20 +86,16 @@ export function drawPedestrians(
   
   // Apply filter mode
   if (filterMode === 'recreation') {
-    // Include recreation, beach, AND shop activities (drawn on top of buildings)
+    // Parks and beaches have no tall sprite, so these are drawn on top of buildings; shoppers stay below so the shop hides them
     visiblePedestrians = visiblePedestrians.filter(ped => 
       ped.state === 'at_recreation' || 
-      ped.state === 'at_beach' ||
-      ped.state === 'approaching_shop' ||
-      (ped.activity === 'shopping' && (ped.state === 'entering_building' || ped.state === 'exiting_building'))
+      ped.state === 'at_beach'
     );
   } else if (filterMode === 'non-recreation') {
     // Walking pedestrians (drawn below buildings)
     visiblePedestrians = visiblePedestrians.filter(ped => 
       ped.state !== 'at_recreation' && 
-      ped.state !== 'at_beach' &&
-      ped.state !== 'approaching_shop' &&
-      !(ped.activity === 'shopping' && (ped.state === 'entering_building' || ped.state === 'exiting_building'))
+      ped.state !== 'at_beach'
     );
   }
   
