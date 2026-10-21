@@ -105,6 +105,8 @@ import {
   createDefaultWindVisualState,
   createWindSystem,
   cutWindTreeSilhouette,
+  drawWindTreeAtRest,
+  windSwayAngle,
   WindSystemRefs,
   WindSystemState,
   WindTreeRenderItem,
@@ -3089,6 +3091,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           gpuMain.save();
           applyWorld(gpuMain);
           // Suspension towers and cables interleaved by depth, as on the Canvas2D path
+          // The wind trees the Canvas2D pass above built, by tile
+          const gpuTrees = new Map<number, WindTreeRenderItem>();
+          for (let i = 0; i < visibleWindTreeTilesRef.current.length; i++) {
+            gpuTrees.set(visibleWindTreeTilesRef.current[i].key, visibleWindTreesRef.current[i]);
+          }
           let bridgeCursor = 0;
           const drawBridgeTopsTo = (maxDepth: number) => {
             for (; bridgeCursor < bridgeQueue.length && bridgeQueue[bridgeCursor].depth <= maxDepth; bridgeCursor++) {
@@ -3102,6 +3109,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const { tile, screenX, screenY, depth } = buildingQueue[i];
             drawBridgeTopsTo(depth - 1);
             if (tile.building.type === 'tree' && treeSway) {
+              // Trees sit in this layer in depth order (buildings in front cover them) and sway by
+              // matrix in the effects loop; they are not drawn on the 'wind' layer under the buildings
+              const tree = gpuTrees.get(tile.y * gridSize + tile.x);
+              if (tree) {
+                const before = gpuMain.spriteCount();
+                drawWindTreeAtRest(gpuMain, tree);
+                gpuMain.markSway(before, tree.pivotX, tree.pivotY);
+              }
               if (tile.building.onFire) drawTileFireEffect(gpuMain, screenX, screenY);
               continue;
             }
@@ -3765,8 +3780,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         drawTrainsCallback(pixi);
         drawPedestrians(pixi);
         drawEmergencyVehicles(pixi);
-        pixi.setLayer('wind');
-        drawWindTrees(pixi);
+        pixi.applySway(windSwayAngle(windStateRef.current)); // trees live on the buildings layer
         pixi.setLayer('air');
         drawIncidentIndicators(pixi, delta);
         drawProblemIcons(pixi, delta, time);

@@ -4,14 +4,16 @@ import {
   createDefaultWindVisualState,
   buildWindTreeRenderItem,
   cutWindTreeSilhouette,
+  drawWindTreeAtRest,
   drawWindDustFrame,
   drawWindTreesFrame,
   updateWindVisualState,
+  windSwayAngle,
   type WindTreeRenderItem,
   type WindVisualState,
 } from './windRenderer';
 
-export { createDefaultWindVisualState, buildWindTreeRenderItem, cutWindTreeSilhouette };
+export { createDefaultWindVisualState, buildWindTreeRenderItem, cutWindTreeSilhouette, drawWindTreeAtRest, windSwayAngle };
 export type { WindDustParticle, WindTreeRenderItem, WindVisualState } from './windRenderer';
 
 export interface WindSystemRefs {
