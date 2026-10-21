@@ -30,6 +30,12 @@ import {
 import { generateCityName, generateWaterName } from './names';
 import {
   FIRE_SIMULATION_CONFIG,
+  FIRE_BLAZE_THRESHOLD,
+  FIRE_WIND_STRENGTH,
+  SCORCH_TICKS,
+  getFireFuelFactor,
+  getFireFundingFactor,
+  getFirePressure,
   countAdjacentBurningTiles,
   createDefaultFireState,
   getFireSpreadChance,
@@ -1633,8 +1639,9 @@ function collectActiveServiceBuildings(grid: Tile[][], size: number, out: number
 }
 
 /** Compute the coverage grids from a service list made by collectActiveServiceBuildings. */
-function computeServiceCoverage(serviceList: number[], size: number): ServiceCoverage {
+function computeServiceCoverage(serviceList: number[], size: number, fireFunding?: number): ServiceCoverage {
   const services = createServiceCoverage(size);
+  const fireFundingFactor = getFireFundingFactor(fireFunding);
 
   for (let i = 0; i < serviceList.length; i += SERVICE_LIST_STRIDE) {
     const x = serviceList[i];
@@ -1686,7 +1693,7 @@ function computeServiceCoverage(serviceList: number[], size: number): ServiceCov
           if (distSquared <= rangeSquared) {
             // Only compute sqrt when we need the actual distance for coverage falloff
             const distance = Math.sqrt(distSquared);
-            const coverage = Math.max(0, (1 - distance / range) * 100);
+            const coverage = Math.max(0, (1 - distance / range) * 100) * (serviceType === 'fire' ? fireFundingFactor : 1);
             coverageRow[nx] = Math.min(100, coverageRow[nx] + coverage);
           }
         }
@@ -1759,7 +1766,7 @@ function serviceCoverageForList(serviceList: number[], size: number, budget?: Bu
     return cached.services;
   }
 
-  const services = computeServiceCoverage(serviceList, size);
+  const services = computeServiceCoverage(serviceList, size, budget?.fire?.funding);
   if (serviceCoverageCacheEnabled) {
     serviceCoverageCache = { size, fundingKey, serviceList: serviceList.slice(), services };
   }
@@ -3227,6 +3234,11 @@ export function simulateTick(
   const newGrid = cowGrid.rows;
   const writableTile: WritableTileAccessor = (tx, ty) => cowGrid.writable(tx, ty);
   let didStructureChange = false;
+  // Fire bookkeeping for the notifications after the loop (plain counters: nothing allocated per tile)
+  const fireWindStrength = FIRE_WIND_STRENGTH[cloudWeatherMode];
+  let fireStartCount = 0, fireStartX = 0, fireStartY = 0;
+  let fireSpreadCount = 0;
+  let fireDestroyedCount = 0, fireDestroyedX = 0, fireDestroyedY = 0;
 
   // Process all tiles
   for (let y = 0; y < size; y++) {
@@ -3400,7 +3412,9 @@ export function simulateTick(
         const hasUtilities = hasPower && hasWater;
         
         const flooded = (floodMask !== null && floodMask[y * size + x] === 1) || (outbreakMask !== null && outbreakMask[y * size + x] === 1);
-        if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
+        if (tile.building.fireProgress > 0) {
+          // Scorched lot from a fire: nothing is built until the ground has cooled (see the fire block below)
+        } else if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
           const candidateSize = getBuildingSize(candidate);
           if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
           didStructureChange = true;
@@ -3444,9 +3458,33 @@ export function simulateTick(
         tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
         if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
           didStructureChange = true;
+          const burnedType = tile.building.type;
+          const burnedZone = tile.zone;
+          const burnedSize = getBuildingSize(burnedType);
+          fireDestroyedCount++;
+          if (fireDestroyedCount === 1) { fireDestroyedX = x; fireDestroyedY = y; }
           tile.building = createBuilding('grass');
-          tile.zone = 'none';
+          // A zoned lot keeps its zone and lies scorched for a while, so the city can rebuild it
+          if (burnedZone !== 'none') {
+            tile.building.fireProgress = SCORCH_TICKS;
+            for (let dy = 0; dy < burnedSize.height && y + dy < size; dy++) {
+              cowGrid.touchRow(y + dy);
+              for (let dx = 0; dx < burnedSize.width && x + dx < size; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const part = cowGrid.writable(x + dx, y + dy);
+                if (part.building.type === 'empty') {
+                  part.building = createBuilding('grass');
+                  part.building.fireProgress = SCORCH_TICKS;
+                }
+              }
+            }
+          } else {
+            tile.zone = 'none';
+          }
         }
+      } else if (tile.building.fireProgress > 0 && tile.building.type === 'grass') {
+        // Scorched lot cools down
+        tile.building.fireProgress--;
       }
 
       // Fire spread to adjacent buildings
@@ -3459,16 +3497,17 @@ export function simulateTick(
         // No burning tile in the three rows around means no burning neighbour (and no random number is drawn below)
         const mayHaveBurningNeighbour =
           burningPerRow[y] > 0 || (y > 0 && burningPerRow[y - 1] > 0) || (y + 1 < size && burningPerRow[y + 1] > 0);
-        const adjacentFireCount = mayHaveBurningNeighbour ? countAdjacentBurningTiles(newGrid, size, x, y) : 0;
+        const firePressure = mayHaveBurningNeighbour ? getFirePressure(newGrid, size, x, y, fireWindStrength) : 0;
 
-        if (adjacentFireCount > 0) {
+        if (firePressure > 0) {
           const fireCoverage = services.fire[y][x];
-          const spreadChance = getFireSpreadChance(adjacentFireCount, fireCoverage, cloudWeatherMode);
+          const spreadChance = getFireSpreadChance(firePressure, fireCoverage, cloudWeatherMode, getFireFuelFactor(tile.building.type));
           
           if (Math.random() < spreadChance) {
             didStructureChange = true;
             igniteBuilding(tile.building);
             burningPerRow[y]++;
+            fireSpreadCount++;
           }
         }
       }
@@ -3483,6 +3522,8 @@ export function simulateTick(
         didStructureChange = true;
         igniteBuilding(tile.building);
         burningPerRow[y]++;
+        fireStartCount++;
+        if (fireStartCount === 1) { fireStartX = x; fireStartY = y; }
       }
     }
   }
@@ -3875,7 +3916,19 @@ export function simulateTick(
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
-  const addedNotifications = [...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
+  const fireNotifications: GameState['notifications'] = [];
+  const fireTickId = getTotalTicks(state);
+  if (fireStartCount > 0) {
+    fireNotifications.push({ id: `fire-start-${fireTickId}`, title: 'Fire!', description: `A fire broke out at (${fireStartX}, ${fireStartY}). Trucks are the only thing that puts it out; fire stations only slow the spread.`, icon: 'fire', timestamp: Date.now(), x: fireStartX, y: fireStartY, overlay: 'fire', severity: 'warning' });
+  }
+  const burningNow = burningInputTiles + fireStartCount + fireSpreadCount - fireDestroyedCount;
+  if (burningNow >= FIRE_BLAZE_THRESHOLD && burningInputTiles < FIRE_BLAZE_THRESHOLD) {
+    fireNotifications.push({ id: `fire-blaze-${fireTickId}`, title: 'Blaze out of control', description: `${burningNow} buildings are burning. Check fire station coverage and funding, and mind the wind.`, icon: 'fire', timestamp: Date.now(), x: fireStartX, y: fireStartY, overlay: 'fire', severity: 'crisis' });
+  }
+  if (fireDestroyedCount > 0) {
+    fireNotifications.push({ id: `fire-lost-${fireTickId}`, title: 'Lost to fire', description: `${fireDestroyedCount} building${fireDestroyedCount === 1 ? '' : 's'} burned down. The lots lie scorched and can be rebuilt in a couple of days.`, icon: 'fire', timestamp: Date.now(), x: fireDestroyedX, y: fireDestroyedY, overlay: 'fire', severity: 'warning' });
+  }
+  const addedNotifications = [...fireNotifications, ...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
   let newNotifications = pushNotifications(state.notifications, addedNotifications);
   const pauseForCrisis = shouldPauseForCrisis(state, addedNotifications);
   // Forecasts that have happened drop off the calendar strip; new ones go on it with a warning

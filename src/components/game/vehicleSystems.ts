@@ -9,6 +9,7 @@ import {
   FIRE_RESPONSE_CONFIG,
   findNearestFireStation,
   getFireIncidentKey,
+  getFireFundingFactor,
 } from '@/lib/fireConfig';
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
@@ -102,6 +103,8 @@ export interface VehicleSystemState {
     floodMask?: Uint8Array | null;
     /** Festivals (S5-T3/T4): pilgrim crowd and car spawn multipliers, always within the quality caps. */
     festivalCrowd?: { pedestrians: number; cars: number };
+    /** Fire department budget funding (0-100): sets how many trucks roll and how fast fires are put out. */
+    fireFunding?: number;
   };
   /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
   visualHour: number;
@@ -852,7 +855,9 @@ export function createVehicleSystems(
                v.stationX === nearestStation.x &&
                v.stationY === nearestStation.y
         ).length;
-        if (trucksFromStation >= FIRE_RESPONSE_CONFIG.maxTrucksPerStation) continue;
+        // Funding sets the crews on duty: 100% = full cap, an under-funded brigade keeps fewer trucks rolling
+        const truckCap = Math.max(1, Math.round(FIRE_RESPONSE_CONFIG.maxTrucksPerStation * getFireFundingFactor(state.fireFunding)));
+        if (trucksFromStation >= truckCap) continue;
 
         // Radius cap: match the visual overlay exactly
         // Effective range = base range scaled by station level (same formula as simulation coverage)
@@ -901,6 +906,30 @@ export function createVehicleSystems(
     }
   };
 
+  /** Cars within this many tiles of a running emergency vehicle pull over. */
+  const EMERGENCY_YIELD_RADIUS = 3;
+  const yieldingCarIds = new Set<number>();
+
+  /** Crew readiness: an under-funded brigade drives out slower (100% funding = 1). */
+  const getCrewSpeedFactor = (type: EmergencyVehicleType): number =>
+    type === 'fire_truck' ? 0.75 + 0.25 * getFireFundingFactor(state.fireFunding) : 1;
+
+  /**
+   * Speed factor from the traffic around an emergency vehicle: moving cars on its tile and the four
+   * neighbours slow it (queues, junction crossing); the vehicle reaches full speed again when the road ahead is clear.
+   * Allocation-free; only runs for vehicles on the road.
+   */
+  const getTrafficSlowdown = (tx: number, ty: number): number => {
+    const cars = carsRef.current;
+    let blocking = 0;
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i];
+      if (Math.abs(car.tileX - tx) + Math.abs(car.tileY - ty) > 1) continue;
+      blocking++;
+    }
+    return Math.max(0.5, 1 - 0.12 * blocking);
+  };
+
   const updateEmergencyVehicles = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) {
@@ -917,7 +946,24 @@ export function createVehicleSystems(
     }
 
     const updatedVehicles: EmergencyVehicle[] = [];
-    
+
+    // Sirens clear the way: cars close ahead of a running emergency vehicle pull over (see yieldingCarIds)
+    // and the vehicle still crawls through whatever traffic is left (see getTrafficSlowdown).
+    yieldingCarIds.clear();
+    const cars = carsRef.current;
+    if (cars.length > 0) {
+      for (const ev of emergencyVehiclesRef.current) {
+        if (ev.state === 'responding') continue;
+        for (let i = 0; i < cars.length; i++) {
+          const car = cars[i];
+          const adx = Math.abs(car.tileX - ev.tileX);
+          const ady = Math.abs(car.tileY - ev.tileY);
+          const reach = adx + ady;
+          // Cars right next to the vehicle are the bottleneck (see getTrafficSlowdown); the ones further out clear the road
+          if (reach >= 2 && reach <= EMERGENCY_YIELD_RADIUS) yieldingCarIds.add(car.id);
+        }
+      }
+    }
     
     for (const vehicle of [...emergencyVehiclesRef.current]) {
       vehicle.flashTimer += delta * 8;
@@ -935,8 +981,10 @@ export function createVehicleSystems(
         }
         
         vehicle.respondTime += delta * speedMultiplier;
+        // Putting a fire out takes longer the further it has burned and the less the brigade is funded
+        const targetFire = vehicle.type === 'fire_truck' ? currentGrid[vehicle.targetY]?.[vehicle.targetX]?.building : undefined;
         const respondDuration = vehicle.type === 'fire_truck'
-          ? 2
+          ? (2 + (targetFire?.onFire ? targetFire.fireProgress / 25 : 0)) / getFireFundingFactor(state.fireFunding)
           : 5;
         
         if (vehicle.respondTime >= respondDuration) {
@@ -1011,7 +1059,7 @@ export function createVehicleSystems(
         continue;
       }
       
-      vehicle.progress += vehicle.speed * delta * speedMultiplier;
+      vehicle.progress += vehicle.speed * getTrafficSlowdown(vehicle.tileX, vehicle.tileY) * getCrewSpeedFactor(vehicle.type) * delta * speedMultiplier;
       
       let shouldRemove = false;
       
@@ -1292,6 +1340,11 @@ export function createVehicleSystems(
             shouldStop = true;
           }
         }
+      }
+      
+      // A siren close behind: pull over and wait, but never inside a junction (that would block everyone)
+      if (!shouldStop && yieldingCarIds.size > 0 && !currentIsIntersection && yieldingCarIds.has(car.id)) {
+        shouldStop = true;
       }
       
       // Check for car ahead - efficient spatial lookup

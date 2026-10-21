@@ -19,6 +19,7 @@ import {
 import { formatINR, formatPopulation } from '@/lib/format';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 import { INFORMAL_CONFIG } from '@/lib/informal';
+import { SCORCH_TICKS, getBurnStageName, getFireFuelFactor } from '@/lib/fireConfig';
 import { isMixedUse } from '@/lib/mixedUse';
 import { getMonsoonsThatFlood } from '@/lib/floods';
 import { getCityFloodMask, getCityFloodRisk, getEffectiveLandValue } from '@/lib/floodSim';
@@ -248,8 +249,24 @@ export function TileInfoPanel({
           <>
             <Separator />
             <div className="flex justify-between text-red-800">
-              <span>ON FIRE!</span>
+              <span>ON FIRE! ({getBurnStageName(tile.building.fireProgress)})</span>
               <span>{Math.round(tile.building.fireProgress)}% damage</span>
+            </div>
+            <div className="text-[10px] text-chrome-muted">
+              {getFireFuelFactor(tile.building.type) > 1.2
+                ? 'Burns easily and spreads fast, especially downwind.'
+                : getFireFuelFactor(tile.building.type) < 0.7
+                  ? 'Resists fire; slow to catch from neighbours.'
+                  : 'Only a fire truck puts it out. Fire stations just slow the spread.'}
+            </div>
+          </>
+        )}
+        {!tile.building.onFire && tile.building.type === 'grass' && tile.building.fireProgress > 0 && (
+          <>
+            <Separator />
+            <div className="flex justify-between text-amber-900">
+              <span>Scorched lot</span>
+              <span>rebuilds in ~{Math.max(1, Math.ceil(tile.building.fireProgress / (SCORCH_TICKS / 2)))} days</span>
             </div>
           </>
         )}

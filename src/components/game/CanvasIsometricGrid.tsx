@@ -718,6 +718,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       weather: state.weather,
       floodMask,
       festivalCrowd: festivalLive.crowd,
+      fireFunding: state.budget?.fire?.funding,
     },
     visualHour,
     isMobile,
