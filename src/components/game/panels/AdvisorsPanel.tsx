@@ -162,8 +162,8 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                         <AdvisorAvatar advisor={note.advisor} size={28} />
                         <span className="text-chrome-text font-medium text-sm">{m(labels.title)}</span>
                         <Badge
-                          variant={note.priority === 'critical' || note.priority === 'high' ? 'destructive' : 'secondary'}
-                          className="ml-auto text-[10px]"
+                          variant={note.priority === 'critical' || note.priority === 'high' ? 'destructive' : note.priority === 'medium' ? 'outline' : 'secondary'}
+                          className={`ml-auto text-[10px] ${note.priority === 'medium' ? 'border-amber-800/60 bg-amber-800/10 text-amber-800' : ''}`}
                         >
                           {m(PRIORITY_LABELS[note.priority])}
                         </Badge>
