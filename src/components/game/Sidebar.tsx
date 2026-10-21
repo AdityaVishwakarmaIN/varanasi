@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
@@ -73,6 +74,8 @@ const TOOL_KEY_HINTS: Partial<Record<Tool, string>> = {
 // On short screens (768 px laptops) rows shrink to 36 px so Tools, Zones and the first building groups all fit.
 const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none focus-visible:ring-chrome-text';
 const CATEGORY_ICON = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text';
+const FLYOUT_TOP_INSET = 64; // TopBar is h-14 (56px) + 8px gap
+const FLYOUT_EDGE = 8;
 const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-none overflow-hidden animate-submenu-in';
 
 // Hover Submenu Component for collapsible tool categories
@@ -193,6 +196,16 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
     }, 100);
   }, [clearCloseTimeout]);
   
+  // Place the flyout from its real height: keep it below the TopBar and inside the viewport.
+  useLayoutEffect(() => {
+    const el = submenuRef.current;
+    if (!isOpen || !el) return;
+    const h = el.offsetHeight;
+    const wanted = menuPosition.openUpward ? menuPosition.top - h : menuPosition.top;
+    const maxTop = window.innerHeight - h - FLYOUT_EDGE;
+    el.style.top = `${Math.max(FLYOUT_TOP_INSET, Math.min(wanted, maxTop))}px`;
+  }, [isOpen, menuPosition]);
+
   // Esc closes the open flyout
   useEffect(() => {
     if (!isOpen) return;
@@ -238,7 +251,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
       </Button>
       
       {/* Invisible bridge/safe-zone between button and submenu for triangle rule */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           className="fixed"
           style={{
@@ -250,19 +263,19 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
-        />
+        />,
+        document.body
       )}
       
       {/* Flyout Submenu - uses fixed positioning to escape all parent containers */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div 
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
             zIndex: 9999,
-            ...(menuPosition.openUpward 
-              ? { bottom: `${window.innerHeight - menuPosition.top}px` }
-              : { top: `${menuPosition.top}px` }),
+            // Final top is set in the layout effect, once the real height is known.
+            top: `${menuPosition.openUpward ? menuPosition.top - SUBMENU_MAX_HEIGHT : menuPosition.top}px`,
             left: `${menuPosition.left}px`,
           }}
           onMouseEnter={handleSubmenuEnter}
@@ -290,7 +303,7 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   variant="ghost"
                   role="menuitem"
                   aria-current={isSelected || undefined}
-                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
+                  className={`w-full shrink-0 justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
                     isSelected ? 'hud-selected hover:text-chrome-accentText' : 'hover:bg-chrome-well'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
@@ -308,7 +321,8 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
