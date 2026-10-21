@@ -69,28 +69,28 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
     >
       <div className="hud-glass gold-hairline relative rounded-none overflow-hidden w-full">
         {/* Content */}
-        <div className="p-3.5 flex items-start gap-3">
-          <div className="relative flex-shrink-0 w-10 h-10 rounded-none bg-gradient-to-b from-marigold/25 to-saffron/10 ring-1 ring-marigold/40 flex items-center justify-center">
+        <div className="p-3.5 max-md:p-2.5 short:p-2.5 flex items-start gap-3">
+          <div className="relative flex-shrink-0 w-10 h-10 max-md:hidden short:hidden rounded-none bg-gradient-to-b from-marigold/25 to-saffron/10 ring-1 ring-marigold/40 flex items-center justify-center">
             <Lightbulb className="w-5 h-5 text-marigold animate-diya" aria-hidden />
           </div>
 
           <div className="flex-1 min-w-0 pt-0.5">
-            <p className="hud-label mb-1">{gt('Tip')}</p>
-            <p className="text-sm text-chrome-text leading-relaxed">
+            <p className="hud-label mb-1 max-md:hidden short:hidden">{gt('Tip')}</p>
+            <p className="text-sm max-md:text-xs short:text-xs text-chrome-text leading-relaxed max-md:leading-snug short:leading-snug">
               {m(message)}
             </p>
           </div>
 
           <button
             onClick={onContinue}
-            className="flex-shrink-0 -mt-1 -mr-1 h-11 w-11 max-md:h-11 flex items-center justify-center rounded-none text-chrome-muted hover:text-chrome-accent hover:bg-chrome-well transition-colors"
+            className="flex-shrink-0 -mt-1 -mr-1 max-md:-my-2 max-md:-mr-2 short:-my-2 short:-mr-2 h-11 w-11 flex items-center justify-center rounded-none text-chrome-muted hover:text-chrome-accent hover:bg-chrome-well transition-colors"
             aria-label={gt('Dismiss tip')}
           >
             <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
 
-        <div className="px-3.5 pb-3.5 flex items-center gap-2 justify-end">
+        <div className="px-3.5 pb-3.5 max-md:px-2.5 max-md:pb-2.5 short:px-2.5 short:pb-2.5 flex items-center gap-2 justify-end">
           <Button
             variant="ghost"
             size="sm"

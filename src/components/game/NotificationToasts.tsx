@@ -136,13 +136,13 @@ function NotificationToast({
     <div
       role={isCrisis ? 'alert' : 'status'}
       className={cn(
-        'hud-panel pointer-events-auto flex items-start gap-2.5 rounded-none p-2.5 text-sm',
+        'hud-panel pointer-events-auto flex items-start gap-2.5 rounded-none p-2.5 max-md:p-2 short:p-2 text-sm',
         'animate-in fade-in slide-in-from-top-2 duration-200',
         SEVERITY_STYLES[n.severity ?? 'info'],
         isCelebration && '!border-marigold/70'
       )}
     >
-      <span className={cn('shrink-0 h-8 w-8 rounded-none ring-1 flex items-center justify-center', isCrisis ? 'bg-red-800/10 ring-red-800/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
+      <span className={cn('shrink-0 h-8 w-8 max-md:h-6 max-md:w-6 short:h-6 short:w-6 rounded-none ring-1 flex items-center justify-center', isCrisis ? 'bg-red-800/10 ring-red-800/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
         <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
       </span>
       <button
@@ -152,9 +152,9 @@ function NotificationToast({
         className="flex-1 min-w-0 text-left disabled:cursor-default"
       >
         <p className={cn('font-semibold truncate', isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-text')}>{n.title}</p>
-        <p className="text-xs text-chrome-muted line-clamp-2">{n.description}</p>
+        <p className="text-xs text-chrome-muted line-clamp-2 max-md:line-clamp-1 short:line-clamp-1">{n.description}</p>
         {canLocate && (
-          <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent">
+          <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent max-md:hidden short:hidden">
             <MapPin className="w-3 h-3" />
             {locateLabel}
           </span>
@@ -163,7 +163,7 @@ function NotificationToast({
       <button
         type="button"
         onClick={() => onDismiss(n.id)}
-        className="text-chrome-muted hover:text-chrome-accent -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-none flex items-center justify-center"
+        className="text-chrome-muted hover:text-chrome-accent -m-1.5 max-md:-m-2 short:-m-2 min-w-11 min-h-11 md:min-w-8 md:min-h-8 short:min-w-11 short:min-h-11 rounded-none flex items-center justify-center"
         aria-label={dismissLabel}
       >
         <X className="w-4 h-4" />

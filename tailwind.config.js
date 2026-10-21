@@ -90,7 +90,11 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // Phones held sideways: wide enough for md, too short for roomy cards. (A `screens` entry would break max-*.)
+    ({ addVariant }) => addVariant("short", "@media (max-height: 500px)"),
+  ],
 }
 
 

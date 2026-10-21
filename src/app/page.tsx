@@ -203,8 +203,9 @@ export default function HomePage() {
   const [, setIsMultiplayer] = useState(false);
   const [startFreshGame, setStartFreshGame] = useState(false);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
-  const { isMobileDevice, isSmallScreen } = useMobile();
-  const isMobile = isMobileDevice || isSmallScreen;
+  const { isMobileDevice, isSmallScreen, isTouchDevice, screenHeight } = useMobile();
+  // A phone held sideways is wide but short: it gets the phone layout too (as in Game.tsx).
+  const isMobile = isMobileDevice || isSmallScreen || (isTouchDevice && screenHeight > 0 && screenHeight < 600);
   // Co-op cities live in a remote room; hide them while co-op is off (the index entries are kept).
   const visibleSavedCities = FEATURES.coop ? savedCities : savedCities.filter(c => !c.roomCode);
 
@@ -534,18 +535,18 @@ export default function HomePage() {
       <MultiplayerContextProvider>
         <main className="theme-dark relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
           <TitleBackdrop compact />
-          <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto">
-            <div className="flex-shrink-0 h-2 sm:h-6" />
-            <TitleMark compact />
-            <div className="mt-6 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
+          <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto short:grid short:grid-cols-2 short:content-center short:items-start short:gap-x-8 short:px-8">
+            <div className="flex-shrink-0 h-2 sm:h-6 short:hidden" />
+            <div className="short:row-span-3 short:justify-self-center short:self-start"><TitleMark compact /></div>
+            <div className="mt-6 short:mt-0 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
               {menu}
             </div>
             {visibleSavedCities.length > 0 && (
-              <div className="title-panel w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] flex flex-col animate-rise-in [animation-delay:200ms]">
+              <div className="title-panel w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] short:mt-2 short:min-h-0 short:max-h-24 flex flex-col animate-rise-in [animation-delay:200ms]">
                 {savedList}
               </div>
             )}
-            <div className="mt-auto w-full max-w-xs flex-shrink-0 pt-3">{footer}</div>
+            <div className="mt-auto short:mt-0 w-full max-w-xs flex-shrink-0 pt-3 short:pt-1">{footer}</div>
           </div>
           {dialogs}
         </main>

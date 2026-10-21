@@ -80,7 +80,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
 
       {/* Setting sun: small, half sunk behind the skyline at the horizon */}
       <div
-        className="absolute left-[72%] animate-sun"
+        className="absolute left-[72%] animate-sun short:hidden"
         style={{
           width: sunSize,
           height: sunSize,
@@ -110,7 +110,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
       </div>
 
       {/* Skyline on the ghats */}
-      <div className="absolute inset-x-0" style={{ bottom: `calc(${riverHeight} + ${Math.round(groundH * 0.45)}px)` }}>
+      <div className="absolute inset-x-0 short:hidden" style={{ bottom: `calc(${riverHeight} + ${Math.round(groundH * 0.45)}px)` }}>
         <Skyline compact={compact} scale={scale} className="drop-shadow-[0_-6px_24px_rgba(0,0,0,0.35)] [filter:saturate(0.92)_brightness(0.86)]" />
         {/* Dusk haze over the buildings so the text reads */}
         <div className="absolute inset-0 bg-gradient-to-t from-[hsl(236_45%_10%/0.35)] to-transparent" />
@@ -126,7 +126,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
           }}
         />
         {/* Reflection */}
-        <div className="absolute inset-x-0 top-0 origin-top opacity-25 [transform:scaleY(-0.55)] blur-[1px]">
+        <div className="absolute inset-x-0 top-0 origin-top short:hidden opacity-25 [transform:scaleY(-0.55)] blur-[1px]">
           <Skyline compact={compact} scale={scale} />
         </div>
         {/* Faint horizontal ripples */}

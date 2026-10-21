@@ -429,7 +429,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               touchDrawMode={touchDrawMode}
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
-            <div className={`absolute ${tileStripOpen ? 'top-[calc(124px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none`}>
+            <div className={`absolute ${tileStripOpen ? 'top-[calc(124px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 short:right-auto short:w-[26rem] z-30 flex flex-col gap-2 pointer-events-none`}>
               <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} className="self-start" />
               <PausedIndicator className="self-start" />
               <TipToast

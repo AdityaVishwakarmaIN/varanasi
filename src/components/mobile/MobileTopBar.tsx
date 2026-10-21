@@ -161,7 +161,7 @@ export function MobileTopBar({
               <span className="shrink-0"><SeasonDateLabel month={month} year={year} short /></span>
               <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                 <FogChip weather={state.weather} hour={visualHour} className="shrink-0" />
-                <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="min-w-0 truncate whitespace-nowrap" />
+                <FestivalChip month={month} day={state.day} hour={visualHour} mapId={state.mapId} className="min-w-0 whitespace-nowrap" />
               </span>
             </span>
           </button>
