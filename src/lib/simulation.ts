@@ -3238,7 +3238,7 @@ export function simulateTick(
   // Fire bookkeeping for the notifications after the loop (plain counters: nothing allocated per tile)
   const fireWindStrength = FIRE_WIND_STRENGTH[cloudWeatherMode];
   let fireStartCount = 0, fireStartX = 0, fireStartY = 0;
-  let fireSpreadCount = 0;
+  let fireSpreadCount = 0, fireSpreadX = 0, fireSpreadY = 0;
   let fireDestroyedCount = 0, fireDestroyedX = 0, fireDestroyedY = 0, fireDestroyedType = '';
 
   // Process all tiles
@@ -3509,6 +3509,7 @@ export function simulateTick(
             igniteBuilding(tile.building);
             burningPerRow[y]++;
             fireSpreadCount++;
+            if (fireSpreadCount === 1) { fireSpreadX = x; fireSpreadY = y; }
           }
         }
       }
@@ -3924,8 +3925,9 @@ export function simulateTick(
   if (fireStartCount > 0 || fireDestroyedCount > 0 || blaze) {
     const lostAt = fireDestroyedCount > 0 ? describeFirePlace(newGrid, size, fireDestroyedX, fireDestroyedY, state.mapId, fireDestroyedType) : '';
     const startAt = fireStartCount > 0 ? describeFirePlace(newGrid, size, fireStartX, fireStartY, state.mapId) : '';
-    const focusX = fireDestroyedCount > 0 ? fireDestroyedX : fireStartX;
-    const focusY = fireDestroyedCount > 0 ? fireDestroyedY : fireStartY;
+    // A blaze reached by spread alone has no start or loss this tick, so point at the newest spread
+    const focusX = fireDestroyedCount > 0 ? fireDestroyedX : fireStartCount > 0 ? fireStartX : fireSpreadX;
+    const focusY = fireDestroyedCount > 0 ? fireDestroyedY : fireStartCount > 0 ? fireStartY : fireSpreadY;
     const lost = fireDestroyedCount > 0
       ? `${lostAt}${fireDestroyedCount > 1 ? ` and ${fireDestroyedCount - 1} more` : ''} burned down; the lots lie scorched for about two days.`
       : '';

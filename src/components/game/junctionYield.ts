@@ -22,8 +22,9 @@ export function canRollThroughRed(
   const ns = isNorthSouth(direction);
   for (let d = 1; d <= reach; d++) {
     for (let side = -1; side <= 1; side += 2) {
-      const tx = ns ? junctionX + side * d : junctionX;
-      const ty = ns ? junctionY : junctionY + side * d;
+      // north/south cars move along x, so their cross street runs along y
+      const tx = ns ? junctionX : junctionX + side * d;
+      const ty = ns ? junctionY + side * d : junctionY;
       if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) continue;
       const cars = carsByTile.get(ty * gridSize + tx);
       if (!cars) continue;

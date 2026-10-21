@@ -93,6 +93,13 @@ export interface EffectsSystemState {
   isMobile: boolean;
 }
 
+// Cloud caches live at module scope: createEffectsSystems runs on every render of the grid, and these
+// must survive it (there is one cloud sheet and one cloud layer).
+let cloudCache: OffscreenCanvas | null = null;
+let bakedCloudSheet: ImageBitmap | OffscreenCanvas | null = null;
+let bakedFrom: CanvasImageSource | null = null;
+const cloudCacheState = { at: -Infinity, offsetX: 0, offsetY: 0, zoom: 0, dpr: 0, empty: true };
+
 export function createEffectsSystems(
   refs: EffectsSystemRefs,
   systemState: EffectsSystemState
@@ -1066,12 +1073,9 @@ export function createEffectsSystems(
   // PERF: clouds drift a few world px per second, so they are drawn into a cache that is only
   // re-rendered every CLOUD_CACHE_REFRESH_MS (or on zoom / size / dpr change). Between refreshes the
   // cached image is blitted, shifted by the camera pan since the refresh (clouds live in world space).
-  let cloudCache: OffscreenCanvas | null = null;
   // PERF: blur the sprite sheet once at load instead of blurring the whole viewport on every refresh
   // (~10.7 -> ~5.7 ms per refresh). Each 3x3 cell is blurred on its own so neighbours don't bleed in;
   // sheet px ~= 1.6x world px at scale 1, so the baked radius roughly matches the old world-space blur.
-  let bakedCloudSheet: ImageBitmap | OffscreenCanvas | null = null;
-  let bakedFrom: CanvasImageSource | null = null;
   const getBakedCloudSheet = (src: HTMLImageElement | ImageBitmap | HTMLCanvasElement): CanvasImageSource => {
     if (bakedCloudSheet && bakedFrom === src) return bakedCloudSheet;
     const w = (src as HTMLImageElement).naturalWidth || src.width;
@@ -1095,11 +1099,11 @@ export function createEffectsSystems(
     }
     // An ImageBitmap is uploaded to the GPU once; drawing from a CPU-backed OffscreenCanvas re-uploads
     // the whole sheet on every drawImage.
+    if (bakedCloudSheet && 'close' in bakedCloudSheet) bakedCloudSheet.close();
     bakedCloudSheet = typeof baked.transferToImageBitmap === 'function' ? baked.transferToImageBitmap() : baked;
     bakedFrom = src;
     return bakedCloudSheet;
   };
-  const cloudCacheState = { at: -Infinity, offsetX: 0, offsetY: 0, zoom: 0, dpr: 0, empty: true };
   const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
     const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;

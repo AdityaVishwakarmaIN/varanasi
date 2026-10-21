@@ -27,6 +27,8 @@ const ICONS: Record<string, LucideIcon> = {
 
 /** Save failures have their own toast (SaveErrorToast). */
 const HANDLED_ELSEWHERE = /^save-failed-/;
+// Text plus timestamp: a reused id (e.g. 'fire-incident') with the same words is still a new incident
+const toastSig = (n: Notification) => `${n.title}\n${n.description}\n${n.timestamp}`;
 
 function NotificationIcon({ icon, className }: { icon: string; className?: string }) {
   const Icon = ICONS[icon];
@@ -56,20 +58,20 @@ export function NotificationToasts({
   className?: string;
 }) {
   const m = useMessages();
-  // id -> last text shown. A notification whose id is already known but whose text changed (a merged incident
+  // id -> last signature shown. A notification whose id is already known but whose text changed (a merged incident
   // such as 'fire-incident') updates its toast in place instead of stacking a second one.
   const seenRef = useRef<Map<string, string> | null>(null);
   const [toasts, setToasts] = useState<Notification[]>([]);
 
   useEffect(() => {
     if (seenRef.current === null) {
-      seenRef.current = new Map(notifications.map((n) => [n.id, n.title + '\n' + n.description]));
+      seenRef.current = new Map(notifications.map((n) => [n.id, toastSig(n)]));
       return;
     }
     const seen = seenRef.current;
-    const fresh = notifications.filter((n) => seen.get(n.id) !== n.title + '\n' + n.description && !HANDLED_ELSEWHERE.test(n.id));
+    const fresh = notifications.filter((n) => seen.get(n.id) !== toastSig(n) && !HANDLED_ELSEWHERE.test(n.id));
     if (fresh.length === 0) return;
-    for (const n of fresh) seen.set(n.id, n.title + '\n' + n.description);
+    for (const n of fresh) seen.set(n.id, toastSig(n));
     setToasts((prev) => {
       const freshIds = new Set(fresh.map((n) => n.id));
       return [...fresh, ...prev.filter((t) => !freshIds.has(t.id))].slice(0, NOTIFICATION_CONFIG.maxToasts);

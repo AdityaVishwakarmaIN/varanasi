@@ -60,6 +60,11 @@ export interface TrainForCrossing {
 
 /** Dispatch checks each fire has waited for a crew (module level: the systems object is rebuilt every render). */
 const fireSeenChecks = new Map<string, number>();
+// createVehicleSystems runs on every render of the grid, so state that must build up over seconds lives here
+const congestion = new CongestionMap();
+let congestionCounts = new Uint16Array(0);
+let onlookerFireTimer = 0;
+let onlookerFires: FirePoint[] = [];
 
 export interface VehicleSystemRefs {
   carsRef: React.MutableRefObject<Car[]>;
@@ -1199,8 +1204,6 @@ export function createVehicleSystems(
     cowsRef.current = cows;
   };
 
-  const congestion = new CongestionMap();
-  let congestionCounts = new Uint16Array(0);
   const updateCars = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
@@ -1654,8 +1657,6 @@ export function createVehicleSystems(
     busesRef.current = updatedBuses;
   };
 
-  let onlookerFireTimer = 0;
-  let onlookerFires: FirePoint[] = [];
   const updatePedestrians = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
@@ -1741,7 +1742,9 @@ export function createVehicleSystems(
     for (let i = 0; i < allPedestrians.length; i++) {
       const ped = allPedestrians[i];
 
-      if (watching && ped.state === 'walking' && ((ped.id + Math.floor(ped.age * 4)) & 7) === 0) {
+      // Roll once per quarter-second bucket (on entering it), not on every frame inside it
+      const bucket = Math.floor((ped.age + delta) * 4);
+      if (watching && ped.state === 'walking' && bucket !== Math.floor(ped.age * 4) && ((ped.id + bucket) & 7) === 0) {
         const secs = getWatchSeconds(onlookerFires, ped.tileX, ped.tileY, Math.random(), Math.random());
         if (secs > 0) {
           ped.state = 'idle';
