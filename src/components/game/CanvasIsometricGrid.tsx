@@ -57,6 +57,7 @@ import {
 import {
   drawGreenBaseTile,
   drawZoneLotMarks,
+  drawScorchedLot,
   ZONE_LOT_STYLES,
   drawGreyBaseTile,
   drawBeachOnWater,
@@ -1920,6 +1921,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Crisp inset outline + R/C/I letter on empty zoned lots only (not on roads or buildings)
         if (tile.zone !== 'none' && (tile.building.type === 'grass' || tile.building.type === 'empty')) {
           drawZoneLotMarks(ctx, x, y, tile.zone, currentZoom, showsDragGrid);
+          if (tile.building.type === 'grass' && !tile.building.onFire && tile.building.fireProgress > 0) {
+            drawScorchedLot(ctx, x, y, tile.building.fireProgress, (tile.x * 7 + tile.y * 13) & 7);
+          }
         }
       }
       

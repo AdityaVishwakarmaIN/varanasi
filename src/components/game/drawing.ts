@@ -260,6 +260,40 @@ export function drawGreenBaseTile(
   if (tile.zone !== 'none' && (tile.building.type === 'grass' || tile.building.type === 'empty')) {
     drawZoneLotMarks(ctx, x, y, tile.zone, currentZoom, zoneEmphasis);
   }
+
+  // EMBER R3: a lot that just burned (fireProgress reused as the scorch timer on grass) shows soot and rubble
+  if (tile.zone !== 'none' && tile.building.type === 'grass' && !tile.building.onFire && tile.building.fireProgress > 0) {
+    drawScorchedLot(ctx, x, y, tile.building.fireProgress, (tile.x * 7 + tile.y * 13) & 7);
+  }
+}
+
+/** Charred ground plus a few rubble blocks; fades as the scorch timer (SCORCH_TICKS = 60) runs down. */
+export function drawScorchedLot(ctx: IsoRenderer, x: number, y: number, timer: number, seed: number): void {
+  const w = TILE_WIDTH;
+  const h = TILE_HEIGHT;
+  const fade = Math.min(1, timer / 40);
+  ctx.fillStyle = `rgba(28, 22, 20, ${0.62 * fade})`;
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2, y + h * 0.06);
+  ctx.lineTo(x + w * 0.94, y + h / 2);
+  ctx.lineTo(x + w / 2, y + h * 0.94);
+  ctx.lineTo(x + w * 0.06, y + h / 2);
+  ctx.closePath();
+  ctx.fill();
+  const blocks = [
+    [0.38, 0.42, 7, 4, '#4a3b33'],
+    [0.58, 0.55, 6, 3, '#5a463a'],
+    [0.5, 0.34, 4, 3, '#2f2622'],
+    [0.3, 0.58, 5, 3, '#3b2f29'],
+    [0.66, 0.4, 4, 2, '#4d4038'],
+  ] as const;
+  ctx.globalAlpha = Math.min(1, 0.3 + fade);
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[(i + seed) % blocks.length];
+    ctx.fillStyle = b[4];
+    ctx.fillRect(x + w * b[0] - b[2] / 2, y + h * b[1] - b[3] / 2, b[2], b[3]);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**

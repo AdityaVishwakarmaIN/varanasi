@@ -14,6 +14,7 @@ import {
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
 import { canRollThroughRed } from './junctionYield';
+import { followSpeedFactor, FOLLOW_BAND } from './followEasing';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
@@ -1369,6 +1370,7 @@ export function createVehicleSystems(
       // Only check cars going the SAME direction (same lane).
       // S3-T4: an overtaking motorbike rides the middle of the road, so it is not held up by its lane.
       let blockedByVehicle = false;
+      let followFactor = 1;
       if (!shouldStop && !car.overtaking) {
         // Check same tile for car ahead in same lane
         // PERF: Use numeric key lookup
@@ -1378,24 +1380,37 @@ export function createVehicleSystems(
           // Same direction (same lane) and ahead of us
           if (other.direction === car.direction && other.progress > car.progress) {
             const gap = other.progress - car.progress;
-            if (gap < getFollowGap(car.kind, other.kind) && !other.overtaking) {
-              shouldStop = true;
-              blockedByVehicle = true;
-              break;
+            // Kind-aware hold distance (bikes tuck closer than buses), eased up to free flow
+            const stopGap = getFollowGap(car.kind, other.kind) * 0.8;
+            if (gap < stopGap + FOLLOW_BAND && !other.overtaking) {
+              const f = followSpeedFactor(gap, stopGap);
+              if (f === 0) {
+                shouldStop = true;
+                blockedByVehicle = true;
+                break;
+              }
+              if (f < followFactor) followFactor = f;
             }
           }
         }
         
         // Check next tile for car in same lane we might hit
-        if (!shouldStop && car.progress > 0.7) {
+        if (!shouldStop && car.progress > 0.45) {
           // PERF: Use numeric key lookup
           const nextTileCars = carsByTile.get(nextY * currentGridSize + nextX) || [];
           for (const other of nextTileCars) {
-            // Only stop for cars going same direction (same lane)
-            if (other.direction === car.direction && other.progress < 0.3 && !other.overtaking) {
-              shouldStop = true;
-              blockedByVehicle = true;
-              break;
+            // Only react to cars going same direction (same lane); gap is measured across the tile edge
+            if (other.direction === car.direction && !other.overtaking) {
+              const gap = 1 - car.progress + other.progress;
+              const stopGap = getFollowGap(car.kind, other.kind) * 0.8;
+              if (gap >= stopGap + FOLLOW_BAND) continue;
+              const f = followSpeedFactor(gap, stopGap);
+              if (f === 0) {
+                shouldStop = true;
+                blockedByVehicle = true;
+                break;
+              }
+              if (f < followFactor) followFactor = f;
             }
           }
         }
@@ -1410,7 +1425,7 @@ export function createVehicleSystems(
       if (!shouldStop) {
         // S3-T5: drive around a standing cow at reduced speed (never a full stop, so no deadlock)
         const cowSlowdown = standingCowTiles.size > 0 ? getCowSlowdown(standingCowTiles, car.tileY * currentGridSize + car.tileX) : 1;
-        car.progress += car.speed * delta * speedMultiplier * cowSlowdown;
+        car.progress += car.speed * delta * speedMultiplier * cowSlowdown * followFactor;
       }
       // When stopped, just don't move - no position changes
       
