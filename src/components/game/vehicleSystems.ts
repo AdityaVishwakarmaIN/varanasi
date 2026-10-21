@@ -153,6 +153,10 @@ function aheadGap(tx: number, ty: number, progress: number, nextX: number, nextY
 const BUS_FOLLOW_GAP = 0.52;
 /** Cars currently pulled toward the kerb for a siren; module scope because createVehicleSystems reruns every render. */
 const kerbCarIds = new Set<number>();
+/** Cars pulling over ahead of a siren (filled by updateEmergencyVehicles, read by updateCars). */
+const yieldingCarIds = new Set<number>();
+/** Burning tiles of the last grid scanned for incident indicators. */
+const burningTilesCache: { grid: unknown; size: number; tiles: number[] } = { grid: null, size: 0, tiles: [] };
 
 export function invalidateVehicleSystemCaches(): void {
   finderCache = { key: '' };
@@ -947,7 +951,6 @@ export function createVehicleSystems(
 
   /** Cars within this many tiles of a running emergency vehicle pull over. */
   const EMERGENCY_YIELD_RADIUS = 3;
-  const yieldingCarIds = new Set<number>();
   /** Cars this close (or closer) ease toward the kerb so the siren vehicle passes beside them, not through them. */
   const EMERGENCY_KERB_RADIUS = 4;
   /** Extra sideways distance (px) a car sits at when fully pulled over. */
@@ -2182,7 +2185,6 @@ export function createVehicleSystems(
   const incidentAnimTimeRef = { current: 0 };
   // Burning tiles, rescanned only when the grid object changes (once per tick, not once per frame).
   // Fire trucks put fires out in place on the same grid, so the draw loop re-checks onFire.
-  const burningTilesCache: { grid: unknown; size: number; tiles: number[] } = { grid: null, size: 0, tiles: [] };
 
   const drawIncidentIndicators = (ctx: IsoRenderer, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;

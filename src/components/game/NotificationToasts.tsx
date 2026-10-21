@@ -163,7 +163,7 @@ function NotificationToast({
       <button
         type="button"
         onClick={() => onDismiss(n.id)}
-        className="text-chrome-muted hover:text-chrome-accent -m-1.5 max-md:-m-2 short:-m-2 min-w-11 min-h-11 md:min-w-8 md:min-h-8 short:min-w-11 short:min-h-11 rounded-none flex items-center justify-center"
+        className="text-chrome-muted hover:text-chrome-accent -m-1.5 max-md:-m-2 short:-m-2 min-w-11 min-h-11 md:min-w-8 md:min-h-8 short:!min-w-11 short:!min-h-11 rounded-none flex items-center justify-center"
         aria-label={dismissLabel}
       >
         <X className="w-4 h-4" />
