@@ -73,7 +73,7 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   
   return (
     <div
-      className="hud-glass fixed bottom-4 left-[240px] z-50 flex items-center gap-2 rounded-none py-1.5 pl-3 pr-1.5"
+      className="hud-glass fixed bottom-4 left-[240px] z-[42] flex items-center gap-2 rounded-none py-1.5 pl-3 pr-1.5"
       role="toolbar"
       aria-label={String(m(VIEW_OVERLAY_LABEL))}
     >

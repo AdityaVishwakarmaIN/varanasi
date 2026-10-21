@@ -404,6 +404,14 @@ input[type="number"]:focus {
   }
 }
 
+/* Phones held sideways are wider than 768px but still phones: 44px */
+@media (pointer: coarse) and (max-height: 500px) {
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]), [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 /* Safe area padding utilities */
 .safe-area-top {
   padding-top: var(--safe-area-inset-top);

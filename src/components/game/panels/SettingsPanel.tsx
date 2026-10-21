@@ -522,7 +522,7 @@ export function SettingsPanel() {
               <Label>{m(UI_LABELS.language)}</Label>
               <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
               <div className="relative inline-flex">
-                <LocaleSelector className="h-9 min-w-36 appearance-none bg-chrome-well border border-chrome-border text-chrome-text rounded-none pl-2.5 pr-8 text-sm" />
+                <LocaleSelector className="h-11 md:h-9 short:!h-11 min-w-36 appearance-none bg-chrome-well border border-chrome-border text-chrome-text rounded-none pl-2.5 pr-8 text-sm" />
                 <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-chrome-muted" />
               </div>
             </div>

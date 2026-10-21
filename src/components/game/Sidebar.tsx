@@ -467,7 +467,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
         <ChevronRight size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
       </Button>
       
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           className="fixed"
           style={{
@@ -475,19 +475,20 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
             left: `${menuPosition.left - SUBMENU_GAP}px`,
             width: `${SUBMENU_GAP + 8}px`,
             height: `${Math.max(menuPosition.buttonHeight, 200)}px`,
-            zIndex: 9998,
+            zIndex: 44,
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
-        />
+        />,
+        document.body
       )}
       
-      {isOpen && (
+      {isOpen && createPortal(
         <div 
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            zIndex: 9999,
+            zIndex: 45,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
               : { top: `${menuPosition.top}px` }),
@@ -512,7 +513,8 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
               </Button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -4458,6 +4458,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [isMapTouchTarget, smoothCamera, inspectTileAt, startPinch]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.target instanceof Element && e.target.closest('[data-no-wheel-zoom]')) return;
     e.preventDefault();
     const g = touchGestureRef.current;
     if (!g) return;
