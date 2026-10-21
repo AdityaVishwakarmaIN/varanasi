@@ -151,6 +151,8 @@ function aheadGap(tx: number, ty: number, progress: number, nextX: number, nextY
 }
 /** A bus is 24 px long (a car 11 px): centre gap that keeps a car and a bus bumper to bumper, with a 2 px margin. */
 const BUS_FOLLOW_GAP = 0.52;
+/** Cars currently pulled toward the kerb for a siren; module scope because createVehicleSystems reruns every render. */
+const kerbCarIds = new Set<number>();
 
 export function invalidateVehicleSystemCaches(): void {
   finderCache = { key: '' };
@@ -950,7 +952,6 @@ export function createVehicleSystems(
   const EMERGENCY_KERB_RADIUS = 4;
   /** Extra sideways distance (px) a car sits at when fully pulled over. */
   const KERB_SHIFT_PX = 4;
-  const kerbCarIds = new Set<number>();
 
   /** Crew readiness: an under-funded brigade drives out slower (100% funding = 1). */
   const getCrewSpeedFactor = (type: EmergencyVehicleType): number =>
