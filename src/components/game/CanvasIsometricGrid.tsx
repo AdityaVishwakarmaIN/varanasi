@@ -104,6 +104,7 @@ import {
   buildWindTreeRenderItem,
   createDefaultWindVisualState,
   createWindSystem,
+  cutWindTreeSilhouette,
   WindSystemRefs,
   WindSystemState,
   WindTreeRenderItem,
@@ -2804,6 +2805,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               );
 
               if (treeRenderItem) {
+                // The swaying tree is drawn on the cars canvas, UNDER this one. Cut its silhouette out of
+                // what is already here (the buildings behind it, lower depth) so the canopy shows through;
+                // buildings in front are drawn after this and still cover it.
+                cutWindTreeSilhouette(buildingsCtx, treeRenderItem);
                 nextVisibleWindTrees.push(treeRenderItem);
                 windTreeTiles.push({ key: tile.y * gridSize + tile.x, depth });
                 if (tile.building.onFire) {
@@ -3690,6 +3695,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         clearAirCanvas();
+        // Trees are part of the scene (the buildings canvas has their silhouettes cut out): keep them
+        // while the vehicles are skipped during mobile pans/pinches
+        if (!gpuActive) {
+          resetLayerState(windCtx);
+          drawWindTrees(windCtx);
+        }
       } else {
         drawCars(ctx);
         drawBuses(ctx);

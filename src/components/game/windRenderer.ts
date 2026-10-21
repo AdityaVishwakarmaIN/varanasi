@@ -259,6 +259,30 @@ export function updateWindVisualState({
   }
 }
 
+/** Erases a tree's (unswayed) silhouette from `ctx`, so a tree drawn on a layer below shows through. */
+export function cutWindTreeSilhouette(ctx: CanvasRenderingContext2D, tree: WindTreeRenderItem): void {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  if (tree.shouldFlip) {
+    const centerX = tree.drawX + tree.destWidth * 0.5;
+    ctx.translate(centerX, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-centerX, 0);
+  }
+  ctx.drawImage(
+    tree.image as CanvasImageSource,
+    tree.coords.sx,
+    tree.coords.sy,
+    tree.coords.sw,
+    tree.coords.sh,
+    Math.round(tree.drawX),
+    Math.round(tree.drawY),
+    Math.round(tree.destWidth),
+    Math.round(tree.destHeight)
+  );
+  ctx.restore();
+}
+
 export function drawWindTreesFrame(
   { ctx, worldState, windState, dpr }: WindDrawInput,
   visibleTrees: WindTreeRenderItem[]
