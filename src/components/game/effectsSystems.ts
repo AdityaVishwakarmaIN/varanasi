@@ -1070,7 +1070,7 @@ export function createEffectsSystems(
   // PERF: blur the sprite sheet once at load instead of blurring the whole viewport on every refresh
   // (~10.7 -> ~5.7 ms per refresh). Each 3x3 cell is blurred on its own so neighbours don't bleed in;
   // sheet px ~= 1.6x world px at scale 1, so the baked radius roughly matches the old world-space blur.
-  let bakedCloudSheet: OffscreenCanvas | null = null;
+  let bakedCloudSheet: ImageBitmap | OffscreenCanvas | null = null;
   let bakedFrom: CanvasImageSource | null = null;
   const getBakedCloudSheet = (src: HTMLImageElement | ImageBitmap | HTMLCanvasElement): CanvasImageSource => {
     if (bakedCloudSheet && bakedFrom === src) return bakedCloudSheet;
@@ -1093,9 +1093,11 @@ export function createEffectsSystems(
         bctx.restore();
       }
     }
-    bakedCloudSheet = baked;
+    // An ImageBitmap is uploaded to the GPU once; drawing from a CPU-backed OffscreenCanvas re-uploads
+    // the whole sheet on every drawImage.
+    bakedCloudSheet = typeof baked.transferToImageBitmap === 'function' ? baked.transferToImageBitmap() : baked;
     bakedFrom = src;
-    return baked;
+    return bakedCloudSheet;
   };
   const cloudCacheState = { at: -Infinity, offsetX: 0, offsetY: 0, zoom: 0, dpr: 0, empty: true };
   const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
