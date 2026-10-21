@@ -24,6 +24,7 @@ import { isMixedUse } from '@/lib/mixedUse';
 import { getMonsoonsThatFlood } from '@/lib/floods';
 import { getCityFloodMask, getCityFloodRisk, getEffectiveLandValue } from '@/lib/floodSim';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
+import { useScrollFade } from '@/hooks/useScrollFade';
 
 interface TileInfoPanelProps {
   tile: Tile;
@@ -48,6 +49,7 @@ export function TileInfoPanel({
   const { x, y } = tile;
   const { state, upgradeServiceBuilding } = useGame();
   const m = useMessages();
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const displayName = getBuildingDisplayName(tile.building.type, state.mapId);
   
   // Which rows make sense for this tile: river water has no utilities, and a power plant has no residents
@@ -127,8 +129,9 @@ export function TileInfoPanel({
   
   return (
     <Card 
+      ref={scrollRef}
       className={`${isMobile ? 'fixed left-0 right-0 w-full rounded-none border-x-0 border-t border-b z-30' : 'absolute top-4 right-4 w-72 z-50 max-h-[calc(100%-15rem)] overflow-y-auto'}`} 
-      style={isMobile ? { top: 'calc(72px + env(safe-area-inset-top, 0px))' } : undefined}
+      style={isMobile ? { top: 'calc(72px + env(safe-area-inset-top, 0px))', ...scrollFadeStyle } : scrollFadeStyle}
       onClick={handleCardClick}
     >
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -138,7 +141,7 @@ export function TileInfoPanel({
         </Button>
       </CardHeader>
       
-      <CardContent className="space-y-3 text-sm">
+      <CardContent className={`${isMobile ? 'space-y-3' : 'space-y-2'} text-sm`}>
         <div className="flex justify-between">
           <span className="text-chrome-muted">Building</span>
           <span className="capitalize">

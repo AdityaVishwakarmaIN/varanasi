@@ -1,5 +1,6 @@
 'use client';
 
+import { useScrollFade } from '@/hooks/useScrollFade';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
@@ -35,6 +36,7 @@ const UI_LABELS = {
 };
 
 export function StatisticsPanel() {
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const { state, setActivePanel } = useGame();
   const { history, stats } = state;
   const isVaranasi = state.mapId === 'varanasi' && stats.gangaHealth !== undefined;
@@ -145,7 +147,7 @@ export function StatisticsPanel() {
           <DialogDescription className="sr-only">{m(UI_LABELS.cityStatisticsDesc)}</DialogDescription>
         </DialogHeader>
         
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
+        <div ref={scrollRef} style={scrollFadeStyle} className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Card className="bg-chrome-well p-2 sm:p-3">
               <div className="hud-label mb-1.5">{m(UI_LABELS.population)}</div>

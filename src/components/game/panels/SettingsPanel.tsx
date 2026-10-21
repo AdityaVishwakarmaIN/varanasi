@@ -1,5 +1,6 @@
 'use client';
 
+import { useScrollFade } from '@/hooks/useScrollFade';
 import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -147,6 +148,7 @@ async function loadExampleState(
 
 
 export function SettingsPanel() {
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity, addNotification } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
   // Only the Varanasi art is offered; the other packs stay in the code but are hidden (unless one is already selected).
@@ -265,7 +267,7 @@ export function SettingsPanel() {
           <DialogTitle>{m(UI_LABELS.settings)}</DialogTitle>
         </DialogHeader>
         
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-6">
+        <div ref={scrollRef} style={scrollFadeStyle} className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-6">
           {/* Saved Cities Section */}
           <div>
             <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>

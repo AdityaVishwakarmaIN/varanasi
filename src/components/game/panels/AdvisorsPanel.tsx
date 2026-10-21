@@ -1,5 +1,6 @@
 'use client';
 
+import { useScrollFade } from '@/hooks/useScrollFade';
 import React from 'react';
 import { msg, useMessages } from 'gt-next';
 import { MapPin } from 'lucide-react';
@@ -108,6 +109,7 @@ const PRIORITY_BORDER: Record<AdvisorNote['priority'], string> = {
 };
 
 export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => void } = {}) {
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const { state, setActivePanel } = useGame();
   const { stats } = state;
   const { notes } = useAdvisorNotes(state);
@@ -131,7 +133,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
           <DialogDescription className="sr-only">{m(UI_LABELS.cityAdvisorsDesc)}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
+        <div ref={scrollRef} style={scrollFadeStyle} className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
           <Card className=" flex items-center gap-4 p-4 bg-chrome-well">
             <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-none ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}
