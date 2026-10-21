@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 
-const FADE = 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)';
+const FADE = 'linear-gradient(to bottom, #000 calc(100% - 44px), transparent)';
 const FADE_STYLE: CSSProperties = { maskImage: FADE, WebkitMaskImage: FADE };
 
 /**
  * Tracks whether a scroll container has content hidden below its bottom edge.
  * Returns [ref callback, style]; attach both to the scroller: while content is hidden below the
- * fold the last 28px fade out, so truncated content never looks like it simply ends.
+ * fold the last 44px fade out, so truncated content never looks like it simply ends.
  */
 export function useScrollFade<T extends HTMLElement>() {
   // A callback ref (stored in state) so portalled scrollers, mounted after the first
