@@ -53,6 +53,12 @@ describe('EMBER F1/F2/F3 fire scenarios', () => {
     console.log('F3b', JSON.stringify(a));
   }, 300000);
 
+  it('F3c station at 100% funding during severe_storm', () => {
+    const a = agg(many({ station: true, funding: 100, weather: 'severe_storm' }));
+    writeMetrics('F3c_100pct_storm', a);
+    console.log('F3c', JSON.stringify(a));
+  }, 300000);
+
   it('F1 storm (no station) for reference', () => {
     const a = agg(many({ station: false, funding: 100, weather: 'severe_storm' }));
     writeMetrics('F1_storm', a);

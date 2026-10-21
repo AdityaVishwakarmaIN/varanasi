@@ -13,6 +13,7 @@ import {
 } from '@/lib/fireConfig';
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
+import { canRollThroughRed } from './junctionYield';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
@@ -54,6 +55,9 @@ export interface TrainForCrossing {
   progress: number;
   carriages: { tileX: number; tileY: number }[];
 }
+
+/** Dispatch checks each fire has waited for a crew (module level: the systems object is rebuilt every render). */
+const fireSeenChecks = new Map<string, number>();
 
 export interface VehicleSystemRefs {
   carsRef: React.MutableRefObject<Car[]>;
@@ -842,10 +846,22 @@ export function createVehicleSystems(
     
     const fires = findFiresCallback();
     const fireStations = findStationsCallback('fire_station');
+    // Forget fires that are out
+    if (fireSeenChecks.size > 0) {
+      for (const key of fireSeenChecks.keys()) {
+        let still = false;
+        for (const f of fires) if (getFireIncidentKey(f.x, f.y) === key) { still = true; break; }
+        if (!still) fireSeenChecks.delete(key);
+      }
+    }
     
     for (const fire of fires) {
       const fireKey = getFireIncidentKey(fire.x, fire.y);
       if (activeFiresRef.current.has(fireKey)) continue;
+      // Turnout: an under-funded brigade takes longer to get a crew out (one check per 1.5 s of game time)
+      const seen = (fireSeenChecks.get(fireKey) ?? 0) + 1;
+      fireSeenChecks.set(fireKey, seen);
+      if (seen <= getTurnoutChecks(state.fireFunding)) continue;
 
       const nearestStation = findNearestFireStation(fire, fireStations);
       if (nearestStation) {
@@ -905,6 +921,8 @@ export function createVehicleSystems(
       }
     }
   };
+
+  const getTurnoutChecks = (funding: number | undefined): number => Math.round(((1 - getFireFundingFactor(funding)) * 6) / 1.5);
 
   /** Cars within this many tiles of a running emergency vehicle pull over. */
   const EMERGENCY_YIELD_RADIUS = 3;
@@ -1312,7 +1330,7 @@ export function createVehicleSystems(
       // If we're NOT in an intersection and the next tile IS an intersection
       if (!currentIsIntersection && nextIsIntersection) {
         // Check immediately and stop well before the intersection
-        if (!canProceedThroughIntersection(car.direction, lightState)) {
+        if (!canProceedThroughIntersection(car.direction, lightState) && !canRollThroughRed(carsByTile, currentGridSize, nextX, nextY, car.direction)) {
           shouldStop = true;
         }
       }

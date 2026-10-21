@@ -28,9 +28,9 @@ describe('fire model', () => {
     expect(getBurnStageSpread(90)).toBeLessThan(getBurnStageSpread(50));
   });
 
-  it('funding scales fire cover from 40% (no money) to 100%', () => {
+  it('funding scales fire cover from 25% (no money) to 100%', () => {
     expect(getFireFundingFactor(100)).toBe(1);
-    expect(getFireFundingFactor(0)).toBeCloseTo(0.4);
+    expect(getFireFundingFactor(0)).toBeCloseTo(0.25);
     expect(getFireFundingFactor(undefined)).toBe(1);
   });
 

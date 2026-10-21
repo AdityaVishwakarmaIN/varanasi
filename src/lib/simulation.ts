@@ -63,6 +63,7 @@ import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { getBuildingUpkeep, RAIL_TILE_UPKEEP_MONTHLY, type UpkeepCategory, type UpkeepEntry } from '@/lib/upkeep';
+import { describeFirePlace } from '@/lib/firePlaces';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import { advanceFailureState, applyLoanRepayment, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
 import { POPULATION_DISPLAY_SCALE, formatINR } from '@/lib/format';
@@ -3238,7 +3239,7 @@ export function simulateTick(
   const fireWindStrength = FIRE_WIND_STRENGTH[cloudWeatherMode];
   let fireStartCount = 0, fireStartX = 0, fireStartY = 0;
   let fireSpreadCount = 0;
-  let fireDestroyedCount = 0, fireDestroyedX = 0, fireDestroyedY = 0;
+  let fireDestroyedCount = 0, fireDestroyedX = 0, fireDestroyedY = 0, fireDestroyedType = '';
 
   // Process all tiles
   for (let y = 0; y < size; y++) {
@@ -3462,7 +3463,7 @@ export function simulateTick(
           const burnedZone = tile.zone;
           const burnedSize = getBuildingSize(burnedType);
           fireDestroyedCount++;
-          if (fireDestroyedCount === 1) { fireDestroyedX = x; fireDestroyedY = y; }
+          if (fireDestroyedCount === 1) { fireDestroyedX = x; fireDestroyedY = y; fireDestroyedType = burnedType; }
           tile.building = createBuilding('grass');
           // A zoned lot keeps its zone and lies scorched for a while, so the city can rebuild it
           if (burnedZone !== 'none') {
@@ -3916,20 +3917,29 @@ export function simulateTick(
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
+  // One merged notice per incident: the id is stable, so a new tick's notice replaces the last one instead of stacking
   const fireNotifications: GameState['notifications'] = [];
-  const fireTickId = getTotalTicks(state);
-  if (fireStartCount > 0) {
-    fireNotifications.push({ id: `fire-start-${fireTickId}`, title: 'Fire!', description: `A fire broke out at (${fireStartX}, ${fireStartY}). Trucks are the only thing that puts it out; fire stations only slow the spread.`, icon: 'fire', timestamp: Date.now(), x: fireStartX, y: fireStartY, overlay: 'fire', severity: 'warning' });
-  }
   const burningNow = burningInputTiles + fireStartCount + fireSpreadCount - fireDestroyedCount;
-  if (burningNow >= FIRE_BLAZE_THRESHOLD && burningInputTiles < FIRE_BLAZE_THRESHOLD) {
-    fireNotifications.push({ id: `fire-blaze-${fireTickId}`, title: 'Blaze out of control', description: `${burningNow} buildings are burning. Check fire station coverage and funding, and mind the wind.`, icon: 'fire', timestamp: Date.now(), x: fireStartX, y: fireStartY, overlay: 'fire', severity: 'crisis' });
+  const blaze = burningNow >= FIRE_BLAZE_THRESHOLD && burningInputTiles < FIRE_BLAZE_THRESHOLD;
+  if (fireStartCount > 0 || fireDestroyedCount > 0 || blaze) {
+    const lostAt = fireDestroyedCount > 0 ? describeFirePlace(newGrid, size, fireDestroyedX, fireDestroyedY, state.mapId, fireDestroyedType) : '';
+    const startAt = fireStartCount > 0 ? describeFirePlace(newGrid, size, fireStartX, fireStartY, state.mapId) : '';
+    const focusX = fireDestroyedCount > 0 ? fireDestroyedX : fireStartX;
+    const focusY = fireDestroyedCount > 0 ? fireDestroyedY : fireStartY;
+    const lost = fireDestroyedCount > 0
+      ? `${lostAt}${fireDestroyedCount > 1 ? ` and ${fireDestroyedCount - 1} more` : ''} burned down; the lots lie scorched for about two days.`
+      : '';
+    const title = blaze ? 'Blaze out of control' : fireDestroyedCount > 0 ? 'Lost to fire' : 'Fire!';
+    const description = blaze
+      ? `${burningNow} buildings are burning. Check fire station funding and coverage, and mind the wind. ${lost}`.trim()
+      : fireDestroyedCount > 0
+        ? lost
+        : `Fire at ${startAt}. Only trucks put it out; stations slow the spread.`;
+    fireNotifications.push({ id: 'fire-incident', title, description, icon: 'fire', timestamp: Date.now(), x: focusX, y: focusY, overlay: 'fire', severity: blaze ? 'crisis' : 'warning' });
   }
-  if (fireDestroyedCount > 0) {
-    fireNotifications.push({ id: `fire-lost-${fireTickId}`, title: 'Lost to fire', description: `${fireDestroyedCount} building${fireDestroyedCount === 1 ? '' : 's'} burned down. The lots lie scorched and can be rebuilt in a couple of days.`, icon: 'fire', timestamp: Date.now(), x: fireDestroyedX, y: fireDestroyedY, overlay: 'fire', severity: 'warning' });
-  }
+  const priorNotifications = fireNotifications.length > 0 ? state.notifications.filter((n) => n.id !== 'fire-incident') : state.notifications;
   const addedNotifications = [...fireNotifications, ...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
-  let newNotifications = pushNotifications(state.notifications, addedNotifications);
+  let newNotifications = pushNotifications(priorNotifications, addedNotifications);
   const pauseForCrisis = shouldPauseForCrisis(state, addedNotifications);
   // Forecasts that have happened drop off the calendar strip; new ones go on it with a warning
   let forecasts = newTick === 0 ? pruneForecasts(state.forecasts, absoluteDay(newYear, newMonth, newDay)) : state.forecasts;

@@ -10,6 +10,7 @@ import { useGame } from '@/context/GameContext';
 import { TOOL_INFO, Tile, Building, BuildingType, AdjacentCity, Tool } from '@/types/game';
 import { getBuildingSize, requiresWaterAdjacency, getWaterAdjacency } from '@/lib/simulation';
 import { FireIcon, SafetyIcon } from '@/components/ui/Icons';
+import { getNeighbourhoodName } from '@/lib/firePlaces';
 import { getSpriteCoords, BUILDING_TO_SPRITE, SPRITE_VERTICAL_OFFSETS, SPRITE_HORIZONTAL_OFFSETS, getActiveSpritePack } from '@/lib/renderConfig';
 import { selectSpriteSource, calculateSpriteCoords, calculateSpriteScale, calculateSpriteOffsets, getSpriteRenderInfo } from '@/components/game/buildingSprite';
 
@@ -4828,8 +4829,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </p>
               
               {/* Location */}
-              <div className="mt-1.5 pt-1.5 border-t border-chrome-border text-[10px] text-chrome-muted font-mono">
-                ({hoveredIncident.x}, {hoveredIncident.y})
+              <div className="mt-1.5 pt-1.5 border-t border-chrome-border text-[10px] text-chrome-muted">
+                {getNeighbourhoodName(hoveredIncident.x, hoveredIncident.y, gridSize)}
               </div>
             </div>
           </div>

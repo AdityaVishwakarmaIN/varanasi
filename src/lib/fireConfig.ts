@@ -15,7 +15,7 @@ export const DEFAULT_FIRE_STATE: Pick<Building, 'onFire' | 'fireProgress'> = {
 export const FIRE_SIMULATION_CONFIG = {
   fireProgressPerTick: 1,
   destructionThreshold: 100,
-  spreadChancePerAdjacentFire: 0.005,
+  spreadChancePerAdjacentFire: 0.0135,
   maxCoverageSpreadReduction: 0.95,
   randomIgnitionChance: 0.00003,
 } as const;
@@ -56,7 +56,7 @@ export function getFireFuelFactor(type: BuildingType): number {
 /** Fire coverage scales with budget funding: an under-funded brigade covers less ground (100% funding = 1). */
 export function getFireFundingFactor(funding: number | undefined): number {
   if (funding === undefined) return 1;
-  return 0.4 + 0.6 * Math.max(0, Math.min(100, funding)) / 100;
+  return 0.25 + 0.75 * Math.max(0, Math.min(100, funding)) / 100;
 }
 
 /** Stage of a burn by progress: ignition smoulders, growth and peak throw sparks, burnout fades. */
@@ -130,8 +130,8 @@ export const FIRE_RESPONSE_CONFIG = {
 export const FIRE_WEATHER_MULTIPLIERS: Record<CloudWeatherMode, number> = {
   clear: 1,
   light_clouds: 2,
-  storm: 3,
-  severe_storm: 6,
+  storm: 2.2,
+  severe_storm: 3.5,
   /** Damp winter air (S4-T2). */
   fog: 0.8,
   /** Hot, dry summer air: fires start and spread more easily (S4-T2). */
