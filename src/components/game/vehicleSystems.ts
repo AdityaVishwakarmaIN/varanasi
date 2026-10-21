@@ -140,6 +140,18 @@ type FinderCache = {
 let finderCache: FinderCache = { key: '' };
 let roadPrefixCache: { key: string; prefix: Int32Array | null } = { key: '', prefix: null };
 
+/**
+ * Centre-to-centre distance (tile fractions) from a follower to a leader driving the same way on the same
+ * or the next tile, or Infinity if the leader is not just ahead. Cars and buses share this for following.
+ */
+function aheadGap(tx: number, ty: number, progress: number, nextX: number, nextY: number, o: { tileX: number; tileY: number; progress: number }): number {
+  if (o.tileX === tx && o.tileY === ty) return o.progress > progress ? o.progress - progress : Infinity;
+  if (o.tileX === nextX && o.tileY === nextY) return 1 - progress + o.progress;
+  return Infinity;
+}
+/** A bus is 24 px long (a car 11 px): centre gap that keeps a car and a bus bumper to bumper, with a 2 px margin. */
+const BUS_FOLLOW_GAP = 0.52;
+
 export function invalidateVehicleSystemCaches(): void {
   finderCache = { key: '' };
   roadPrefixCache = { key: '', prefix: null };
@@ -934,6 +946,11 @@ export function createVehicleSystems(
   /** Cars within this many tiles of a running emergency vehicle pull over. */
   const EMERGENCY_YIELD_RADIUS = 3;
   const yieldingCarIds = new Set<number>();
+  /** Cars this close (or closer) ease toward the kerb so the siren vehicle passes beside them, not through them. */
+  const EMERGENCY_KERB_RADIUS = 4;
+  /** Extra sideways distance (px) a car sits at when fully pulled over. */
+  const KERB_SHIFT_PX = 4;
+  const kerbCarIds = new Set<number>();
 
   /** Crew readiness: an under-funded brigade drives out slower (100% funding = 1). */
   const getCrewSpeedFactor = (type: EmergencyVehicleType): number =>
@@ -975,6 +992,7 @@ export function createVehicleSystems(
     // Sirens clear the way: cars close ahead of a running emergency vehicle pull over (see yieldingCarIds)
     // and the vehicle still crawls through whatever traffic is left (see getTrafficSlowdown).
     yieldingCarIds.clear();
+    kerbCarIds.clear();
     const cars = carsRef.current;
     if (cars.length > 0) {
       for (const ev of emergencyVehiclesRef.current) {
@@ -986,6 +1004,7 @@ export function createVehicleSystems(
           const reach = adx + ady;
           // Cars right next to the vehicle are the bottleneck (see getTrafficSlowdown); the ones further out clear the road
           if (reach >= 2 && reach <= EMERGENCY_YIELD_RADIUS) yieldingCarIds.add(car.id);
+          if (reach <= EMERGENCY_KERB_RADIUS) kerbCarIds.add(car.id);
         }
       }
     }
@@ -1322,6 +1341,15 @@ export function createVehicleSystems(
         continue;
       }
       
+      // Ease toward the kerb while a siren is near, and back afterwards (render adds yieldShift * KERB_SHIFT_PX)
+      if (car.yieldShift || kerbCarIds.size > 0) {
+        const want = kerbCarIds.has(car.id) ? 1 : 0;
+        const cur = car.yieldShift ?? 0;
+        const step = 3 * delta;
+        car.yieldShift = cur < want ? Math.min(want, cur + step) : Math.max(want, cur - step);
+        if (car.yieldShift === 0) car.yieldShift = undefined;
+      }
+
       // Check if approaching an intersection with red light
       // Only stop BEFORE entering the intersection, never while inside it
       let shouldStop = false;
@@ -1385,7 +1413,7 @@ export function createVehicleSystems(
           if (other.direction === car.direction && other.progress > car.progress) {
             const gap = other.progress - car.progress;
             // Kind-aware hold distance (bikes tuck closer than buses), eased up to free flow
-            const stopGap = getFollowGap(car.kind, other.kind) * 0.8;
+            const stopGap = getFollowGap(car.kind, other.kind);
             if (gap < stopGap + FOLLOW_BAND && !other.overtaking) {
               const f = followSpeedFactor(gap, stopGap);
               if (f === 0) {
@@ -1406,7 +1434,7 @@ export function createVehicleSystems(
             // Only react to cars going same direction (same lane); gap is measured across the tile edge
             if (other.direction === car.direction && !other.overtaking) {
               const gap = 1 - car.progress + other.progress;
-              const stopGap = getFollowGap(car.kind, other.kind) * 0.8;
+              const stopGap = getFollowGap(car.kind, other.kind);
               if (gap >= stopGap + FOLLOW_BAND) continue;
               const f = followSpeedFactor(gap, stopGap);
               if (f === 0) {
@@ -1420,6 +1448,18 @@ export function createVehicleSystems(
         }
       }
       
+      // Buses are long and drive in the car lane: a car behind one holds back instead of driving through it
+      if (!shouldStop && !car.overtaking && busesRef.current.length > 0) {
+        for (const bus of busesRef.current) {
+          if (bus.direction !== car.direction) continue;
+          const gap = aheadGap(car.tileX, car.tileY, car.progress, nextX, nextY, bus);
+          if (gap >= BUS_FOLLOW_GAP + FOLLOW_BAND) continue;
+          const f = followSpeedFactor(gap, BUS_FOLLOW_GAP);
+          if (f === 0) { shouldStop = true; blockedByVehicle = true; break; }
+          if (f < followFactor) followFactor = f;
+        }
+      }
+
       // S3-T4: slow kinds hold up whoever is behind them; motorbikes squeeze past after a short wait
       if (stepOvertake(car, blockedByVehicle, delta * speedMultiplier)) {
         car.laneOffset = Math.sign(car.laneOffset || 1) * TRAFFIC_CONFIG.overtakeLaneOffset;
@@ -1597,8 +1637,20 @@ export function createVehicleSystems(
         }
       }
 
+      // A bus holds back behind the car ahead of it in its lane
+      let busFollow = 1;
       if (!shouldStop) {
-        bus.progress += bus.speed * delta * speedMultiplier;
+        for (const car of carsRef.current) {
+          if (car.direction !== bus.direction) continue;
+          const gap = aheadGap(bus.tileX, bus.tileY, bus.progress, nextX, nextY, car);
+          if (gap >= BUS_FOLLOW_GAP + FOLLOW_BAND) continue;
+          const f = followSpeedFactor(gap, BUS_FOLLOW_GAP);
+          if (f < busFollow) busFollow = f;
+        }
+      }
+
+      if (!shouldStop) {
+        bus.progress += bus.speed * delta * speedMultiplier * busFollow;
       }
 
       while (bus.progress >= 1 && bus.pathIndex < bus.path.length - 1) {
@@ -1843,8 +1895,9 @@ export function createVehicleSystems(
       const centerX = screenX + TILE_WIDTH / 2;
       const centerY = screenY + TILE_HEIGHT / 2;
       const meta = DIRECTION_META[car.direction];
-      const carX = centerX + meta.vec.dx * car.progress + meta.normal.nx * car.laneOffset;
-      const carY = centerY + meta.vec.dy * car.progress + meta.normal.ny * car.laneOffset;
+      const lane = car.yieldShift ? car.laneOffset + (car.laneOffset < 0 ? -1 : 1) * car.yieldShift * KERB_SHIFT_PX : car.laneOffset;
+      const carX = centerX + meta.vec.dx * car.progress + meta.normal.nx * lane;
+      const carY = centerY + meta.vec.dy * car.progress + meta.normal.ny * lane;
 
       if (carX < viewLeft - 60 || carX > viewRight + 60 || carY < viewTop - 80 || carY > viewBottom + 80) {
         return;
