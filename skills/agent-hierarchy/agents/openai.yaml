@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Hierarchy"
+  short_description: "Staff Opus/Sonnet/Haiku agents by need; run fair, visible competition."
+  default_prompt: "Use $agent-hierarchy to size an agent team for this task, brief competing agents with a public rubric, judge on evidence and report a scoreboard."

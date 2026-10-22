@@ -92,7 +92,7 @@ import {
   generateTourWaypoints,
 } from '@/components/game/gridFinders';
 import { drawAirplanes as drawAirplanesUtil, drawHelicopters as drawHelicoptersUtil, drawSeaplanes as drawSeaplanesUtil } from '@/components/game/drawAircraft';
-import { createVehicleSystems, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
+import { createVehicleSystems, invalidateVehicleSystemCaches, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
 import { useBuildingHelpers } from '@/components/game/buildingHelpers';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
@@ -1012,6 +1012,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     // Reset traffic light timer
     trafficLightTimerRef.current = 0;
+
+    // Homes, shops and road counts of the old city (keyed only by size and version counters)
+    invalidateVehicleSystemCaches();
   }, [gameVersion, latestStateRef]);
 
   // Sync isPanning state to ref for animation loop access

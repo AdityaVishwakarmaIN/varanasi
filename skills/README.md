@@ -22,6 +22,7 @@ Task playbooks and reference for agents working on Varanasi. Start with `varanas
 | [ui-css-and-touch-traps](ui-css-and-touch-traps/SKILL.md) | minor | Building or fixing UI: house style, tap targets, Tailwind quirks, z-index, map touch/wheel. |
 | [verification-gate](verification-gate/SKILL.md) | minor | End of every task: gate commands and baselines, Playwright, Definition of Done, commit hygiene. |
 | [ui-pattern-adherence](ui-pattern-adherence/SKILL.md) | minor | Any UI that should match an existing dialog, button, layout or theme: copy the real pattern first. |
+| [agent-hierarchy](agent-hierarchy/SKILL.md) | minor | Delegating a big or ambiguous task: staffing Opus/Sonnet/Haiku tiers by need, fair visible competition, scoreboard. |
 | [isometric-asset-sheets](isometric-asset-sheets/SKILL.md) | minor | Generating sprite-sheet images with consistent isometric format and sizing. |
 | [varanasi-image-to-asset](varanasi-image-to-asset/SKILL.md) | minor | Turning an existing generated image into runtime-safe PNG/WebP assets wired into the renderer. |
 

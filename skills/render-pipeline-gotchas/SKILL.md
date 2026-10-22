@@ -42,7 +42,7 @@ The map is drawn by one big component, `src/components/game/CanvasIsometricGrid.
 
 ### Systems that rerun every render
 - `createVehicleSystems` (`vehicleSystems.ts`) builds a new object on every React render. Anything that must persist between frames lives at module scope: `kerbCarIds`, `yieldingCarIds`, `burningTilesCache`, `finderCache` (keyed `${gridSize}:${structureVersion}`), `roadPrefixCache`. It reads `roadNetworkVersionRef` for road changes.
-- `invalidateVehicleSystemCaches()` exists to clear those caches when another city loads, but nothing calls it today. Two cities with the same size and `structureVersion` can therefore share stale finder lists; call it from the load path if you touch this.
+- `invalidateVehicleSystemCaches()` clears those caches; CanvasIsometricGrid calls it in the `gameVersion` reset effect, because two cities with the same size and `structureVersion` would otherwise share finder lists.
 - Keep per-frame state in refs, not React state; a `setState` per frame rerenders the whole grid.
 
 ### Weather and camera
