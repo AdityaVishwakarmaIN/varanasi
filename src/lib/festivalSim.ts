@@ -268,7 +268,7 @@ export interface FestivalDayResult {
 }
 
 /** Whether the city has something to host the event: a ghat, or for Maha Shivratri the temple too. */
-function canHostEvent(city: FestivalCity, festivalId: FestivalId): boolean {
+export function canHostEvent(city: Pick<FestivalCity, 'grid' | 'gridSize'>, festivalId: FestivalId): boolean {
   if (findGhatTiles(city.grid, city.gridSize).length > 0) return true;
   return festivalId === 'maha_shivratri' && !!findBuildingTile(city.grid, city.gridSize, FESTIVAL_SIM_CONFIG.shivratriLandmark);
 }

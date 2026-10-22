@@ -18,6 +18,7 @@ import { getFeederBounds } from '@/lib/feederZones';
 import { absoluteDay, CALENDAR } from '@/lib/seasons';
 import { isHeatwaveActive } from '@/lib/heatwave';
 import { getUpcomingFestivals } from '@/lib/festivals';
+import { canHostFestival } from '@/lib/systemTips';
 import { isLandmarkType } from '@/lib/landmarks';
 import { getInformalAreaName } from '@/lib/informalSim';
 
@@ -177,7 +178,9 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
   }
 
   // Festivals and landmarks
-  if (varanasi && getUpcomingFestivals(state.month, state.day).some((u) => u.festival.type === 'management')) add('festival_upcoming');
+  if (varanasi && getUpcomingFestivals(state.month, state.day).some((u) => u.festival.type === 'management' && canHostFestival(state, u.festival.id))) {
+    add('festival_upcoming');
+  }
   if (recentMatch(state.notifications, /magnificent|went well/i)) add('festival_success');
   if (recentMatch(state.notifications, /Crowds overwhelmed/i)) add('festival_overwhelmed');
   if (s.landmarkAt) add('landmark_built', s.landmarkAt);

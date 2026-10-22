@@ -6,7 +6,7 @@ import type { GameState } from '@/types/game';
 import { absoluteDay } from '@/lib/seasons';
 import { isHeatwaveActive, isHeatwavePending } from '@/lib/heatwave';
 import { getUpcomingFestivals, type FestivalId } from '@/lib/festivals';
-import { FESTIVAL_SIM_CONFIG, findGhatTiles } from '@/lib/festivalSim';
+import { canHostEvent } from '@/lib/festivalSim';
 import { getPeakDisplayedPopulation, getUnlockedLandmarks } from '@/lib/landmarks';
 
 export const SYSTEM_TIP_CONFIG = {
@@ -44,8 +44,7 @@ function hasBuilding(state: Pick<GameState, 'grid' | 'gridSize'>, type: string):
  * Same test as the event area's centre, so tips and advisors speak up only when the Event panel has a checklist.
  */
 export function canHostFestival(state: Pick<GameState, 'grid' | 'gridSize'>, id: FestivalId): boolean {
-  if (findGhatTiles(state.grid, state.gridSize).length > 0) return true;
-  return id === 'maha_shivratri' && hasBuilding(state, FESTIVAL_SIM_CONFIG.shivratriLandmark);
+  return canHostEvent(state, id);
 }
 
 const crises = (s: SystemTipState) => s.disastersEnabled !== false;

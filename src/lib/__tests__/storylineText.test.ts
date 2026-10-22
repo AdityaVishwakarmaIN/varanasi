@@ -72,6 +72,21 @@ describe('festival gating', () => {
     expect(note).toBeDefined();
     expect(JSON.stringify(note)).toContain(readinessLabelList());
   });
+  it('festival crowds note and citizen voice also wait for a ghat', () => {
+    const s = beforeDeepawali(varanasi());
+    s.stats.population = 500;
+    const hasVoice = () => getActiveVoiceConditions(s, null).some((c) => c.condition === 'festival_upcoming');
+    expect(hasVoice()).toBe(false);
+    s.month = 11;
+    s.day = 15;
+    s.hour = 19;
+    expect(deriveAdvisorNotes(s, null).some((n) => n.kind === 'festival_now')).toBe(false);
+    s.grid[10][10].building = { ...s.grid[10][10].building, type: 'ghat' };
+    expect(deriveAdvisorNotes(s, null).some((n) => n.kind === 'festival_now')).toBe(true);
+    s.month = 11;
+    s.day = 1;
+    expect(hasVoice()).toBe(true);
+  });
   it('Shivratri can also be hosted at Kashi Vishwanath', () => {
     const s = varanasi();
     expect(canHostFestival(s, 'maha_shivratri')).toBe(false);

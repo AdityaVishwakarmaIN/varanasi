@@ -255,7 +255,9 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
       `Build ${name('police_station', 'police station', true)} where people live.`, { overlay: 'police' }));
   }
   if (varanasi) {
-    const active = getActiveFestivals(state.month, state.day, state.hour).find((f) => f.type === 'management');
+    const active = getActiveFestivals(state.month, state.day, state.hour).find(
+      (f) => f.type === 'management' && canHostFestival(state, f.id)
+    );
     if (active) {
       notes.push(createAdvisorNote('crowds', 'festival_now', 'high', `${active.name} crowds are in the city.`,
         'Keep roads clear and police and fire cover near the ghats.', { overlay: 'police' }));

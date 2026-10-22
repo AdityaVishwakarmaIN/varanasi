@@ -54,6 +54,8 @@ Goal (one line) / Context and skills to read / Inputs (clerk files) / Output (ex
 - Haiku is for facts, not judgement; recheck any Haiku finding that would drive a code change.
 - Agent reports are not shown to the user; the director must relay the scoreboard and decisions.
 - Rivals that share a worktree will overwrite each other; always isolate implementers.
+- Agents that run a dev server or Playwright can leave them running; after each round, list `next dev` / `pw-browsers` processes and stop the ones your agents started (by PID).
+- Split parallel implementers by file ownership and name the one shared line, if any; cherry-picks then apply cleanly.
 
 ## Verify
 - The scoreboard names every agent and every kept idea.

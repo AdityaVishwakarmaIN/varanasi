@@ -264,7 +264,7 @@ export function runDiseaseDay(input: DiseaseDayInput, rng: Rng): DiseaseDayResul
       const more = started.length - 1;
       result.notifications.push({
         title: more > 0 ? `Disease outbreaks in ${first.area} and ${more} more ${more === 1 ? 'area' : 'areas'}` : `Disease outbreak in ${first.area}`,
-        description: `${first.cause} in ${first.area}. Hospital coverage and clean water will end it.`,
+        description: `${first.cause} in ${first.area}. Hospital coverage and clean water will end ${more > 0 ? 'them' : 'it'}.`,
         icon: 'alert',
         severity: alreadyActive ? 'warning' : 'crisis',
         overlay: 'health',
