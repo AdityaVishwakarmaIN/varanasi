@@ -297,7 +297,7 @@ export function getLandmarkUnlockNotification(id: LandmarkId): Omit<Notification
   const def = LANDMARKS[id];
   return {
     title: `Landmark unlocked: ${def.name}`,
-    description: `Kashi has grown to ${formatIndianNumber(def.unlockPopulation)} people. Build it from the Landmarks menu (${def.placement.toLowerCase()}).`,
+    description: `Kashi has grown to ${formatIndianNumber(def.unlockPopulation)} people. Build it from the Landmarks menu (${def.placement.charAt(0).toLowerCase()}${def.placement.slice(1)}).`,
     icon: 'landmark',
     severity: 'info',
   };

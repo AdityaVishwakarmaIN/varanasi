@@ -19,6 +19,7 @@ import {
   getFestivalHappinessModifier,
   getFestivalTourismMultiplier,
   getUpcomingFestivals,
+  readinessLabelList,
   resolveEvent,
   scaleEventMultiplier,
   type FestivalDef,
@@ -315,7 +316,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
           id: `festival-${f.id}`,
           title: management ? `${f.name} in ${daysUntil} days` : f.name,
           description: management
-            ? `Huge crowds are expected. Open the Event panel to check readiness: police, fire and medical, access, sanitation and power.`
+            ? `Huge crowds are expected. Open the Event panel to check readiness: ${readinessLabelList()}. Sanitation needs a clean Ganga.`
             : `${f.name} is coming in ${daysUntil} days.`,
           daysAhead: daysUntil,
           icon: chipIcon(f),

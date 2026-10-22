@@ -14,6 +14,9 @@ import {
 } from '@/lib/gangaTips';
 import { SYSTEM_TIP_CHECKS, type SystemTipId } from '@/lib/systemTips';
 import { SHOWN_TIPS_KEY, TIPS_RESET_EVENT } from '@/lib/feedbackPrefs';
+import { FAILURE_CONFIG } from '@/lib/failure';
+import { readinessLabelList } from '@/lib/festivals';
+import { buildingLabel } from '@/games/isocity/maps/varanasiCatalog';
 
 // Tip definitions with their conditions and messages
 export type TipId = 
@@ -41,13 +44,18 @@ export interface TipContext {
 
 export interface TipDefinition {
   id: TipId;
-  message: string;
+  /** Plain text, or built from the state when it names buildings (the Varanasi map renames them). */
+  message: string | ((state: GameState) => string);
   priority: number; // Lower number = higher priority
   check: (state: GameState, context: TipContext) => boolean;
 }
 
-// Define all tips with their conditions
-const TIP_DEFINITIONS: TipDefinition[] = [
+/** Building names as the build menu shows them on this map (generic names on the random map). */
+const label = (state: GameState, type: string, generic: string, plural = false) =>
+  buildingLabel(type, state.mapId, generic, plural);
+
+// Define all tips with their conditions and messages
+export const TIP_DEFINITIONS: TipDefinition[] = [
   {
     id: 'get_started',
     message: msg('Welcome! Start by zoning areas for residential, commercial, and industrial buildings. Then add roads, power, and water to build your city.'),
@@ -115,7 +123,8 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   },
   {
     id: 'needs_safety_services',
-    message: msg('Add fire and police stations to keep your city safe from crime and fires.'),
+    message: (state) =>
+      `Add ${label(state, 'fire_station', 'fire station', true)} and ${label(state, 'police_station', 'police station', true)} to keep your city safe from crime and fires.`,
     priority: 3,
     check: (state: GameState) => {
       // Check if there are buildings but no fire/police stations
@@ -152,7 +161,8 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   },
   {
     id: 'needs_health_education',
-    message: msg('Build hospitals and schools to improve health and education for your citizens.'),
+    message: (state) =>
+      `Build ${label(state, 'hospital', 'hospital', true)} and ${label(state, 'school', 'school', true)} to improve health and education for your citizens.`,
     priority: 5,
     check: (state: GameState) => {
       // Check if there's population but no hospitals or schools
@@ -202,13 +212,17 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   // One tip per system, the first time it matters (S5-T8). Crisis tips outrank the general advice above.
   {
     id: 'debt_warning',
-    message: msg('The treasury is in debt. Raise taxes or cut spending on the Budget panel. After three months in debt, the city is offered an emergency loan: it clears the debt, but you repay it with interest every month.'),
+    message: () => {
+      const f = FAILURE_CONFIG;
+      return `The treasury is in debt. Raise taxes or cut spending on the Budget panel. After ${f.loanOfferAfterDebtMonths} months in debt, the city is offered an emergency loan worth ${f.loanExpenseMonths} months of expenses. There is no interest: ${Math.round(f.loanRepaymentShare * 100)}% of your income repays it over ${f.loanRepaymentMonths} months.`;
+    },
     priority: -9,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.debt_warning(state),
   },
   {
     id: 'first_outbreak',
-    message: msg('Disease has broken out in a neighbourhood (the biohazard icon). Clean water, working sewers and a nearby hospital stop it spreading.'),
+    message: (state) =>
+      `Disease has broken out in a neighbourhood (the biohazard icon). A nearby ${label(state, 'hospital', 'hospital')} and clean water end it.`,
     priority: -8,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.first_outbreak(state),
   },
@@ -226,19 +240,22 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   },
   {
     id: 'first_power_cut',
-    message: msg('Demand is higher than supply, so blocks are taking turns without power (the flickering bolt). Build more power plants to end the rolling cuts.'),
+    message: (state) =>
+      `Demand is higher than supply, so blocks are taking turns without power (the flickering bolt). Build more ${label(state, 'power_plant', 'power plant', true)} to end the rolling cuts.`,
     priority: -5,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.first_power_cut(state),
   },
   {
     id: 'first_water_shortage',
-    message: msg('There is not enough water for everyone. Build more water towers, and check the Water overlay for homes without pipes.'),
+    message: (state) =>
+      `There is not enough water for everyone. Build more ${label(state, 'water_tower', 'water tower', true)}, and check the Water overlay for homes without pipes.`,
     priority: -4,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.first_water_shortage(state),
   },
   {
     id: 'festival_prep',
-    message: msg('A big festival is coming. Open the Event panel from the calendar to see the readiness checklist: crowd safety, fire and medical cover, road access, sanitation and lights.'),
+    message: () =>
+      `A big festival is coming. Open the Event panel from the calendar to see the readiness checklist: ${readinessLabelList()}. Sanitation needs a clean Ganga.`,
     priority: -3,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.festival_prep(state),
   },
@@ -336,7 +353,16 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
   // Settings -> "Reset tips" (S5-T8): every tip can show once more
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onReset = () => setShownTips(new Set());
+    // Reset tips also turns tips back on after "Skip all"
+    const onReset = () => {
+      setShownTips(new Set());
+      setTipsEnabledState(true);
+      try {
+        localStorage.setItem(STORAGE_KEY, 'false');
+      } catch (e) {
+        console.error('Failed to save tip preference:', e);
+      }
+    };
     window.addEventListener(TIPS_RESET_EVENT, onReset);
     return () => window.removeEventListener(TIPS_RESET_EVENT, onReset);
   }, []);
@@ -400,7 +426,7 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     
     if (applicableTips.length > 0) {
       const tip = applicableTips[0];
-      setCurrentTip(tip.message);
+      setCurrentTip(typeof tip.message === 'function' ? tip.message(currentState) : tip.message);
       setIsVisible(true);
       lastTipTimeRef.current = now;
       setShownTips(prev => new Set([...prev, tip.id]));

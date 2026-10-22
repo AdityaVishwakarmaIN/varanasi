@@ -97,3 +97,12 @@ export function getBuildingDisplayName(buildingType: string, mapId: MapId | unde
   if (mapId !== 'varanasi') return undefined;
   return VARANASI_DISPLAY[buildingType as Tool]?.name;
 }
+
+/**
+ * Name of a building for tip and advisor text: the Varanasi build-menu name on that map, else `generic`
+ * (the random map keeps its plain names). Pass `plural` for "Police Thanas" / "police stations".
+ */
+export function buildingLabel(buildingType: string, mapId: MapId | undefined, generic: string, plural = false): string {
+  const name = getBuildingDisplayName(buildingType, mapId) ?? generic;
+  return plural ? `${name}s` : name;
+}

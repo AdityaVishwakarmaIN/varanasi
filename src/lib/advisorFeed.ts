@@ -15,7 +15,9 @@ import { getFeederBounds } from '@/lib/feederZones';
 import { formatINR } from '@/lib/format';
 import { FAILURE_CONFIG } from '@/lib/failure';
 import { isHeatwaveActive, isHeatwavePending } from '@/lib/heatwave';
-import { getActiveFestivals, getUpcomingFestivals } from '@/lib/festivals';
+import { getActiveFestivals, getUpcomingFestivals, readinessLabelList } from '@/lib/festivals';
+import { canHostFestival } from '@/lib/systemTips';
+import { buildingLabel } from '@/games/isocity/maps/varanasiCatalog';
 import { absoluteDay } from '@/lib/seasons';
 import { needsFirstGhat } from '@/lib/gangaTips';
 import { getInformalAreaName } from '@/lib/informalSim';
@@ -42,6 +44,9 @@ export type AdvisorFeedState = Pick<
   | 'grid' | 'gridSize' | 'mapId' | 'stats' | 'taxRate' | 'year' | 'month' | 'day' | 'hour'
   | 'riverLevel' | 'forecasts' | 'heatwave' | 'outbreaks' | 'notifications' | 'disastersEnabled'
 >;
+
+/** "a" or "an" before a name. */
+const an = (label: string): string => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
 
 function priorityByCount(n: number, high: number, critical = Infinity): AdvisorPriority {
   if (n >= critical) return 'critical';
@@ -111,15 +116,18 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
   const today = absoluteDay(state.year, state.month, state.day);
   const crisesOn = state.disastersEnabled !== false;
   const varanasi = state.mapId === 'varanasi';
+  // Building names as the build menu shows them on this map (generic names on the random map)
+  const name = (type: string, generic: string, plural = false) => buildingLabel(type, state.mapId, generic, plural);
   const scan = scanGrid(state);
 
   // ---- Treasury Officer ----
   const net = stats.income - stats.expenses;
+  const matured = stats.population >= ADVISOR_FEED_CONFIG.minPopulationForServiceWarnings;
   if (stats.money < 0) {
     notes.push(createAdvisorNote('bankruptcy', 'debt', 'critical', `The treasury is in debt: ${formatINR(stats.money)}.`,
       `After ${FAILURE_CONFIG.loanOfferAfterDebtMonths} months in debt you get one emergency loan; balance the budget before then.`));
   }
-  if (net < 0) {
+  if (matured && net < 0) {
     notes.push(createAdvisorNote('budget', 'deficit', net < -500 ? 'critical' : 'high',
       `The city loses ${formatINR(-net)} every month.`, 'Raise taxes a little or cut service budgets in the Budget panel.'));
   }
@@ -134,25 +142,25 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
     const pct = Math.round(power.ratio * 100);
     notes.push(createAdvisorNote('power', 'power_shortage', power.ratio < 0.7 ? 'critical' : 'high',
       `Power supply covers ${pct}% of demand: rolling cuts in ${power.cut.length} block${power.cut.length === 1 ? '' : 's'}.`,
-      'Build another power plant.', { ...(first.power_cut ?? first.no_power ?? {}), overlay: 'power' }));
+      `Build another ${name('power_plant', 'power plant')}.`, { ...(first.power_cut ?? first.no_power ?? {}), overlay: 'power' }));
   }
   if (c && c.no_power > 0) {
     notes.push(createAdvisorNote('power', 'no_power', priorityByCount(c.no_power, 10),
       `${c.no_power} building${c.no_power === 1 ? ' has' : 's have'} no power line.`,
-      'Extend the power network: build a power plant nearby.', { ...first.no_power, overlay: 'power' }));
+      `Extend the power network: build ${an(name('power_plant', 'power plant'))} nearby.`, { ...first.no_power, overlay: 'power' }));
   }
   const water = stats.water;
   if (water && water.ratio < 1) {
     const pct = Math.round(water.ratio * 100);
     notes.push(createAdvisorNote('water', 'water_shortage', water.ratio < 0.7 ? 'critical' : 'high',
       `Water supply covers ${pct}% of demand: taps run dry in turns.`,
-      varanasi ? 'Build a water tower or the Jal Sansthan Water Works by the Ganga.' : 'Build another water tower.',
+      varanasi ? `Build ${an(name('water_tower', 'water tower'))} or the Jal Sansthan Water Works by the Ganga.` : 'Build another water tower.',
       { ...first.no_water, overlay: 'water' }));
   }
   if (c && c.no_water > 0) {
     notes.push(createAdvisorNote('water', 'no_water', priorityByCount(c.no_water, 10),
       `${c.no_water} building${c.no_water === 1 ? ' has' : 's have'} no water.`,
-      'Build a water tower within reach of these buildings.', { ...first.no_water, overlay: 'water' }));
+      `Build ${an(name('water_tower', 'water tower'))} within reach of these buildings.`, { ...first.no_water, overlay: 'water' }));
   }
   if (c && c.no_road > 0) {
     notes.push(createAdvisorNote('roads', 'no_road', priorityByCount(c.no_road, 20),
@@ -178,7 +186,6 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
       `${scan.informal} informal settlement${scan.informal === 1 ? '' : 's'}${where}.`,
       'Formalise them: zone residential and bring road, power and water.', { ...scan.informalAt }));
   }
-  const matured = stats.population >= ADVISOR_FEED_CONFIG.minPopulationForServiceWarnings;
   const jobRatio = stats.jobs / (stats.population || 1);
   if (stats.population > 100 && jobRatio < 0.8) {
     notes.push(createAdvisorNote('zoning', 'jobs', jobRatio < 0.5 ? 'high' : 'medium', 'There are not enough jobs.',
@@ -219,7 +226,7 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
     const b = getFeederBounds(outbreaks[0].feeder, state.gridSize);
     notes.push(createAdvisorNote('disease', 'outbreak', 'critical',
       `Disease outbreak in ${outbreaks.length} block${outbreaks.length === 1 ? '' : 's'}.`,
-      'Get a hospital and clean water to the infected block.', { x: b.centerX, y: b.centerY, overlay: 'health' }));
+      `Get ${an(name('hospital', 'hospital'))} and clean water to the infected block.`, { x: b.centerX, y: b.centerY, overlay: 'health' }));
   }
   if (crisesOn && isHeatwaveActive(state.heatwave, today)) {
     notes.push(createAdvisorNote('heatwave', 'heatwave', 'critical', 'A heatwave is hitting the city.',
@@ -230,7 +237,7 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
   }
   if (matured && stats.health < 50) {
     notes.push(createAdvisorNote('health', 'health_low', stats.health < 30 ? 'high' : 'medium', 'Health care is lacking.',
-      'Build hospitals where people live.', { overlay: 'health' }));
+      `Build ${name('hospital', 'hospital', true)} where people live.`, { overlay: 'health' }));
   }
   if (matured && stats.education < 50) {
     notes.push(createAdvisorNote('education', 'education_low', stats.education < 30 ? 'high' : 'medium', 'Education levels are low.',
@@ -240,12 +247,12 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
   // ---- Fire Chief ----
   if (c && c.fire > 0) {
     notes.push(createAdvisorNote('fire', 'fire', c.fire > 3 ? 'critical' : 'high',
-      `${c.fire} building${c.fire === 1 ? ' is' : 's are'} on fire.`, 'Build fire stations so every block is covered.',
+      `${c.fire} building${c.fire === 1 ? ' is' : 's are'} on fire.`, `Build ${name('fire_station', 'fire station', true)} so every block is covered.`,
       { ...first.fire, overlay: 'fire' }));
   }
   if (matured && stats.safety < 40) {
     notes.push(createAdvisorNote('crime', 'crime', stats.safety < 20 ? 'critical' : 'high', 'Crime is rising.',
-      'Build police stations where people live.', { overlay: 'police' }));
+      `Build ${name('police_station', 'police station', true)} where people live.`, { overlay: 'police' }));
   }
   if (varanasi) {
     const active = getActiveFestivals(state.month, state.day, state.hour).find((f) => f.type === 'management');
@@ -253,11 +260,13 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
       notes.push(createAdvisorNote('crowds', 'festival_now', 'high', `${active.name} crowds are in the city.`,
         'Keep roads clear and police and fire cover near the ghats.', { overlay: 'police' }));
     } else {
-      const next = getUpcomingFestivals(state.month, state.day).find((u) => u.festival.type === 'management');
+      const next = getUpcomingFestivals(state.month, state.day).find(
+        (u) => u.festival.type === 'management' && canHostFestival(state, u.festival.id)
+      );
       if (next) {
         notes.push(createAdvisorNote('festival', 'festival_prep', next.daysUntil <= 7 ? 'high' : 'medium',
           `${next.festival.name} in ${next.daysUntil} day${next.daysUntil === 1 ? '' : 's'}: big crowds are coming.`,
-          'Prepare police, fire and hospital cover, road access, water and power near the ghats.', { overlay: 'police' }));
+          `Check ${readinessLabelList()} in the Event panel. Sanitation needs a clean Ganga.`, { overlay: 'police' }));
       }
     }
   }

@@ -159,7 +159,7 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
   if (stats.happiness > 75) add('happiness_high');
 
   // Housing
-  if (s.informalAt || stats.demand.residential > 50) add('housing_short', s.informalAt);
+  if (s.informalAt) add('housing_short', s.informalAt);
   const formalised = recentMatch(state.notifications, /Proper homes/i);
   if (formalised) add('settlement_formalised', formalised.x !== undefined && formalised.y !== undefined ? { x: formalised.x, y: formalised.y } : undefined);
 

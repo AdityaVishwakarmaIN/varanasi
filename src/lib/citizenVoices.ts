@@ -194,7 +194,7 @@ export const CITIZEN_VOICES: readonly CitizenVoice[] = [
   { id: 'fog', condition: 'fog', positive: false, text: 'Could not see the end of the lane this morning. Drove at walking speed. – {name}, {area}' },
   { id: 'disease', condition: 'disease', positive: false, text: 'Half the colony has fever. Please send doctors and clean water. – {name}, {area}' },
   // Festivals and landmarks
-  { id: 'festival_upcoming', condition: 'festival_upcoming', positive: true, text: 'Already buying diyas for the festival. The whole lane is excited. – {name}, {area}' },
+  { id: 'festival_upcoming', condition: 'festival_upcoming', positive: true, text: 'Already getting ready for the festival. The whole lane is excited. – {name}, {area}' },
   { id: 'festival_success', condition: 'festival_success', positive: true, text: 'Never seen the ghats so beautiful. – {name}' },
   { id: 'festival_success_lights', condition: 'festival_success', positive: true, text: 'The lamps on the river last night were unforgettable. – {name}, {area}' },
   { id: 'festival_overwhelmed', condition: 'festival_overwhelmed', positive: false, text: 'It took us three hours to get home from the ghats. It needs better planning. – {name}, {area}' },

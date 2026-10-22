@@ -163,6 +163,15 @@ export const READINESS_TEXT: Record<ReadinessRequirementId, Pick<ReadinessResult
   },
 };
 
+/**
+ * The readiness labels as one phrase, in table order and in the Event panel's words:
+ * "crowd safety, fire and medical, access, sanitation and lights on". Tips, advisors and forecasts share it.
+ */
+export function readinessLabelList(): string {
+  const labels = (Object.keys(READINESS_TEXT) as ReadinessRequirementId[]).map((id) => READINESS_TEXT[id].label.toLowerCase());
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
 /** The five-point readiness checklist, in table order. */
 export function evaluateReadiness(inputs: ReadinessInputs): ReadinessResult[] {
   const c = EVENT_CONFIG;
