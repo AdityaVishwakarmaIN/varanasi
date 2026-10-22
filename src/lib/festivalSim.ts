@@ -7,6 +7,8 @@ import type { GameState, Notification, Tile } from '@/types/game';
 import type { OverlayMode } from '@/components/game/types';
 import type { ForecastInput } from '@/lib/notifications';
 import { addForecast } from '@/lib/notifications';
+import { LANDMARKS, getPeakDisplayedPopulation } from '@/lib/landmarks';
+import { formatIndianNumber } from '@/lib/format';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import {
   EVENT_CONFIG,
@@ -30,7 +32,7 @@ type Added = Omit<Notification, 'id' | 'timestamp'>;
 
 /** What the festival wiring reads from the city. */
 export type FestivalCity = Pick<GameState, 'grid' | 'gridSize' | 'mapId' | 'services' | 'stats' | 'festival'> &
-  Partial<Pick<GameState, 'structureVersion'>>;
+  Partial<Pick<GameState, 'structureVersion' | 'peakPopulation'>>;
 
 export const FESTIVAL_SIM_CONFIG = {
   /** Buildings that count as ghats for event areas and the Ganga Aarti. */
@@ -264,6 +266,20 @@ export interface FestivalDayResult {
   notifications: Added[];
 }
 
+/** Whether the city has something to host the event: a ghat, or for Maha Shivratri the temple too. */
+function canHostEvent(city: FestivalCity, festivalId: FestivalId): boolean {
+  if (findGhatTiles(city.grid, city.gridSize).length > 0) return true;
+  return festivalId === 'maha_shivratri' && !!findBuildingTile(city.grid, city.gridSize, FESTIVAL_SIM_CONFIG.shivratriLandmark);
+}
+
+function fullScaleHint(city: FestivalCity): string {
+  const kv = LANDMARKS.landmark_kashi_vishwanath;
+  if (getPeakDisplayedPopulation({ peakPopulation: city.peakPopulation, stats: city.stats }) < kv.unlockPopulation) {
+    return `Kashi Vishwanath Temple unlocks at ${formatIndianNumber(kv.unlockPopulation)} people and brings a full-scale Maha Shivratri.`;
+  }
+  return 'Build Kashi Vishwanath Temple for a full-scale Maha Shivratri.';
+}
+
 function chipIcon(f: FestivalDef): string {
   return f.chip.split(' ')[0];
 }
@@ -292,8 +308,9 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
       const state = edit();
       state.announced = { ...state.announced, [f.id]: occurrence };
       const center = management ? getEventArea(city, f.id).center : null;
+      // Only a city that can host the event gets the toast; the calendar strip still shows it
       result.forecasts.push({
-        notify: management,
+        notify: management && canHostEvent(city, f.id),
         input: {
           id: `festival-${f.id}`,
           title: management ? `${f.name} in ${daysUntil} days` : f.name,
@@ -310,7 +327,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
 
     const readiness = getEventReadiness(city, f.id);
     const center = readiness.area.center;
-    if (!center) {
+    if (!center || !canHostEvent(city, f.id)) {
       result.notifications.push({
         title: `${f.name} passed quietly`,
         description: 'Build ghats on the riverfront to host the festival crowds.',
@@ -331,7 +348,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
       tourismMultiplier: scaleEventMultiplier(outcome.tourismMultiplier, scale),
     };
     state.mood = { delta: outcome.happinessDelta, untilDay: today + outcome.happinessDays - 1 };
-    const halfScale = scale < 1 ? ' Build Kashi Vishwanath Temple for a full-scale Maha Shivratri.' : '';
+    const halfScale = scale < 1 ? ` ${fullScaleHint(city)}` : '';
     const overlay = failed.length > 0 ? readinessOverlay(failed[0]) : undefined;
     result.notifications.push({
       title: outcome.kind === 'triumph' ? `${f.name}: a triumph` : outcome.kind === 'success' ? `${f.name}: a success` : `${f.name}: overwhelmed`,

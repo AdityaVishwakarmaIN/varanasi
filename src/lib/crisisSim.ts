@@ -80,7 +80,7 @@ export function runHeatwaveDay(heatwave: HeatwaveState | undefined, today: numbe
       title: 'Heatwave!',
       description: 'Neighbourhoods without power or water are suffering.',
       icon: 'heat',
-      severity: 'crisis',
+      severity: 'warning',
       overlay: 'power',
     });
   }
@@ -242,23 +242,34 @@ export function runDiseaseDay(input: DiseaseDayInput, rng: Rng): DiseaseDayResul
   }
 
   if (isWeeklyCheckDay(input.today)) {
+    const alreadyActive = (input.outbreaks?.length ?? 0) > 0;
+    const started: { area: string; cause: string; x: number; y: number }[] = [];
     for (let feeder = 0; feeder < feederCount; feeder++) {
       if (infected.has(feeder)) continue;
       const scan = scanBlock(input, feeder);
       if (scan.inputs.population <= 0) continue;
       if (!rollOutbreak(calculateDiseaseRisk(scan.inputs), rng)) continue;
       kept.push(startOutbreak(feeder, input.today));
-      const area = getMohallaForFeeder(feeder, feederCount);
-      const cause = DISEASE_FACTOR_LABELS[getTopRiskFactor(scan.inputs)];
       const b = getFeederBounds(feeder, input.size);
-      result.notifications.push({
-        title: `Disease outbreak in ${area}`,
-        description: `${cause} in ${area}. Hospital coverage and clean water will end it.`,
-        icon: 'alert',
-        severity: 'crisis',
-        overlay: 'health',
+      started.push({
+        area: getMohallaForFeeder(feeder, feederCount),
+        cause: DISEASE_FACTOR_LABELS[getTopRiskFactor(scan.inputs)],
         x: b.centerX,
         y: b.centerY,
+      });
+    }
+    // One notice per check, so a pause-on-crisis city is not stopped once per block
+    if (started.length > 0) {
+      const first = started[0];
+      const more = started.length - 1;
+      result.notifications.push({
+        title: more > 0 ? `Disease outbreaks in ${first.area} and ${more} more ${more === 1 ? 'area' : 'areas'}` : `Disease outbreak in ${first.area}`,
+        description: `${first.cause} in ${first.area}. Hospital coverage and clean water will end it.`,
+        icon: 'alert',
+        severity: alreadyActive ? 'warning' : 'crisis',
+        overlay: 'health',
+        x: first.x,
+        y: first.y,
       });
     }
   }

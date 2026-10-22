@@ -93,11 +93,15 @@ describe('daily festival step', () => {
     expect(r.forecasts.map((f) => [f.input.id, f.notify])).toEqual([
       ['festival-diwali', false],
       ['festival-chhath', false],
-      ['festival-dev_deepawali', true],
+      ['festival-dev_deepawali', false], // no ghat yet: strip only, no toast
     ]);
     const applied = applyFestivalForecasts({ ...s, forecasts: [], notifications: [] }, r.forecasts);
     expect(applied.forecasts?.map((f) => f.id)).toEqual(['festival-diwali', 'festival-chhath', 'festival-dev_deepawali']);
-    expect(applied.notifications.map((n) => n.id)).toEqual([`forecast-festival-dev_deepawali-${today + 29}`]);
+    expect(applied.notifications).toEqual([]);
+    addGhats(s, 2);
+    const hosted = runFestivalDay(s, today, 10, 16);
+    const toast = applyFestivalForecasts({ ...s, forecasts: [], notifications: [] }, hosted.forecasts);
+    expect(toast.notifications.map((n) => n.id)).toEqual([`forecast-festival-dev_deepawali-${today + 29}`]);
     // Next day: nothing new
     const again = runFestivalDay({ ...s, festival: r.festival }, today + 1, 10, 17);
     expect(again.forecasts).toEqual([]);
@@ -169,6 +173,48 @@ describe('daily festival step', () => {
     const r = runFestivalDay(s, today, 2, 26);
     expect(r.festival?.event).toBeUndefined();
     expect(r.notifications[0].title).toMatch(/passed quietly/);
+  });
+
+  it('Dev Deepawali in a city with no ghats passes quietly, even with a riverfront to stand in', () => {
+    const s = newVaranasi();
+    expect(getEventArea(s, 'dev_deepawali').center).not.toBeNull();
+    const today = absoluteDay(s.year, 11, 15);
+    const r = runFestivalDay(s, today, 11, 15);
+    expect(r.festival?.event).toBeUndefined();
+    expect(r.festival?.mood).toBeUndefined();
+    expect(r.notifications).toHaveLength(1);
+    expect(r.notifications[0]).toMatchObject({ title: 'Dev Deepawali passed quietly', severity: 'info' });
+  });
+
+  it('the forecast toast goes only to cities with a ghat; the calendar strip always gets it', () => {
+    const bare = newVaranasi();
+    bare.month = 10;
+    bare.day = 16;
+    const today = absoluteDay(bare.year, 10, 16);
+    const noGhat = runFestivalDay(bare, today, 10, 16);
+    expect(noGhat.forecasts.find((f) => f.input.id === 'festival-dev_deepawali')).toMatchObject({ notify: false });
+    const applied = applyFestivalForecasts({ ...bare, forecasts: [], notifications: [] }, noGhat.forecasts);
+    expect(applied.forecasts?.map((f) => f.id)).toContain('festival-dev_deepawali');
+    expect(applied.notifications).toEqual([]);
+
+    const hosted = newVaranasi();
+    addGhats(hosted, 3);
+    hosted.month = 10;
+    hosted.day = 16;
+    const withGhat = runFestivalDay(hosted, today, 10, 16);
+    expect(withGhat.forecasts.find((f) => f.input.id === 'festival-dev_deepawali')).toMatchObject({ notify: true });
+  });
+
+  it('the half-scale note says when Kashi Vishwanath unlocks while it is still locked', () => {
+    const s = newVaranasi();
+    addGhats(s, 3);
+    fullServices(s);
+    s.peakPopulation = 0;
+    const today = absoluteDay(s.year, 2, 26);
+    const locked = runFestivalDay(s, today, 2, 26);
+    expect(locked.notifications[0].description).toMatch(/Kashi Vishwanath Temple unlocks at [\d,]+ people and brings a full-scale Maha Shivratri\.$/);
+    const open = runFestivalDay({ ...s, peakPopulation: 10_000_000 }, today, 2, 26);
+    expect(open.notifications[0].description).toMatch(/Build Kashi Vishwanath Temple for a full-scale Maha Shivratri\.$/);
   });
 });
 

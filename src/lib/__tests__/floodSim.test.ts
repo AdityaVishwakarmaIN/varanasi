@@ -191,6 +191,15 @@ describe('floods in simulateTick (S4-T5)', () => {
     expect(s.speed).toBe(0);
   });
 
+  it('with Crises off the monsoon never floods: no flood notices, no damage, river stays at 0', () => {
+    const base = cityWithFloodplainHomes();
+    let s: GameState = { ...base, disastersEnabled: false, month: 6, day: 30, tick: CALENDAR.ticksPerDay - 1, speed: 1 };
+    for (let i = 0; i < CALENDAR.ticksPerDay * 60; i++) s = simulateTick(s, undefined, () => 0.99);
+    expect(s.riverLevel ?? 0).toBe(0);
+    expect(s.notifications.filter((n) => n.overlay === 'flood' || n.id.startsWith('flood-'))).toHaveLength(0);
+    expect(s.grid.flat().filter((t) => t.building.abandoned && t.building.type !== 'grass').length).toBe(0);
+  });
+
   it('flooded ghats earn no tourism', () => {
     const state = newVaranasi();
     const front = findZone(state, 'westRiverfront');

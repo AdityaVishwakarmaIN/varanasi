@@ -3810,7 +3810,7 @@ export function simulateTick(
   let floodFields: FloodStateFields = {};
   let floodForecast: ForecastInput | undefined;
   const floodNotifications: GameState['notifications'] = [];
-  if (floodsEnabled && newTick === 0 && state.mapId === 'varanasi') {
+  if (floodsEnabled && state.disastersEnabled !== false && newTick === 0 && state.mapId === 'varanasi') {
     const today = absoluteDay(newYear, newMonth, newDay);
     const flood = runFloodDay({ ...state, grid: newGrid }, newMonth, newDay, today, rng);
     floodFields = flood.fields;
@@ -3928,7 +3928,7 @@ export function simulateTick(
     const focusX = fireDestroyedCount > 0 ? fireDestroyedX : fireStartCount > 0 ? fireStartX : fireSpreadX;
     const focusY = fireDestroyedCount > 0 ? fireDestroyedY : fireStartCount > 0 ? fireStartY : fireSpreadY;
     const lost = fireDestroyedCount > 0
-      ? `${lostAt}${fireDestroyedCount > 1 ? ` and ${fireDestroyedCount - 1} more` : ''} burned down; the lots lie scorched for about two days.`
+      ? `${lostAt.charAt(0).toUpperCase()}${lostAt.slice(1)}${fireDestroyedCount > 1 ? ` and ${fireDestroyedCount - 1} more` : ''} burned down; the lots lie scorched for about two days.`
       : '';
     const title = blaze ? 'Blaze out of control' : fireDestroyedCount > 0 ? 'Lost to fire' : 'Fire!';
     const description = blaze

@@ -22,6 +22,9 @@ export function getNeighbourhoodName(x: number, y: number, gridSize: number): st
   return best.name;
 }
 
+/** Types whose plain label reads wrong with "a"/"an". */
+const MASS_NOUNS = new Set(['informal_housing']);
+
 /** "factory_small" -> "a small factory", "fire_station" -> "a fire station". */
 function plainLabel(type: string): string {
   const words = type.split('_');
@@ -30,6 +33,7 @@ function plainLabel(type: string): string {
     words.unshift(words.pop()!);
   }
   const label = words.join(' ');
+  if (MASS_NOUNS.has(type)) return label;
   return `${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}`;
 }
 

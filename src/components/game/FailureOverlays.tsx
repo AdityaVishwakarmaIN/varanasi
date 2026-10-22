@@ -119,11 +119,12 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
             </DialogTitle>
             <DialogDescription>
               {gt(
-                'The State Government offers an emergency loan of {amount}. It will be repaid from {share}% of income for {months} months.',
+                'The State Government offers an emergency loan of {amount}. It will be repaid from {share}% of income for {months} months. If the city is still in debt {bankruptMonths} months after you answer, it goes bankrupt.',
                 {
                   amount: formatINR(failure?.loanOfferAmount ?? 0),
                   share: Math.round(FAILURE_CONFIG.loanRepaymentShare * 100),
                   months: FAILURE_CONFIG.loanRepaymentMonths,
+                  bankruptMonths: FAILURE_CONFIG.bankruptcyAfterDebtMonths,
                 }
               )}
             </DialogDescription>
