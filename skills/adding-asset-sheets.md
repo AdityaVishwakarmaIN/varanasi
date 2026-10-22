@@ -1,3 +1,6 @@
+> **Stale:** this guide predates the procedural sprite pipeline and may not match current code.
+> Use skills/procedural-sprite-authoring, skills/isometric-asset-sheets and skills/varanasi-image-to-asset instead.
+
 # Adding New Asset Sheets
 
 This guide explains how to add a new sprite sheet (asset sheet) to the isometric city game, with or without construction variants.

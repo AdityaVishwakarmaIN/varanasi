@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surface To Player"
+  short_description: "Show a mechanic to the player with causes and hints."
+  default_prompt: "Use $surface-to-player to make this system visible to the player through the right HUD, overlay, notification or advisor channel."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Perf Budget"
+  short_description: "Frame, tick and save budgets; measure and log."
+  default_prompt: "Use $perf-budget to check this change stays within the frame, tick and save budgets and log the measurement."

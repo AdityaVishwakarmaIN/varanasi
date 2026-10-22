@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verification Gate"
+  short_description: "Run the gate, see it in game, meet Definition of Done."
+  default_prompt: "Use $verification-gate to verify this task with the gate commands, Playwright checks and Definition of Done before hand-off."

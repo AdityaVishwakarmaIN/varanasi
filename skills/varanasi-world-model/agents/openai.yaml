@@ -1,0 +1,4 @@
+interface:
+  display_name: "Varanasi World Model"
+  short_description: "Project pitch, geography, module map and house rules."
+  default_prompt: "Use $varanasi-world-model to orient yourself on the game's design, geography, module map and rules before this task."

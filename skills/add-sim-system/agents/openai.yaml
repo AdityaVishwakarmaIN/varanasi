@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Sim System"
+  short_description: "Add a pure, seeded, saved simulation mechanic."
+  default_prompt: "Use $add-sim-system to add this mechanic to simulateTick as a pure, seeded, save-compatible system."
