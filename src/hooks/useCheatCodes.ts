@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isDevMode } from '@/lib/devMode';
 
-export type CheatTrigger = 
-  | { type: 'konami'; amount: 50000 }
+/** Money granted by each cheat (toasts format these, so text always matches the grant). */
+export const CHEAT_AMOUNTS = { konami: 50000, motherlode: 50000 } as const;
+
+export type CheatTrigger =
+  | { type: 'konami'; amount: number }
   | { type: 'vinnie' }
-  | { type: 'motherlode'; amount: 50000 }
-  | { type: 'fund'; amount: 10000 };
+  | { type: 'motherlode'; amount: number };
 
 const KONAMI_CODE = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
 const MAX_BUFFER_SIZE = 50;
@@ -24,6 +27,8 @@ export function useCheatCodes() {
   }, []);
 
   useEffect(() => {
+    // Cheats are a developer tool: only listen with ?dev=1.
+    if (!isDevMode()) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input field
       if (isTypingTarget(e.target)) return;
@@ -49,7 +54,7 @@ export function useCheatCodes() {
           k === KONAMI_CODE[i].toLowerCase()
         );
         if (matches) {
-          setTriggeredCheat({ type: 'konami', amount: 50000 });
+          setTriggeredCheat({ type: 'konami', amount: CHEAT_AMOUNTS.konami });
           konamiBufferRef.current = [];
           if (konamiTimeoutRef.current) {
             clearTimeout(konamiTimeoutRef.current);
@@ -84,11 +89,7 @@ export function useCheatCodes() {
           typedBufferRef.current = '';
         } else if (normalizedBuffer.includes('motherlode')) {
           console.log('🎮 Cheat activated: motherlode');
-          setTriggeredCheat({ type: 'motherlode', amount: 50000 });
-          typedBufferRef.current = '';
-        } else if (normalizedBuffer.includes('fund')) {
-          console.log('🎮 Cheat activated: fund');
-          setTriggeredCheat({ type: 'fund', amount: 10000 });
+          setTriggeredCheat({ type: 'motherlode', amount: CHEAT_AMOUNTS.motherlode });
           typedBufferRef.current = '';
         }
       }

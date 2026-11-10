@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '@/lib/rng';
 import { createInitialGameState, placeBuilding } from '@/lib/simulation';
-import { getPlacementCheck, getToolBuilding, PLACEMENT_REASONS } from '@/lib/placement';
+import { checkPlacementArea, getPlacementCheck, getToolBuilding, PLACEMENT_REASONS } from '@/lib/placement';
 import { BuildingType, GameState } from '@/types/game';
 
 const SIZE = 30;
@@ -64,8 +64,32 @@ describe('getPlacementCheck', () => {
   it('blocks multi-tile buildings over occupied tiles or past the map edge', () => {
     const state = flatState();
     setType(state, 6, 5, 'road');
-    expect(getPlacementCheck(state, 'hospital', 5, 5)).toMatchObject({ ok: false, reason: PLACEMENT_REASONS.blocked });
+    const overlap = getPlacementCheck(state, 'hospital', 5, 5);
+    expect(overlap).toMatchObject({ ok: false, reason: PLACEMENT_REASONS.footprintRoad });
+    // Only the road tile of the footprint is marked bad
+    expect(overlap.footprint?.filter((t) => !t.ok)).toEqual([{ x: 6, y: 5, ok: false }]);
     expect(getPlacementCheck(state, 'hospital', SIZE - 1, 5)).toMatchObject({ ok: false, reason: PLACEMENT_REASONS.outOfBounds });
+  });
+
+  it('names the building in the way', () => {
+    const state = flatState();
+    setType(state, 5, 5, 'police_station');
+    const reason = getPlacementCheck(state, 'fire_station', 5, 5).reason ?? '';
+    expect(reason).toContain('Police');
+    expect(reason).toContain('bulldoze first');
+  });
+
+  it('dry-runs a drag area: only valid tiles are priced', () => {
+    const state = flatState();
+    setType(state, 1, 0, 'water');
+    state.grid[0][2].zone = 'residential';
+    const area = checkPlacementArea(state, 'zone_residential', { x: 0, y: 0 }, { x: 3, y: 1 });
+    const cost = getPlacementCheck(state, 'zone_residential', 0, 0).cost;
+    expect(area.validTiles).toBe(6);
+    expect(area.totalCost).toBe(6 * cost);
+    expect(area.affordable).toBe(true);
+    state.stats = { ...state.stats, money: 0 };
+    expect(checkPlacementArea(state, 'road', { x: 0, y: 5 }, { x: 4, y: 5 })).toMatchObject({ validTiles: 5, affordable: false });
   });
 
   it('requires water next to waterfront buildings', () => {

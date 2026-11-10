@@ -7,7 +7,7 @@ import { getCityEmbankments, getCityFloodMask, getEffectiveLandValue } from '@/l
 import { getRiverZoneArrays } from '@/games/isocity/maps/riverZones';
 import { getVaranasiLayout, LAYOUT_WATER } from '@/games/isocity/maps/varanasiLayout';
 import { TOOL_INFO, type GameState } from '@/types/game';
-import { getToolDisplay, isToolVisible, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import { getToolDisplay, isToolAvailable, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
 
 const SIZE = 60;
 
@@ -37,8 +37,8 @@ describe('embankment tool (S4-T6)', () => {
   it('is a Varanasi-only riverfront tool costing ₹300', () => {
     expect(TOOL_INFO.embankment.cost).toBe(FLOOD_CONFIG.embankmentCost);
     expect(RIVERFRONT_TOOLS).toContain('embankment');
-    expect(isToolVisible('embankment', 'varanasi')).toBe(true);
-    expect(isToolVisible('embankment', undefined)).toBe(false);
+    expect(isToolAvailable('embankment', 'varanasi')).toBe(true);
+    expect(isToolAvailable('embankment', undefined)).toBe(false);
     expect(getToolDisplay('embankment', TOOL_INFO.embankment, 'varanasi').name).toBe('Embankment (Tatbandh)');
   });
 });

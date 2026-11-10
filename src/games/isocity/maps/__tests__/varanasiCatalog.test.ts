@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_INFO, type Tool } from '@/games/isocity/types/game';
-import { getBuildingDisplayName, getToolDisplay, isToolVisible, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getBuildingDisplayName, getToolDisplay, isCategoryShown, isToolAvailable, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
 
 describe('varanasiCatalog', () => {
   it('hides Western-only and resize tools on Varanasi, riverfront tools elsewhere', () => {
-    expect(isToolVisible('space_program', 'varanasi')).toBe(false);
-    expect(isToolVisible('expand_city', 'varanasi')).toBe(false);
-    expect(isToolVisible('ghat', 'varanasi')).toBe(true);
-    expect(isToolVisible('ghat', 'random')).toBe(false);
-    expect(isToolVisible('ghat', undefined)).toBe(false);
-    expect(isToolVisible('space_program', 'random')).toBe(true);
+    expect(isToolAvailable('space_program', 'varanasi')).toBe(false);
+    expect(isToolAvailable('expand_city', 'varanasi')).toBe(false);
+    expect(isToolAvailable('ghat', 'varanasi')).toBe(true);
+    expect(isToolAvailable('ghat', 'random')).toBe(false);
+    expect(isToolAvailable('ghat', undefined)).toBe(false);
+    expect(isToolAvailable('space_program', 'random')).toBe(true);
     expect(visibleTools(['road', 'space_program', 'ghat'] as Tool[], 'varanasi')).toEqual(['road', 'ghat']);
   });
 
@@ -28,11 +28,22 @@ describe('varanasiCatalog', () => {
   });
 
   it('hides every tool the plan lists on Varanasi, and none on the random map', () => {
-    const hidden = ['space_program', 'baseball_stadium', 'football_field', 'mini_golf_course', 'go_kart_track', 'skate_park',
+    const hidden = ['subway', 'subway_station', 'zone_water', 'zone_land', 'space_program', 'baseball_stadium', 'football_field', 'mini_golf_course', 'go_kart_track', 'skate_park',
       'mountain_lodge', 'mountain_trailhead', 'cabin_house', 'campground', 'roller_coaster_small', 'pier_large', 'bleachers_field'] as Tool[];
     for (const t of hidden) {
-      expect(isToolVisible(t, 'varanasi')).toBe(false);
-      expect(isToolVisible(t, 'random')).toBe(true);
+      expect(isToolAvailable(t, 'varanasi')).toBe(false);
+      expect(isToolAvailable(t, 'random')).toBe(true);
     }
+    // Varanasi keeps its airport and railway
+    expect(isToolAvailable('airport', 'varanasi')).toBe(true);
+    expect(isToolAvailable('rail', 'varanasi')).toBe(true);
+    expect(isToolAvailable('rail_station', 'varanasi')).toBe(true);
+  });
+
+  it('folds the Waterfront category into Riverfront on Varanasi', () => {
+    expect(RIVERFRONT_TOOLS).toContain('marina_docks_small');
+    expect(isCategoryShown('waterfront', 'varanasi')).toBe(false);
+    expect(isCategoryShown('WATERFRONT', 'varanasi')).toBe(false);
+    expect(isCategoryShown('waterfront', 'random')).toBe(true);
   });
 });

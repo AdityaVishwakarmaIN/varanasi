@@ -6,14 +6,16 @@
  *   counts a day toward formalisation; after 30 days in a row it becomes a small house.
  * - Bulldozing one displaces families: a city-wide happiness penalty for 60 days.
  *
- * Everything here is deterministic given Math.random (the simulation's random source).
+ * Everything here is deterministic given the injected `rng` (the simulation's random source; Math.random by default).
  */
+import type { Rng } from '@/lib/rng';
 import type { BuildingType } from '@/games/isocity/types/buildings';
 import type { GameState, InformalState, Notification, Tile } from '@/games/isocity/types/game';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import { getFeederColumns, getFeederIndex } from '@/lib/feederZones';
 import { getMohallaForFeeder } from '@/lib/citizenVoices';
+import { pushNotifications } from '@/lib/notifications';
 import {
   INFORMAL_CONFIG,
   advanceFormalisation,
@@ -174,6 +176,8 @@ export interface InformalDayInput {
   hasRoadAccess: (x: number, y: number) => boolean;
   /** Returns a tile that may be written this tick (the simulation's copy-on-write grid). */
   writable: (x: number, y: number) => Tile;
+  /** Random source for the weekly spawn pick (defaults to Math.random). */
+  rng?: Rng;
 }
 
 export interface InformalDayResult {
@@ -224,7 +228,7 @@ export function runInformalDay(input: InformalDayInput): InformalDayResult {
     }
   }
   for (const area of new Set(formalisedAreas)) {
-    notifications.push({ title: 'Proper homes', description: formatFormalisedMessage(area), icon: 'home' });
+    notifications.push({ title: 'Proper homes', description: formatFormalisedMessage(area), icon: 'home', kind: 'formalised' });
   }
 
   // Bulldoze records only matter for the cooldown
@@ -246,7 +250,7 @@ export function runInformalDay(input: InformalDayInput): InformalDayResult {
     });
     if (short) {
       const candidates = gatherInformalCandidates(grid, size, input.mapId, informal, today);
-      for (const c of pickInformalSpawnTiles(candidates, Math.random)) {
+      for (const c of pickInformalSpawnTiles(candidates, input.rng ?? Math.random)) {
         const w = input.writable(c.x, c.y);
         w.building = createInformalBuilding(w.building);
         changed++;
@@ -282,6 +286,7 @@ export function recordBulldoze(
     description: INFORMAL_CONFIG.displacement.message,
     icon: 'alert',
     timestamp: Date.now(),
+    kind: 'displaced',
   };
-  return { informal, notifications: [notification, ...state.notifications].slice(0, 10) };
+  return { informal, notifications: pushNotifications(state.notifications, [notification]) };
 }

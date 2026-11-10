@@ -1,20 +1,16 @@
-// CHANGE SUMMARY: Replaced the desktop language button with an Options dropdown containing overlay/minimap toggles plus language selection.
-// Earlier state: language selector was a standalone control and did not expose view panel visibility actions from the top bar.
+// The Options dropdown holds the overlay/minimap toggles (the game is English-only, so no language picker).
 
 'use client';
 
 import React, { useState } from 'react';
 import { msg, useMessages } from 'gt-next';
-import { useLocale, useSetLocale } from 'gt-next/client';
 import { useGame } from '@/context/GameContext';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
@@ -30,8 +26,7 @@ import {
   JobsIcon,
 } from '@/components/ui/Icons';
 import { HudStat } from '@/components/game/HudStat';
-import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
-import { formatINR, formatPopulation } from '@/lib/format';
+import { formatINR, formatMonthlyNet, formatPopulation, getMonthlyNet } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
@@ -52,7 +47,26 @@ const UI_LABELS = {
   environment: msg('Environment'),
   viewOverlay: msg('View Overlay'),
   minimap: msg('Minimap'),
-  languageSwitcher: msg('Language'),
+};
+
+/** HUD hover text (E2): what each stat is and what moves it. */
+const HUD_TIPS = {
+  population: msg('People living in the city. Grows when homes have power, water, road access and nearby jobs.'),
+  jobs: msg('Jobs at shops, offices and factories. Zone commercial and industrial land to add more.'),
+  funds: msg('Money in the treasury. Taxes and tourism add to it each month; building and upkeep spend it.'),
+  monthly: msg('Income minus expenses each month. Raise taxes or cut budgets to improve it.'),
+  happiness: msg('How content residents are. Services, parks and jobs raise it; high taxes, pollution and crime lower it.'),
+  health: msg('Hospital coverage of homes. Build hospitals near where people live.'),
+  education: msg('School and university coverage of homes.'),
+  safety: msg('Police coverage. Crime and uncovered areas lower it.'),
+  environment: msg('Trees, parks and water raise it; pollution and heavy industry lower it.'),
+  tax: msg('Tax rate. Higher taxes bring more income but lower demand and happiness; changes take effect slowly.'),
+  demandR: msg('More jobs than residents: people want to move in.'),
+  demandRLow: msg('Too few jobs for residents, or taxes are high.'),
+  demandC: msg('Residents want more shops and offices.'),
+  demandCLow: msg('More shop jobs than residents can support.'),
+  demandI: msg('The workforce needs more factory jobs.'),
+  demandILow: msg('Plenty of industry for the workforce.'),
 };
 
 // ============================================================================
@@ -123,14 +137,17 @@ interface DemandIndicatorProps {
   label: string;
   demand: number;
   color: string;
+  /** One line on what drives this demand (shown on hover with the value). */
+  cause?: React.ReactNode;
 }
 
-export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) {
+export function DemandIndicator({ label, demand, color, cause }: DemandIndicatorProps) {
   const height = Math.abs(demand) / 2;
   const isPositive = demand >= 0;
-  
-  return (
-    <div className="flex flex-col items-center gap-1">
+  const value = `${isPositive ? '+' : ''}${Math.round(demand)}`;
+
+  const bar = (
+    <div className="flex flex-col items-center gap-1" tabIndex={cause ? 0 : undefined} aria-label={`${label} ${value}`}>
       <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
       <div className="w-2.5 h-7 bg-black/40 ring-1 ring-gold/15 relative rounded-full overflow-hidden">
         <div className="absolute left-0 right-0 top-1/2 h-px bg-gold/30" />
@@ -144,6 +161,16 @@ export function DemandIndicator({ label, demand, color }: DemandIndicatorProps) 
       </div>
     </div>
   );
+  if (!cause) return bar;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{bar}</TooltipTrigger>
+      <TooltipContent className="max-w-64">
+        <p className="font-mono font-semibold">{label} {value}</p>
+        <p className="text-xs text-muted-foreground">{cause}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 // ============================================================================
@@ -154,14 +181,16 @@ interface MiniStatProps {
   icon: React.ReactNode;
   label: string;
   value: number;
+  /** Hover text: what the stat is and what moves it. */
+  tooltip?: React.ReactNode;
 }
 
-export function MiniStat({ icon, label, value }: MiniStatProps) {
+export function MiniStat({ icon, label, value, tooltip }: MiniStatProps) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
   const color = value >= 70 ? 'text-emerald-300' : value >= 40 ? 'text-amber-300' : 'text-red-400';
   const bar = value >= 70 ? 'bg-emerald-400' : value >= 40 ? 'bg-amber-400' : 'bg-red-400';
-  return (
-    <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`}>
+  const stat = (
+    <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`} tabIndex={tooltip ? 0 : undefined}>
       <span className="text-gold/80">{icon}</span>
       <span className="text-muted-foreground">{label}</span>
       <span className="relative h-1 w-12 overflow-hidden rounded-full bg-white/10" aria-hidden>
@@ -169,6 +198,13 @@ export function MiniStat({ icon, label, value }: MiniStatProps) {
       </span>
       <span className={`font-mono font-semibold w-8 ${color}`}>{pct}%</span>
     </div>
+  );
+  if (!tooltip) return stat;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{stat}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-64">{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -183,11 +219,11 @@ export const StatsPanel = React.memo(function StatsPanel() {
   
   return (
     <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-gold/15 bg-gradient-to-b from-[hsl(234_40%_10%)] to-[hsl(234_42%_8%)]">
-      <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} />
-      <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} />
-      <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} />
-      <MiniStat icon={<SafetyIcon size={12} />} label={String(m(UI_LABELS.safety))} value={stats.safety} />
-      <MiniStat icon={<EnvironmentIcon size={12} />} label={String(m(UI_LABELS.environment))} value={stats.environment} />
+      <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} tooltip={m(HUD_TIPS.happiness)} />
+      <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} tooltip={m(HUD_TIPS.health)} />
+      <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} tooltip={m(HUD_TIPS.education)} />
+      <MiniStat icon={<SafetyIcon size={12} />} label={String(m(UI_LABELS.safety))} value={stats.safety} tooltip={m(HUD_TIPS.safety)} />
+      <MiniStat icon={<EnvironmentIcon size={12} />} label={String(m(UI_LABELS.environment))} value={stats.environment} tooltip={m(HUD_TIPS.environment)} />
     </div>
   );
 });
@@ -228,12 +264,11 @@ export const TopBar = React.memo(function TopBar({
   const { stats, year, month, day, speed, taxRate, cityName } = state;
   const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
   const m = useMessages();
-  const locale = useLocale();
-  const setLocale = useSetLocale();
+
+  // Indian date order: DD-MM-YYYY
+  const formattedDate = `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`;
   
-  const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
-  
-  const monthly = stats.income - stats.expenses;
+  const monthly = getMonthlyNet(stats);
   const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
 
   return (
@@ -299,25 +334,34 @@ export const TopBar = React.memo(function TopBar({
           tint="sandstone"
           value={formatPopulation(stats.population)}
           label={String(m(UI_LABELS.population))}
+          tooltip={m(HUD_TIPS.population)}
         />
         <HudStat
           icon={<JobsIcon size={16} />}
           tint="sandstone"
           value={formatPopulation(stats.jobs)}
           label={String(m(UI_LABELS.jobs))}
+          tooltip={m(HUD_TIPS.jobs)}
         />
         <HudStat
           icon={<span className="text-[15px] font-bold leading-none">₹</span>}
           tint="marigold"
           value={formatINR(stats.money)}
           label={String(m(UI_LABELS.funds))}
+          tooltip={m(HUD_TIPS.funds)}
           tone={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'default'}
         />
         <HudStat
           icon={<span className="text-sm font-bold leading-none">{monthly >= 0 ? '▲' : '▼'}</span>}
           tint={monthly >= 0 ? 'good' : 'bad'}
-          value={`${monthly >= 0 ? '+' : ''}${formatINR(monthly)}`}
+          value={formatMonthlyNet(stats)}
           label={String(m(UI_LABELS.monthly))}
+          tooltip={
+            <>
+              <p>{m(HUD_TIPS.monthly)}</p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">{formatINR(stats.income)} − {formatINR(stats.expenses)}</p>
+            </>
+          }
           tone={monthly >= 0 ? 'success' : 'destructive'}
         />
         {gangaHealth !== undefined && onToggleGangaOverlay && (
@@ -348,24 +392,30 @@ export const TopBar = React.memo(function TopBar({
       
       <div className="flex items-center gap-2.5 shrink-0">
         <div className="flex items-center gap-1.5" role="group" aria-label="Zone demand">
-          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-500" />
-          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-500" />
-          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" />
+          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-500" cause={m(stats.demand.residential >= 0 ? HUD_TIPS.demandR : HUD_TIPS.demandRLow)} />
+          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-500" cause={m(stats.demand.commercial >= 0 ? HUD_TIPS.demandC : HUD_TIPS.demandCLow)} />
+          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" cause={m(stats.demand.industrial >= 0 ? HUD_TIPS.demandI : HUD_TIPS.demandILow)} />
         </div>
         
-        <div className="hud-well flex items-center gap-2 rounded-xl h-11 px-3">
-          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{m(UI_LABELS.tax)}</span>
-          <Slider
-            value={[taxRate]}
-            onValueChange={(value) => setTaxRate(value[0])}
-            min={0}
-            max={20}
-            step={1}
-            className="w-14"
-            aria-label={String(m(UI_LABELS.tax))}
-          />
-          <span className="text-foreground text-xs font-mono font-semibold w-7">{taxRate}%</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="hud-well flex items-center gap-2 rounded-xl h-11 px-3">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{m(UI_LABELS.tax)}</span>
+              {/* E2: wide enough for 1% steps over 0-20% */}
+              <Slider
+                value={[taxRate]}
+                onValueChange={(value) => setTaxRate(value[0])}
+                min={0}
+                max={20}
+                step={1}
+                className="w-32"
+                aria-label={String(m(UI_LABELS.tax))}
+              />
+              <span className="text-foreground text-xs font-mono font-semibold w-8 text-right tabular-nums">{taxRate}%</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">{m(HUD_TIPS.tax)}</TooltipContent>
+        </Tooltip>
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -387,24 +437,6 @@ export const TopBar = React.memo(function TopBar({
                 </div>
               </div>
             </div>
-            <Separator className="my-1" />
-            <div className="px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-              {String(m(UI_LABELS.languageSwitcher))}
-            </div>
-            {LANGUAGE_OPTIONS.map((language) => (
-              <DropdownMenuItem
-                key={language.code}
-                onClick={() => setLocale(language.code)}
-                className="flex items-center justify-between gap-2 cursor-pointer"
-              >
-                <span className="text-xs">{language.name}</span>
-                {language.code === locale ? (
-                  <span className="text-xs text-marigold">✓</span>
-                ) : (
-                  <span className="w-3 h-3" />
-                )}
-              </DropdownMenuItem>
-            ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

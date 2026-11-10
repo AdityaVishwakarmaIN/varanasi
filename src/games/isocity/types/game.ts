@@ -158,6 +158,9 @@ export interface WaterBody {
 
 export type NotificationSeverity = 'info' | 'warning' | 'crisis';
 
+/** What a notification is about, for code that reacts to it (advisor and citizen feeds). Missing on old saves. */
+export type NotificationKind = 'collapse' | 'displaced' | 'formalised' | 'festival_success' | 'festival_overwhelmed';
+
 export interface Notification {
   id: string;
   title: string;
@@ -171,6 +174,8 @@ export interface Notification {
   overlay?: OverlayMode;
   /** 'crisis' pauses the game when `pauseOnCrisis` is on. Missing means 'info'. */
   severity?: NotificationSeverity;
+  /** Typed event kind (feeds match on this, not on the title). */
+  kind?: NotificationKind;
 }
 
 /** An upcoming event shown on the calendar strip (S4-T1/S4-T4): forecasts now, festivals in Sprint 5. */
@@ -234,6 +239,8 @@ export interface GameState {
   cities: City[];
   /** Which map this city was started on. Missing (old saves) means 'random'. */
   mapId?: MapId;
+  /** Per-city random seed for yearly/seasonal rolls (monsoon, heatwaves). Missing (old saves) is backfilled on load. */
+  seed?: number;
   /** Informal settlement bookkeeping (S3-T9). Missing means nothing has happened yet. */
   informal?: InformalState;
   /** Debt, emergency loan, bankruptcy and exodus bookkeeping, incl. peak population / Ganga Health (S4-T11). Missing means a fresh state. */

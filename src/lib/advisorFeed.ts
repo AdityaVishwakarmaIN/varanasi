@@ -17,6 +17,7 @@ import { FAILURE_CONFIG } from '@/lib/failure';
 import { isHeatwaveActive, isHeatwavePending } from '@/lib/heatwave';
 import { getActiveFestivals, getUpcomingFestivals } from '@/lib/festivals';
 import { absoluteDay } from '@/lib/seasons';
+import { isNotificationKind } from '@/lib/notifications';
 import { needsFirstGhat } from '@/lib/gangaTips';
 import { getInformalAreaName } from '@/lib/informalSim';
 
@@ -84,12 +85,12 @@ function notesFromNotifications(list: readonly Notification[]): AdvisorNote[] {
   const out: AdvisorNote[] = [];
   const recent = list.slice(0, ADVISOR_FEED_CONFIG.recentNotifications);
   const at = (n: Notification) => (n.x !== undefined && n.y !== undefined ? { x: n.x, y: n.y } : {});
-  const collapse = recent.find((n) => /collapsed/i.test(n.title));
+  const collapse = recent.find((n) => isNotificationKind(n, 'collapse', /collapsed/i));
   if (collapse) {
     out.push(createAdvisorNote('collapse', 'collapse', 'medium', 'An old building has collapsed.',
       'Fire station cover lowers the risk; old flood-damaged blocks are most at risk.', { ...at(collapse), overlay: 'fire' }));
   }
-  const displaced = recent.find((n) => /displaced/i.test(n.title));
+  const displaced = recent.find((n) => isNotificationKind(n, 'displaced', /displaced/i));
   if (displaced) {
     out.push(createAdvisorNote('informal_settlement', 'displaced', 'medium', 'Families were displaced by a bulldozer.',
       'Formalise settlements instead: zone residential and bring road, power and water.', at(displaced)));

@@ -18,11 +18,10 @@ import { CreditsButton } from '@/components/CreditsDialog';
 import { isDevModeSearch } from '@/lib/devMode';
 import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
-import { LocaleSelector } from 'gt-next';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
-import { getShowProblemIcons, resetShownTips, setShowProblemIcons, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
+import { getShowProblemIcons, getTipsEnabled, resetShownTips, setShowProblemIcons, setTipsEnabled, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // Translatable UI labels
@@ -36,12 +35,12 @@ const UI_LABELS = {
   showProblemIcons: msg('Show problem icons'),
   showProblemIconsDesc: msg('Small icons over buildings with no power, water or road, fires, floods and disease'),
   resetTips: msg('Reset tips'),
-  resetTipsDesc: msg('Show every tip again the next time it applies'),
+  resetTipsDesc: msg('Turn tips on and show every tip again the next time it applies'),
+  showTips: msg('Show tips'),
+  showTipsDesc: msg('Short hints when a city system first matters'),
   tipsReset: msg('Tips reset'),
   spritePack: msg('Sprite Pack'),
   spritePackDesc: msg('Choose building artwork style'),
-  language: msg('Language'),
-  languageDesc: msg('Choose your preferred language'),
   cityInformation: msg('City Information'),
   cityName: msg('City Name'),
   gridSize: msg('Grid Size'),
@@ -65,8 +64,6 @@ const UI_LABELS = {
   load: msg('Load'),
   rename: msg('Rename'),
   noSavedCities: msg('No saved cities yet.'),
-  restore: msg('Restore'),
-  citySavedBeforeViewing: msg('Your city was saved before viewing a shared city'),
   startNewGame: msg('Start New Game'),
   confirmReset: msg('Are you sure? This will reset all progress.'),
   reset: msg('Reset'),
@@ -135,9 +132,10 @@ async function loadExampleState(
 
 
 export function SettingsPanel() {
-  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, getSavedCityInfo, restoreSavedCity, clearSavedCity, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
+  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
   const showProblemIcons = useSyncExternalStore(subscribeFeedbackPrefs, getShowProblemIcons, () => true);
+  const tipsEnabled = useSyncExternalStore(subscribeFeedbackPrefs, getTipsEnabled, () => true);
   const [tipsWereReset, setTipsWereReset] = useState(false);
   const m = useMessages();
   const searchParams = useSearchParams();
@@ -153,13 +151,7 @@ export function SettingsPanel() {
   const [exportCopied, setExportCopied] = useState(false);
   const [importError, setImportError] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
-  const [savedCityInfo, setSavedCityInfo] = useState(getSavedCityInfo());
-  
-  // Refresh saved city info when panel opens
-  React.useEffect(() => {
-    setSavedCityInfo(getSavedCityInfo());
-  }, [getSavedCityInfo]);
-  
+
   // S5-T12: developer tools (sprite test, benchmarks, example states) only with ?dev=1
   const devMode = isDevModeSearch(searchParams?.toString());
   // Initialize showSpriteTest from query parameter
@@ -266,6 +258,14 @@ export function SettingsPanel() {
 
             <div className="flex items-center justify-between py-2 gap-4">
               <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.showTips)}</Label>
+                <p className="text-muted-foreground text-xs">{m(UI_LABELS.showTipsDesc)}</p>
+              </div>
+              <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
                 <Label>{m(UI_LABELS.resetTips)}</Label>
                 <p className="text-muted-foreground text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
               </div>
@@ -282,6 +282,8 @@ export function SettingsPanel() {
               </Button>
             </div>
             
+            {/* Sprite packs are random-map artwork; Varanasi draws its own buildings */}
+            {state.mapId !== 'varanasi' && (
             <div className="py-2">
               <Label>{m(UI_LABELS.spritePack)}</Label>
               <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
@@ -317,12 +319,7 @@ export function SettingsPanel() {
                 ))}
               </div>
             </div>
-
-            <div className="py-2">
-              <Label>{m(UI_LABELS.language)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
-              <LocaleSelector />
-            </div>
+            )}
 
             <GraphicsSettings />
 
@@ -348,7 +345,9 @@ export function SettingsPanel() {
                 <span className="text-green-400">{m(UI_LABELS.enabled)}</span>
               </div>
             </div>
-            
+
+            {/* The fixed Varanasi map never changes size */}
+            {state.mapId !== 'varanasi' && (
             <div className="mt-4 space-y-3">
               <div>
                 <Button
@@ -383,6 +382,7 @@ export function SettingsPanel() {
                 </p>
               </div>
             </div>
+            )}
           </div>
           
           <Separator />
@@ -545,27 +545,6 @@ export function SettingsPanel() {
               </p>
             )}
           </div>
-          
-          {/* Restore saved city button - shown if there's a saved city from before viewing a shared city */}
-          {savedCityInfo && (
-            <div className="space-y-2">
-              <Button
-                variant="default"
-                className="w-full"
-                onClick={() => {
-                  restoreSavedCity();
-                  setSavedCityInfo(null);
-                  setActivePanel('none');
-                }}
-              >
-                {m(UI_LABELS.restore)} {savedCityInfo.cityName}
-              </Button>
-              <p className="text-muted-foreground text-xs text-center">
-                {m(UI_LABELS.citySavedBeforeViewing)}
-              </p>
-              <Separator />
-            </div>
-          )}
           
           {!showNewGameConfirm ? (
             <Button

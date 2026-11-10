@@ -154,7 +154,7 @@ import { FLOOD_CONFIG } from '@/lib/floods';
 import { CAMERA_CONFIG, SharedControlsState, setCameraControls, TOUCH_CONFIG } from '@/lib/controlsConfig';
 import { clampZoom, getInteractionSkips, PanVelocityTracker, type CameraPose } from '@/lib/cameraMotion';
 import { useSmoothCamera } from '@/components/game/useSmoothCamera';
-import { getPlacementCheck, getToolFootprint } from '@/lib/placement';
+import { checkPlacementArea, getHoverPlacementCheck, getPlacementCheck, getToolFootprint, PLACEMENT_REASONS } from '@/lib/placement';
 import {
   classifyTouch,
   computePinchPose,
@@ -188,7 +188,7 @@ export interface CanvasIsometricGridProps {
   selectedTile: { x: number; y: number } | null;
   setSelectedTile: (tile: { x: number; y: number } | null) => void;
   isMobile?: boolean;
-  navigationTarget?: { x: number; y: number } | null;
+  navigationTarget?: { x: number; y: number; instant?: boolean } | null;
   onNavigationComplete?: () => void;
   onViewportChange?: (viewport: { offset: { x: number; y: number }; zoom: number; canvasSize: { width: number; height: number } }) => void;
   onBargeDelivery?: (cargoValue: number, cargoType: number) => void;
@@ -380,7 +380,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const touchGestureRef = useRef<TouchGesture | null>(null);
   // Expensive tap waiting for the ✓ / ✗ confirm bubble
   const [pendingPlacement, setPendingPlacement] = useState<{ x: number; y: number; tool: Tool; cost: number } | null>(null);
-  
+  // Refused tap: the placement check's reason, shown near the tap for a moment
+  const [tapRefusal, setTapRefusal] = useState<{ left: number; top: number; reason: string; key: number } | null>(null);
+  useEffect(() => {
+    if (!tapRefusal) return;
+    const t = setTimeout(() => setTapRefusal(null), 2500);
+    return () => clearTimeout(t);
+  }, [tapRefusal]);
+
   // Airplane system refs
   const airplanesRef = useRef<Airplane[]>([]);
   const airplaneIdRef = useRef(0);
@@ -519,6 +526,37 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Every other tool (buildings) places exactly once, on mouse up at the release tile
   const placesOnRelease = selectedTool !== 'select' && !showsDragGrid && !supportsDragPlace;
   const releasePlaceRef = useRef<{ x: number; y: number } | null>(null);
+
+  // C1: money spent by the current desktop drag stroke (running total in the label), and a brief
+  // notice when a placement or stroke is refused for lack of money (once per stroke).
+  const [strokeSpent, setStrokeSpent] = useState(0);
+  const [strokeOutOfMoney, setStrokeOutOfMoney] = useState(false);
+  const strokeNoMoneyRef = useRef(false); // synchronous twin of strokeOutOfMoney (many tiles per event)
+  const [moneyNotice, setMoneyNotice] = useState<{ reason: string; key: number } | null>(null);
+  useEffect(() => {
+    if (!moneyNotice) return;
+    const t = setTimeout(() => setMoneyNotice(null), 2000);
+    return () => clearTimeout(t);
+  }, [moneyNotice]);
+  const startStroke = useCallback(() => {
+    beginPlacementStroke();
+    setStrokeSpent(0);
+    setStrokeOutOfMoney(false);
+    strokeNoMoneyRef.current = false;
+  }, [beginPlacementStroke]);
+  /** Desktop placement: one tile of the current stroke; tracks spending and says when money runs out. */
+  const placeInStroke = useCallback((x: number, y: number, inDrag: boolean) => {
+    const result = placeAtTile(x, y);
+    if (result === 'placed') {
+      const cost = TOOL_INFO[selectedTool]?.cost ?? 0;
+      if (cost > 0) setStrokeSpent((s) => s + cost);
+    } else if (result === 'noMoney' && !strokeNoMoneyRef.current) {
+      strokeNoMoneyRef.current = inDrag; // a drag says it once; single placements say it every time
+      setStrokeOutOfMoney(inDrag);
+      setMoneyNotice({ reason: inDrag ? PLACEMENT_REASONS.outOfMoney : PLACEMENT_REASONS.notEnoughMoney, key: Date.now() });
+    }
+    return result;
+  }, [placeAtTile, selectedTool]);
   const isDraggingRef = useRef(false);
   useEffect(() => {
     isDraggingRef.current = isDragging;
@@ -2878,8 +2916,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   const placementPreview = useMemo(() => {
     if (isMobile || isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
-    return getPlacementCheck(state, selectedTool, hoveredTile.x, hoveredTile.y);
+    return getHoverPlacementCheck(state, selectedTool, hoveredTile.x, hoveredTile.y);
   }, [isMobile, isDragging, hoveredTile, selectedTool, state]);
+
+  // C1: dry run of the zone rectangle being dragged (real total of the tiles that would change)
+  const dragAreaCheck = useMemo(() => {
+    if (!isDragging || !showsDragGrid || !dragStartTile || !dragEndTile) return null;
+    return checkPlacementArea(state, selectedTool, dragStartTile, dragEndTile);
+  }, [isDragging, showsDragGrid, dragStartTile, dragEndTile, selectedTool, state]);
 
   // PERF: Lightweight hover/selection overlay - renders ONLY tile highlights
   // This runs frequently (on mouse move) but is extremely fast since it only draws simple shapes
@@ -2919,8 +2963,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     };
 
     // S1-T10: green = can build, red = cannot (white when no placement tool is active)
-    const previewFill = placementPreview ? (placementPreview.ok ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.4)') : undefined;
-    const previewStroke = placementPreview ? (placementPreview.ok ? '#22c55e' : '#ef4444') : undefined;
+    const fillFor = (ok: boolean) => (ok ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.4)');
+    const strokeFor = (ok: boolean) => (ok ? '#22c55e' : '#ef4444');
+    const previewFill = placementPreview ? fillFor(placementPreview.ok) : undefined;
+    const previewStroke = placementPreview ? strokeFor(placementPreview.ok) : undefined;
+    // C2: multi-tile footprints tint each tile by its own validity (the tiles in the way go red)
+    const footprintOk = new Map<string, boolean>();
+    placementPreview?.footprint?.forEach((t) => footprintOk.set(`${t.x},${t.y}`, t.ok));
 
     // Step 4: hover/selection highlights routed through a renderer so the GPU 'hover'
     // layer can replay the same draws (Canvas2D path unchanged).
@@ -2943,7 +2992,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const ty = hoveredTile.y + dy;
             if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
               const { screenX, screenY } = gridToScreen(tx, ty, 0, 0);
-              drawHighlight(r, screenX, screenY, previewFill, previewStroke);
+              const tileOk = footprintOk.get(`${tx},${ty}`);
+              if (tileOk === undefined) drawHighlight(r, screenX, screenY, previewFill, previewStroke);
+              else drawHighlight(r, screenX, screenY, fillFor(tileOk), strokeFor(tileOk));
             }
           }
         }
@@ -3617,9 +3668,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           setRoadDrawDirection(null);
           placedRoadTilesRef.current.clear();
           // One undo stroke for the whole drag (closed on mouse up / cancel)
-          beginPlacementStroke();
+          startStroke();
           // Place immediately on first click
-          placeAtTile(gridX, gridY);
+          placeInStroke(gridX, gridY, true);
           // Track initial tile for roads, rail, and subways
           if (selectedTool === 'road' || selectedTool === 'rail' || selectedTool === 'subway') {
             placedRoadTilesRef.current.add(`${gridX},${gridY}`);
@@ -3631,7 +3682,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeAtTile, beginPlacementStroke, endPlacementStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
+  }, [offset, gridSize, selectedTool, placeInStroke, startStroke, endPlacementStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -3724,7 +3775,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     const from = { ...offsetRef.current };
     const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     onNavigationComplete?.();
-    if (reducedMotion || Math.hypot(to.x - from.x, to.y - from.y) < 1) {
+    // `instant`: minimap drag sets the camera directly (a glide per mousemove would lag behind)
+    if (reducedMotion || navigationTarget.instant || Math.hypot(to.x - from.x, to.y - from.y) < 1) {
       setOffset(to);
       return;
     }
@@ -3852,7 +3904,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                   placedRoadTilesRef.current.add(key);
                   continue;
                 }
-                placeAtTile(x, y);
+                placeInStroke(x, y, true);
                 placedRoadTilesRef.current.add(key);
               }
             }
@@ -3860,11 +3912,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         // For other drag-to-place tools, place continuously
         else if (isDragging && supportsDragPlace && dragStartTile) {
-          placeAtTile(gridX, gridY);
+          placeInStroke(gridX, gridY, true);
         }
       }
     }
-  }, [isPanning, dragStart, offset, zoom, gridSize, isDragging, showsDragGrid, dragStartTile, selectedTool, roadDrawDirection, supportsDragPlace, placeAtTile, clampOffset, grid]);
+  }, [isPanning, dragStart, offset, zoom, gridSize, isDragging, showsDragGrid, dragStartTile, selectedTool, roadDrawDirection, supportsDragPlace, placeInStroke, clampOffset, grid]);
   
   const handleMouseUp = useCallback(() => {
     const rightClick = rightClickRef.current;
@@ -3901,10 +3953,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const minY = Math.min(dragStartTile.y, dragEndTile.y);
       const maxY = Math.max(dragStartTile.y, dragEndTile.y);
 
-      beginPlacementStroke(); // the whole rectangle is one undo step
+      startStroke(); // the whole rectangle is one undo step
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
-          placeAtTile(x, y);
+          placeInStroke(x, y, true);
         }
       }
     }
@@ -3914,7 +3966,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     releasePlaceRef.current = null;
     if (release && placesOnRelease && !isPanning
       && release.x >= 0 && release.x < gridSize && release.y >= 0 && release.y < gridSize) {
-      placeAtTile(release.x, release.y);
+      placeInStroke(release.x, release.y, false);
     }
 
     // After placing roads or rail, create bridges for valid water crossings and check for city discovery
@@ -3957,7 +4009,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, beginPlacementStroke, endPlacementStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, startStroke, endPlacementStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
 
   // Mouse leaving the map: cancel an in-progress zone/line drag without committing it
   // (no rectangle fill, no bridges), drop a held single placement, and clear the hover ghost.
@@ -4118,7 +4170,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return;
     }
     const check = getPlacementCheck(state, selectedTool, tile.x, tile.y);
-    if (check.ok && needsTapConfirm(check.cost, state.stats.money)) {
+    if (!check.ok) {
+      // Say why (same reason text as the desktop hover label), next to the finger.
+      const rect = containerRef.current?.getBoundingClientRect();
+      setPendingPlacement(null);
+      if (check.reason) {
+        setTapRefusal({ left: clientX - (rect?.left ?? 0), top: clientY - (rect?.top ?? 0), reason: check.reason, key: Date.now() });
+      }
+      return;
+    }
+    setTapRefusal(null);
+    if (needsTapConfirm(check.cost, state.stats.money)) {
       setPendingPlacement({ x: tile.x, y: tile.y, tool: selectedTool, cost: check.cost });
       return;
     }
@@ -4416,8 +4478,21 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         );
       })()}
 
-      {/* City Connection Dialog */}
-      {cityConnectionDialog && (() => {
+      {/* B1: why a tap was refused (auto-hides after ~2.5 s) */}
+      {tapRefusal && (
+        <div
+          key={tapRefusal.key}
+          data-testid="tap-refusal"
+          role="status"
+          className="absolute z-30 -translate-x-1/2 -translate-y-full pointer-events-none max-w-[80vw] rounded-md border border-red-500/60 bg-card/95 px-3 py-1.5 text-sm font-medium text-red-500 shadow-lg backdrop-blur-sm text-center"
+          style={{ left: `clamp(100px, ${tapRefusal.left}px, calc(100% - 100px))`, top: `max(72px, ${tapRefusal.top - 24}px)` }}
+        >
+          {m(tapRefusal.reason)}
+        </div>
+      )}
+
+      {/* City Connection Dialog (random map only; the fixed Varanasi map has no trade-route dialog) */}
+      {cityConnectionDialog && state.mapId !== 'varanasi' && (() => {
         // Find a discovered but not connected city in this direction
         const city = adjacentCities.find(c => c.direction === cityConnectionDialog.direction && c.discovered && !c.connected);
         if (!city) return null;
@@ -4487,9 +4562,28 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         );
       })()}
       
-      {hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
-        // S1-T10: placement preview label (cost, and the reason when the tile is red)
-        const isPlacementInvalid = !!placementPreview && !placementPreview.ok;
+      {/* C1/C2: brief "Out of money" / "Not enough money" notice for a desktop placement refused for lack of funds */}
+      {moneyNotice && !isMobile && (
+        <div
+          key={moneyNotice.key}
+          data-testid="money-notice"
+          role="status"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none rounded-md border border-red-500/60 bg-card/95 px-3 py-1.5 text-sm font-medium text-red-500 shadow-lg"
+        >
+          {m(moneyNotice.reason)}
+        </div>
+      )}
+
+      {!isMobile && hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
+        // S1-T10 / C1: placement preview label (real cost, and the reason when the tile is red)
+        const toolCost = TOOL_INFO[selectedTool].cost;
+        const area = dragAreaCheck && dragStartTile && dragEndTile ? dragAreaCheck : null;
+        const lineDrag = isDragging && supportsDragPlace && !showsDragGrid;
+        const isPlacementInvalid = area
+          ? !area.affordable
+          : lineDrag
+            ? strokeOutOfMoney
+            : !!placementPreview && !placementPreview.ok;
 
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
@@ -4499,30 +4593,33 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               ? 'border bg-destructive/90 border-destructive-foreground/30 text-destructive-foreground'
               : 'border bg-card/90 border-border'
           }`}>
-            {isDragging && dragStartTile && dragEndTile && showsDragGrid ? (
+            {area && dragStartTile && dragEndTile ? (
               <>
-                {(() => {
-                  const areaWidth = Math.abs(dragEndTile.x - dragStartTile.x) + 1;
-                  const areaHeight = Math.abs(dragEndTile.y - dragStartTile.y) + 1;
-                  const totalCost = TOOL_INFO[selectedTool].cost * areaWidth * areaHeight;
-                  return (
-                    <>
-                      {gt('{toolName} - {width}x{height} area', { toolName, width: areaWidth, height: areaHeight })}
-                      {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(totalCost)}`}
-                    </>
-                  );
-                })()}
+                {gt('{toolName} - {width}x{height} area', {
+                  toolName,
+                  width: Math.abs(dragEndTile.x - dragStartTile.x) + 1,
+                  height: Math.abs(dragEndTile.y - dragStartTile.y) + 1,
+                })}
+                {' - '}{gt('{count} tiles', { count: area.validTiles })}
+                {toolCost > 0 && ` - ${formatINR(area.totalCost)}`}
+                {!area.affordable && <>{' - '}<span className="font-semibold">{m(PLACEMENT_REASONS.notEnoughMoney)}</span></>}
+              </>
+            ) : lineDrag ? (
+              <>
+                {toolName}
+                {toolCost > 0 && <>{' - '}{gt('{amount} spent', { amount: formatINR(strokeSpent) })}</>}
+                {strokeOutOfMoney && <>{' - '}<span className="font-semibold">{m(PLACEMENT_REASONS.outOfMoney)}</span></>}
               </>
             ) : isPlacementInvalid && placementPreview?.reason ? (
               <>
-                {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
-                {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
+                {toolName}
+                {toolCost > 0 && ` - ${formatINR(toolCost)}`}
                 {' - '}<span className="font-semibold">{m(placementPreview.reason)}</span>
               </>
             ) : (
               <>
-                {gt('{toolName} at ({x}, {y})', { toolName, x: hoveredTile.x, y: hoveredTile.y })}
-                {TOOL_INFO[selectedTool].cost > 0 && ` - ${formatINR(TOOL_INFO[selectedTool].cost)}`}
+                {toolName}
+                {toolCost > 0 && ` - ${formatINR(toolCost)}`}
                 {placementPreview?.warning && (
                   <span className="text-amber-500">{' - '}{m(placementPreview.warning)}</span>
                 )}

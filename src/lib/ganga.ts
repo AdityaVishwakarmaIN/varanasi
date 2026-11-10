@@ -43,6 +43,38 @@ function producesSewage(tile: Tile): boolean {
 }
 
 /**
+ * Each working STP treats up to `stpCapacity` sewage-producing population within `stpRadius`, in catchment order.
+ * Mutates `remaining` (untreated population per catchment entry) and returns the population treated per entry.
+ */
+function allocateStpTreatment(
+  grid: Tile[][],
+  gridSize: number,
+  catchment: ArrayLike<number>,
+  remaining: Float64Array,
+  stps: readonly { x: number; y: number }[]
+): Float64Array {
+  const treatedPerEntry = new Float64Array(catchment.length);
+  const r2 = GANGA.stpRadius * GANGA.stpRadius;
+  for (const stp of stps) {
+    const tile = grid[stp.y]?.[stp.x];
+    if (!tile || !isWorkingStp(tile)) continue;
+    let capacity = GANGA.stpCapacity;
+    for (let i = 0; i < catchment.length && capacity > 0; i++) {
+      if (remaining[i] <= 0) continue;
+      const idx = catchment[i];
+      const dx = (idx % gridSize) - stp.x;
+      const dy = ((idx / gridSize) | 0) - stp.y;
+      if (dx * dx + dy * dy > r2) continue;
+      const treated = Math.min(remaining[i], capacity);
+      remaining[i] -= treated;
+      capacity -= treated;
+      treatedPerEntry[i] += treated;
+    }
+  }
+  return treatedPerEntry;
+}
+
+/**
  * @param stps origin tiles of every Sewage Treatment Plant (the caller collects these while it
  *   already loops over the grid, so this function never scans the whole map).
  */
@@ -69,24 +101,9 @@ export function gatherGangaInputs(grid: Tile[][], gridSize: number, stps: readon
     }
   }
 
+  const treatedPerEntry = allocateStpTreatment(grid, gridSize, catchment, remaining, stps);
   let treatedPopulation = 0;
-  const r2 = GANGA.stpRadius * GANGA.stpRadius;
-  for (const stp of stps) {
-    const tile = grid[stp.y]?.[stp.x];
-    if (!tile || !isWorkingStp(tile)) continue;
-    let capacity = GANGA.stpCapacity;
-    for (let i = 0; i < catchment.length && capacity > 0; i++) {
-      if (remaining[i] <= 0) continue;
-      const idx = catchment[i];
-      const dx = (idx % gridSize) - stp.x;
-      const dy = ((idx / gridSize) | 0) - stp.y;
-      if (dx * dx + dy * dy > r2) continue;
-      const treated = Math.min(remaining[i], capacity);
-      remaining[i] -= treated;
-      capacity -= treated;
-      treatedPopulation += treated;
-    }
-  }
+  for (let i = 0; i < treatedPerEntry.length; i++) treatedPopulation += treatedPerEntry[i];
 
   return {
     catchmentPollution,
@@ -164,23 +181,8 @@ export function computeGangaTileEffects(
     const tile = grid[(idx / gridSize) | 0]?.[idx % gridSize];
     if (tile && tile.building.type !== 'water' && producesSewage(tile)) remaining[i] = tile.building.population;
   }
-  const r2 = GANGA.stpRadius * GANGA.stpRadius;
-  for (const stp of stps) {
-    const tile = grid[stp.y]?.[stp.x];
-    if (!tile || !isWorkingStp(tile)) continue;
-    let capacity = GANGA.stpCapacity;
-    for (let i = 0; i < catchment.length && capacity > 0; i++) {
-      if (remaining[i] <= 0) continue;
-      const idx = catchment[i];
-      const dx = (idx % gridSize) - stp.x;
-      const dy = ((idx / gridSize) | 0) - stp.y;
-      if (dx * dx + dy * dy > r2) continue;
-      const treated = Math.min(remaining[i], capacity);
-      remaining[i] -= treated;
-      capacity -= treated;
-      treatedOut[idx] += treated;
-    }
-  }
+  const treatedPerEntry = allocateStpTreatment(grid, gridSize, catchment, remaining, stps);
+  for (let i = 0; i < catchment.length; i++) treatedOut[catchment[i]] += treatedPerEntry[i];
   for (let i = 0; i < catchment.length; i++) {
     const idx = catchment[i];
     const tile = grid[(idx / gridSize) | 0]?.[idx % gridSize];

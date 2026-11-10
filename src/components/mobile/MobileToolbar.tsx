@@ -26,11 +26,12 @@ import {
   EducationIcon,
   SafetyIcon,
 } from '@/components/ui/Icons';
-import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getToolDisplay } from '@/games/isocity/maps/varanasiCatalog';
 import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS } from '@/lib/landmarks';
-import type { MapId } from '@/games/isocity/maps/varanasi';
+import { getMapToolCategories, type ToolCategoryKey } from '@/components/game/toolCategories';
 import { formatIndianNumber, formatINR } from '@/lib/format';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
+import { OverlayLegend } from '@/components/game/OverlayLegend';
 
 /** Bottom-bar quick tool: saffron when selected, sandstone otherwise. */
 function quickToolClass(selected: boolean, extra = '') {
@@ -246,29 +247,10 @@ const UI_LABELS = {
   drawOff: msg('Draw: off'),
 };
 
-const toolCategories = {
-  'TOOLS': ['select', 'bulldoze', 'road', 'rail', 'subway'] as Tool[],
-  'ZONES': ['zone_residential', 'zone_commercial', 'zone_industrial'] as Tool[],
-  'ZONING': ['zone_dezone', 'zone_water', 'zone_land'] as Tool[],
-  'UTILITIES': ['power_plant', 'water_tower', 'subway_station', 'rail_station'] as Tool[],
-  'SERVICES': ['police_station', 'fire_station', 'hospital', 'school', 'university'] as Tool[],
-  'PARKS': ['park', 'park_large', 'tennis', 'playground_small', 'playground_large', 'community_garden', 'pond_park', 'park_gate', 'greenhouse_garden', 'mini_golf_course', 'go_kart_track', 'amphitheater', 'roller_coaster_small', 'campground', 'cabin_house', 'mountain_lodge', 'mountain_trailhead'] as Tool[],
-  'SPORTS': ['tennis', 'basketball_courts', 'soccer_field_small', 'baseball_field_small', 'football_field', 'baseball_stadium', 'swimming_pool', 'skate_park', 'bleachers_field'] as Tool[],
-  'WATERFRONT': ['marina_docks_small', 'pier_large'] as Tool[],
-  'COMMUNITY': ['community_center', 'animal_pens_farm', 'office_building_small'] as Tool[],
-  'SPECIAL': ['stadium', 'museum', 'airport', 'space_program', 'city_hall', 'amusement_park'] as Tool[],
-};
-
-/** Menu categories for this map: Riverfront first on Varanasi, tools hidden per map (S3-T1). */
-function getMapToolCategories(mapId: MapId | undefined): [string, Tool[]][] {
-  const base: [string, Tool[]][] = Object.entries(toolCategories);
-  const withRiverfront: [string, Tool[]][] = mapId === 'varanasi'
-    ? [['RIVERFRONT', [...RIVERFRONT_TOOLS]], ['LANDMARKS', [...LANDMARK_TOOLS]], ...base]
-    : base;
-  return withRiverfront
-    .map(([category, tools]): [string, Tool[]] => [category, visibleTools(tools, mapId)])
-    .filter(([, tools]) => tools.length > 0);
-}
+/** Mobile menu order (Riverfront and Landmarks only exist on Varanasi). Tools come from the shared list. */
+const MOBILE_CATEGORY_ORDER: readonly ToolCategoryKey[] = [
+  'riverfront', 'landmarks', 'tools', 'zones', 'zoning', 'utilities', 'services', 'parks', 'sports', 'waterfront', 'community', 'special',
+];
 
 type OverlayMode = import('@/components/game/types').OverlayMode;
 
@@ -304,7 +286,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
       setExpandedCategory(null);
     } else {
       setExpandedCategory(category);
-      if (category === 'LANDMARKS') markLandmarksSeen();
+      if (category === 'landmarks') markLandmarksSeen();
     }
   };
 
@@ -325,6 +307,8 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
     <>
       {/* Bottom Toolbar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 safe-area-bottom safe-area-left safe-area-right">
+        {/* E1: what the active overlay's colours mean (the Draw toggle sits on the right) */}
+        <OverlayLegend overlayMode={overlayMode} className="pointer-events-none absolute bottom-full left-2 mb-2 max-w-[60vw]" />
         {/* S1-T11: Draw mode toggle, only for tools that are drawn by dragging (road, rail, zones) */}
         {onDrawModeChange && isDrawModeTool(selectedTool) && (
           <Button
@@ -579,15 +563,17 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                   >
                     {m(UI_LABELS.education)}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={overlayMode === 'subway'}
-                    className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
-                    onClick={() => setOverlayMode('subway')}
-                  >
-                    {m(UI_LABELS.subway)}
-                  </Button>
+                  {state.mapId !== 'varanasi' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-pressed={overlayMode === 'subway'}
+                      className={`press h-11 w-full px-1 text-xs rounded-xl ${overlayMode === 'subway' ? 'bg-yellow-500 hover:bg-yellow-600 text-white ring-1 ring-white/25' : 'hud-well text-sandstone/85'}`}
+                      onClick={() => setOverlayMode('subway')}
+                    >
+                      {m(UI_LABELS.subway)}
+                    </Button>
+                  )}
                   {state.mapId === 'varanasi' && (
                     <Button
                       variant="ghost"
@@ -617,10 +603,10 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
               <div className="p-2 space-y-1 pb-4">
                 {/* Category buttons */}
-                {getMapToolCategories(state.mapId).map(([category, tools]) => (
+                {getMapToolCategories(MOBILE_CATEGORY_ORDER, state.mapId).map(([category, tools]) => (
                   <div key={category}>
                     {/* Expand City section - appears before ZONING */}
-                    {category === 'ZONING' && state.mapId !== 'varanasi' && (
+                    {category === 'zoning' && state.mapId !== 'varanasi' && (
                       <div className="mb-1">
                         <Button
                           variant="ghost"
@@ -666,11 +652,11 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                     <Button
                       variant="ghost"
                       aria-expanded={expandedCategory === category}
-                      className={`w-full justify-start gap-3 h-12 rounded-xl ${expandedCategory === category ? 'bg-sandstone/[0.08] text-foreground' : 'text-sandstone/90'} ${tools.includes(selectedTool) ? 'ring-1 ring-saffron/60' : ''} ${category === 'LANDMARKS' && landmarksGlow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
+                      className={`w-full justify-start gap-3 h-12 rounded-xl ${expandedCategory === category ? 'bg-sandstone/[0.08] text-foreground' : 'text-sandstone/90'} ${tools.includes(selectedTool) ? 'ring-1 ring-saffron/60' : ''} ${category === 'landmarks' && landmarksGlow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
                       onClick={() => handleCategoryClick(category)}
                     >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold" aria-hidden>{CATEGORY_ICONS[category.toLowerCase()]}</span>
-                      <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}</span>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold" aria-hidden>{CATEGORY_ICONS[category]}</span>
+                      <span className="flex-1 text-left font-medium">{m((CATEGORY_LABELS[category.toUpperCase()] || category) as Parameters<typeof m>[0])}</span>
                       <svg
                         className={`w-4 h-4 transition-transform ${expandedCategory === category ? 'rotate-180' : ''}`}
                         viewBox="0 0 24 24"

@@ -39,8 +39,15 @@ export const VARANASI_DISPLAY: Partial<Record<Tool, Display>> = {
   embankment: { name: msg('Embankment (Tatbandh)'), description: msg('Raised bank against monsoon floods. Land behind it floods one river level later. Within 4 tiles of the Ganga, not on ghats; lowers land value within 2 tiles.') },
 };
 
-/** Tools hidden from the build menu on the Varanasi map (S3-T1; the map is also fixed-size). */
+/**
+ * Tools unavailable on the Varanasi map (S3-T1; the map is also fixed-size). Hidden from every menu and
+ * hotkey, and refused by the placement path. Airport and rail stay (Varanasi has both).
+ */
 export const VARANASI_HIDDEN_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
+  'subway',
+  'subway_station',
+  'zone_water',
+  'zone_land',
   'space_program',
   'baseball_stadium',
   'football_field',
@@ -64,23 +71,31 @@ export const VARANASI_ONLY_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
   'landmark_dashashwamedh', 'landmark_kashi_vishwanath', 'landmark_bhu', 'landmark_sarnath', 'landmark_ramnagar_fort',
 ]);
 
-/** The "Riverfront" build-menu group, listed first on the Varanasi map. */
-export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment'];
+/**
+ * The "Riverfront" build-menu group, listed first on the Varanasi map. It absorbs the one remaining
+ * "Waterfront" tool (the boat jetty), so that category is not shown on Varanasi.
+ */
+export const RIVERFRONT_TOOLS: readonly Tool[] = ['ghat', 'sewage_treatment_plant', 'jal_sansthan_water_works', 'embankment', 'marina_docks_small'];
+
+/** Is this build-menu category (key, any case) shown on this map? Waterfront is folded into Riverfront on Varanasi. */
+export function isCategoryShown(categoryKey: string, mapId: MapId | undefined): boolean {
+  return !(mapId === 'varanasi' && categoryKey.toLowerCase() === 'waterfront');
+}
 
 /** The "Landmarks" build-menu group (S5-T1), Varanasi only, in unlock order (same order as LANDMARK_IDS). */
 export const LANDMARK_TOOLS: readonly (Tool & LandmarkId)[] = [
   'landmark_dashashwamedh', 'landmark_kashi_vishwanath', 'landmark_bhu', 'landmark_sarnath', 'landmark_ramnagar_fort',
 ];
 
-/** Should this tool appear in the build menu on this map? */
-export function isToolVisible(tool: Tool, mapId: MapId | undefined): boolean {
+/** Can this tool be selected and used on this map? (menus, hotkeys and placement all ask this) */
+export function isToolAvailable(tool: Tool, mapId: MapId | undefined): boolean {
   if (mapId === 'varanasi') return !VARANASI_HIDDEN_TOOLS.has(tool);
   return !VARANASI_ONLY_TOOLS.has(tool);
 }
 
 /** Filter a menu list for this map. */
 export function visibleTools(tools: readonly Tool[], mapId: MapId | undefined): Tool[] {
-  return tools.filter((t) => isToolVisible(t, mapId));
+  return tools.filter((t) => isToolAvailable(t, mapId));
 }
 
 /** Name/description to show for a tool on this map (falls back to TOOL_INFO). */

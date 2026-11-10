@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 /** Tints for the round icon badge of a HUD stat. */
 export const HUD_TINTS = {
@@ -50,17 +51,26 @@ interface HudStatProps {
   value: React.ReactNode;
   tone?: keyof typeof HUD_VALUE_TONE;
   className?: string;
+  /** Hover text: what the stat is and what moves it (one or two short lines). */
+  tooltip?: React.ReactNode;
 }
 
 /** A labelled number in the desktop top bar: icon badge, big value, small caps label. */
-export function HudStat({ icon, tint, label, value, tone = 'default', className }: HudStatProps) {
-  return (
-    <div className={cn(HUD_CHIP_CLASS, className)}>
+export function HudStat({ icon, tint, label, value, tone = 'default', className, tooltip }: HudStatProps) {
+  const chip = (
+    <div className={cn(HUD_CHIP_CLASS, className)} tabIndex={tooltip ? 0 : undefined}>
       <HudIconBadge tint={tint}>{icon}</HudIconBadge>
       <div className="flex flex-col leading-none">
         <span className={cn('whitespace-nowrap text-[15px] font-semibold font-mono', HUD_VALUE_TONE[tone])}>{value}</span>
         <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
       </div>
     </div>
+  );
+  if (!tooltip) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent className="max-w-64">{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

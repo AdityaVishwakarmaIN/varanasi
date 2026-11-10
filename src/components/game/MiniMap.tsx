@@ -23,8 +23,41 @@ const PARK_BUILDINGS = new Set([
   'pond_park', 'park_gate', 'mountain_lodge', 'mountain_trailhead', 'office_building_small'
 ]);
 
+/** Minimap tile colours. The legend swatches use these same values, so they always match the map. */
+export const MINIMAP_COLORS = {
+  background: '#0b1723',
+  grass: '#2d5a3d',
+  water: '#0ea5e9',
+  road: '#6b7280',
+  tree: '#166534',
+  fire: '#ef4444',
+  informal: '#a16207',
+  residential: '#22c55e',
+  residentialEmpty: '#14532d',
+  commercial: '#38bdf8',
+  commercialEmpty: '#1d4ed8',
+  industrial: '#f59e0b',
+  industrialEmpty: '#b45309',
+  service: '#c084fc',
+  power: '#f97316',
+  waterWorks: '#06b6d4',
+  park: '#84cc16',
+} as const;
+
+const MINIMAP_LEGEND = [
+  { color: MINIMAP_COLORS.residential, label: msg('Residential') },
+  { color: MINIMAP_COLORS.commercial, label: msg('Commercial') },
+  { color: MINIMAP_COLORS.industrial, label: msg('Industrial') },
+  { color: MINIMAP_COLORS.service, label: msg('Services') },
+];
+
 interface MiniMapProps {
-  onNavigate?: (gridX: number, gridY: number) => void;
+  /** `instant`: true while dragging on the minimap, so the camera follows without a glide. */
+  onNavigate?: (gridX: number, gridY: number, instant?: boolean) => void;
+  /** Render inline (no fixed position), e.g. inside the mobile minimap overlay. */
+  inline?: boolean;
+  /** Canvas size in CSS px (default 140). */
+  size?: number;
   onViewportSubscribe?: (listener: MiniMapViewportListener) => () => void;
   viewport?: { 
     offset: { x: number; y: number }; 
@@ -45,7 +78,7 @@ type MiniMapViewportListener = (viewport: MiniMapViewport | null) => void;
 // Translatable label
 const MINIMAP_LABEL = msg('Minimap');
 
-export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubscribe, viewport }: MiniMapProps) {
+export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubscribe, viewport, inline = false, size = 140 }: MiniMapProps) {
   const { state } = useGame();
   const { grid, gridSize, tick, structureVersion } = state;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -94,31 +127,32 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       lastStructureVersionRef.current = currentStructureVersion;
       lastGridRenderTickRef.current = tick;
       
-      ctx.fillStyle = '#0b1723';
+      const C = MINIMAP_COLORS;
+      ctx.fillStyle = C.background;
       ctx.fillRect(0, 0, size, size);
-      
+
       for (let y = 0; y < gridSize; y++) {
         for (let x = 0; x < gridSize; x++) {
           const tile = grid[y][x];
           const buildingType = tile.building.type;
-          let color = '#2d5a3d';
-          
+          let color: string = C.grass;
+
           // Prioritized color checks using Set for common cases
-          if (buildingType === 'water') color = '#0ea5e9';
-          else if (buildingType === 'road') color = '#6b7280';
-          else if (buildingType === 'tree') color = '#166534';
-          else if (tile.building.onFire) color = '#ef4444';
-          else if (buildingType === 'informal_housing') color = '#a16207';
-          else if (tile.zone === 'residential' && buildingType !== 'grass') color = '#22c55e';
-          else if (tile.zone === 'residential') color = '#14532d';
-          else if (tile.zone === 'commercial' && buildingType !== 'grass') color = '#38bdf8';
-          else if (tile.zone === 'commercial') color = '#1d4ed8';
-          else if (tile.zone === 'industrial' && buildingType !== 'grass') color = '#f59e0b';
-          else if (tile.zone === 'industrial') color = '#b45309';
-          else if (serviceBuildings.has(buildingType)) color = '#c084fc';
-          else if (buildingType === 'power_plant') color = '#f97316';
-          else if (buildingType === 'water_tower' || buildingType === 'jal_sansthan_water_works') color = '#06b6d4';
-          else if (parkBuildings.has(buildingType)) color = '#84cc16';
+          if (buildingType === 'water') color = C.water;
+          else if (buildingType === 'road') color = C.road;
+          else if (buildingType === 'tree') color = C.tree;
+          else if (tile.building.onFire) color = C.fire;
+          else if (buildingType === 'informal_housing') color = C.informal;
+          else if (tile.zone === 'residential' && buildingType !== 'grass') color = C.residential;
+          else if (tile.zone === 'residential') color = C.residentialEmpty;
+          else if (tile.zone === 'commercial' && buildingType !== 'grass') color = C.commercial;
+          else if (tile.zone === 'commercial') color = C.commercialEmpty;
+          else if (tile.zone === 'industrial' && buildingType !== 'grass') color = C.industrial;
+          else if (tile.zone === 'industrial') color = C.industrialEmpty;
+          else if (serviceBuildings.has(buildingType)) color = C.service;
+          else if (buildingType === 'power_plant') color = C.power;
+          else if (buildingType === 'water_tower' || buildingType === 'jal_sansthan_water_works') color = C.waterWorks;
+          else if (parkBuildings.has(buildingType)) color = C.park;
           
           ctx.fillStyle = color;
           ctx.fillRect(x * scale, y * scale, Math.ceil(scale), Math.ceil(scale));
@@ -163,18 +197,18 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
 
   const [isDragging, setIsDragging] = useState(false);
   
-  const navigateToPosition = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
+  const navigateToPosition = useCallback((e: { clientX: number; clientY: number }, instant = false) => {
     if (!onNavigate) return;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
-    
-    const size = 140;
-    const scale = size / gridSize;
+
+    // Displayed size (the canvas may be scaled up by CSS, e.g. in the mobile overlay)
+    const scale = rect.width / gridSize;
     
     const gridX = Math.floor(clickX / scale);
     const gridY = Math.floor(clickY / scale);
@@ -183,39 +217,28 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
     const clampedX = Math.max(0, Math.min(gridSize - 1, gridX));
     const clampedY = Math.max(0, Math.min(gridSize - 1, gridY));
     
-    onNavigate(clampedX, clampedY);
+    onNavigate(clampedX, clampedY, instant);
   }, [onNavigate, gridSize]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Pointer events (mouse and touch). The press glides there; dragging then moves the camera directly.
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     setIsDragging(true);
     navigateToPosition(e);
   }, [navigateToPosition]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (isDragging) {
-      navigateToPosition(e);
+      navigateToPosition(e, true);
     }
   }, [isDragging, navigateToPosition]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     setIsDragging(false);
   }, []);
 
-  const handleMouseLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  // Handle mouse up outside the canvas
-  useEffect(() => {
-    if (isDragging) {
-      const handleGlobalMouseUp = () => setIsDragging(false);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
-      return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-    }
-  }, [isDragging]);
-  
   return (
-    <Card className="hud-panel gold-hairline fixed bottom-4 right-4 p-2.5 rounded-2xl z-50">
+    <Card className={`hud-panel gold-hairline p-2.5 rounded-2xl ${inline ? '' : 'fixed bottom-4 right-4 z-50'}`}>
       <div className="hud-label mb-2 flex items-center gap-1.5">
         <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
         {m(MINIMAP_LABEL)}
@@ -224,29 +247,20 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
         ref={canvasRef}
         width={140}
         height={140}
-        className="block rounded-lg ring-1 ring-gold/25 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.4)] cursor-pointer select-none"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
+        style={{ width: size, height: size }}
+        className="block rounded-lg ring-1 ring-gold/25 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.4)] cursor-pointer select-none touch-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       />
-      <div className="mt-2 grid grid-cols-4 gap-1 text-[8px]">
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-green-500 rounded-sm" />
-          <span className="text-muted-foreground">R</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-blue-500 rounded-sm" />
-          <span className="text-muted-foreground">C</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-amber-500 rounded-sm" />
-          <span className="text-muted-foreground">I</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-pink-500 rounded-sm" />
-          <span className="text-muted-foreground">S</span>
-        </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] leading-tight">
+        {MINIMAP_LEGEND.map(({ color, label }) => (
+          <div key={color} className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-muted-foreground truncate">{m(label)}</span>
+          </div>
+        ))}
       </div>
     </Card>
   );

@@ -11,7 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { formatIndianNumber, formatINR } from '@/lib/format';
-import { getToolDisplay, isToolVisible, LANDMARK_TOOLS, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import { getToolDisplay, isCategoryShown, isToolAvailable, LANDMARK_TOOLS, RIVERFRONT_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
 import { getLandmarkMenuStatus, isLandmarkType, LANDMARKS } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
@@ -277,7 +277,7 @@ const LANDMARK_ITEMS: MenuItem[] = LANDMARK_TOOLS.map((tool) => ({
 function getMenuItemsForMap(mapId: MapId | undefined): MenuItem[] {
   const items = mapId === 'varanasi' ? [...RIVERFRONT_ITEMS, ...LANDMARK_ITEMS, ...ALL_MENU_ITEMS] : ALL_MENU_ITEMS;
   return items
-    .filter((item) => !item.tool || isToolVisible(item.tool, mapId))
+    .filter((item) => isCategoryShown(item.category, mapId) && (!item.tool || isToolAvailable(item.tool, mapId)))
     .map((item) => {
       if (!item.tool || mapId !== 'varanasi') return item;
       const display = getToolDisplay(item.tool, TOOL_INFO[item.tool], mapId);

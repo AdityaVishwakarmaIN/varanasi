@@ -118,13 +118,18 @@ export function TileInfoPanel({
   
   return (
     <Card 
-      className={`${isMobile ? 'fixed left-0 right-0 w-full rounded-none border-x-0 border-t border-b z-30' : 'absolute top-4 right-4 w-72 z-50'}`} 
-      style={isMobile ? { top: 'calc(72px + env(safe-area-inset-top, 0px))' } : undefined}
+      // Mobile: a bottom sheet above the toolbar that scrolls when the tile has a lot to say
+      className={`${isMobile ? 'fixed left-0 right-0 w-full max-h-[55vh] overflow-y-auto rounded-none rounded-t-2xl border-x-0 border-b-0 z-40 shadow-2xl animate-rise-in' : 'absolute top-4 right-4 w-72 z-50'}`}
+      style={isMobile ? { bottom: 'calc(92px + env(safe-area-inset-bottom, 0px))' } : undefined}
+      data-testid="tile-info-panel"
       onClick={handleCardClick}
+      // Touches on the sheet must not reach the map (pan / tap / long-press)
+      onTouchStart={isMobile ? (e) => e.stopPropagation() : undefined}
+      onTouchEnd={isMobile ? (e) => e.stopPropagation() : undefined}
     >
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+      <CardHeader className={`pb-2 flex flex-row items-center justify-between ${isMobile ? 'sticky top-0 z-10 bg-card py-1 pr-1' : ''}`}>
         <CardTitle className="text-sm font-sans">Tile ({x}, {y})</CardTitle>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
+        <Button variant="ghost" size={isMobile ? 'icon' : 'icon-sm'} className={isMobile ? 'h-11 w-11' : undefined} aria-label="Close" onClick={onClose}>
           <CloseIcon size={14} />
         </Button>
       </CardHeader>
@@ -283,7 +288,7 @@ export function TileInfoPanel({
                 onClick={handleUpgrade}
                 onMouseDown={(e) => e.stopPropagation()}
                 disabled={!upgradeInfo.canAfford || upgradeInfo.isUnderConstruction || upgradeInfo.isAbandoned}
-                className="w-full"
+                className={isMobile ? 'w-full h-11' : 'w-full'}
                 size="sm"
               >
                 Upgrade to Level {upgradeInfo.currentLevel + 1}

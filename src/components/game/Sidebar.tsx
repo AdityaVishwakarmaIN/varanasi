@@ -54,7 +54,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatIndianNumber, formatINR } from '@/lib/format';
-import { getToolDisplay, LANDMARK_TOOLS, RIVERFRONT_TOOLS, visibleTools } from '@/games/isocity/maps/varanasiCatalog';
+import { getToolDisplay, LANDMARK_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
+import { getCategoryTools, getMapToolCategories, type ToolCategoryKey } from '@/components/game/toolCategories';
+
+/** Desktop hover-submenu order (Riverfront and Landmarks only exist on Varanasi). */
+const SIDEBAR_SUBMENU_ORDER: readonly ToolCategoryKey[] = [
+  'riverfront', 'landmarks', 'services', 'parks', 'sports', 'waterfront', 'community', 'utilities', 'special',
+];
 import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS, type LandmarkMenuStatus } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
@@ -550,18 +556,24 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
     onExit?.();
   }, [onExit]);
   
+  // Command menu shortcut hint: ⌘K on Mac, Ctrl K elsewhere (read after mount to avoid a hydration mismatch).
+  const [searchLabel, setSearchLabel] = useState('Search (Ctrl K)');
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/i.test(navigator.userAgent)) setSearchLabel('Search (⌘K)');
+  }, []);
+
   // Direct tool categories (shown inline)
   const directCategories = useMemo(() => ({
-    'TOOLS': ['select', 'bulldoze', 'road', 'rail', 'subway'] as Tool[],
-    'ZONES': ['zone_residential', 'zone_commercial', 'zone_industrial'] as Tool[],
-  }), []);
-  
+    'TOOLS': getCategoryTools('tools', state.mapId),
+    'ZONES': getCategoryTools('zones', state.mapId),
+  }), [state.mapId]);
+
   // Zoning submenu (shown under ZONES section, before BUILDINGS)
   const zoningSubmenu = useMemo(() => ({
     key: 'zoning',
     label: CATEGORY_LABELS.zoning,
-    tools: ['zone_dezone', 'zone_water', 'zone_land'] as Tool[]
-  }), []);
+    tools: getCategoryTools('zoning', state.mapId),
+  }), [state.mapId]);
   
   // Expand City submenu (shown under TOOLS section)
   const expandCityActions = useMemo(() => [
@@ -581,53 +593,13 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   
   // Submenu categories (hover to expand) - includes all new assets from main
   const mapId = state.mapId;
-  const submenuCategories = useMemo(() => [
-    ...(mapId === 'varanasi'
-      ? [
-          { key: 'riverfront', label: CATEGORY_LABELS.riverfront, tools: [...RIVERFRONT_TOOLS] as Tool[], forceOpenUpward: false },
-          { key: 'landmarks', label: CATEGORY_LABELS.landmarks, tools: [...LANDMARK_TOOLS] as Tool[], forceOpenUpward: false },
-        ]
-      : []),
-    { 
-      key: 'services', 
-      label: CATEGORY_LABELS.services, 
-      tools: ['police_station', 'fire_station', 'hospital', 'school', 'university'] as Tool[]
-    },
-    { 
-      key: 'parks', 
-      label: CATEGORY_LABELS.parks, 
-      tools: ['tree', 'park', 'park_large', 'tennis', 'playground_small', 'playground_large', 'community_garden', 'pond_park', 'park_gate', 'greenhouse_garden', 'mini_golf_course', 'go_kart_track', 'amphitheater', 'roller_coaster_small', 'campground', 'cabin_house', 'mountain_lodge', 'mountain_trailhead'] as Tool[]
-    },
-    { 
-      key: 'sports', 
-      label: CATEGORY_LABELS.sports, 
-      tools: ['basketball_courts', 'soccer_field_small', 'baseball_field_small', 'football_field', 'baseball_stadium', 'swimming_pool', 'skate_park', 'bleachers_field'] as Tool[]
-    },
-    { 
-      key: 'waterfront', 
-      label: CATEGORY_LABELS.waterfront, 
-      tools: ['marina_docks_small', 'pier_large'] as Tool[]
-    },
-    { 
-      key: 'community', 
-      label: CATEGORY_LABELS.community, 
-      tools: ['community_center', 'animal_pens_farm', 'office_building_small'] as Tool[]
-    },
-    { 
-      key: 'utilities', 
-      label: CATEGORY_LABELS.utilities, 
-      tools: ['power_plant', 'water_tower', 'subway_station', 'rail_station'] as Tool[],
-      forceOpenUpward: true
-    },
-    { 
-      key: 'special', 
-      label: CATEGORY_LABELS.special, 
-      tools: ['stadium', 'museum', 'airport', 'space_program', 'city_hall', 'amusement_park'] as Tool[],
-      forceOpenUpward: true
-    },
-  ]
-    .map((c) => ({ ...c, tools: visibleTools(c.tools, mapId) }))
-    .filter((c) => c.tools.length > 0), [mapId]);
+  // Tools per category come from the shared list (toolCategories.ts), also used by MobileToolbar.
+  const submenuCategories = useMemo(() => getMapToolCategories(SIDEBAR_SUBMENU_ORDER, mapId).map(([key, tools]) => ({
+    key,
+    label: CATEGORY_LABELS[key],
+    tools,
+    forceOpenUpward: key === 'utilities' || key === 'special',
+  })), [mapId]);
 
   // Landmarks (S5-T1): lock/built status per tool, and a glow while an unlocked landmark is unseen.
   const { peakPopulation, landmarksBuilt, landmarksSeen } = state;
@@ -654,8 +626,8 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               variant="ghost"
               size="icon-sm"
               onClick={openCommandMenu}
-              title="Search (⌘K)"
-              aria-label="Search (⌘K)"
+              title={searchLabel}
+              aria-label={searchLabel}
               className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
             >
               <svg 

@@ -286,6 +286,16 @@ export function writeIsoCityCrashRaw(compressed: string): Promise<void> {
   return writeSaveKey(ISOCITY_CRASH_STORAGE_KEY, compressed);
 }
 
+/**
+ * Keep an autosave that failed to load under `<autosave key>-corrupt-<timestamp>`, so the next
+ * autosave (of a new city) cannot destroy the only copy. Resolves with the key used.
+ */
+export async function writeIsoCityCorruptAutosaveRaw(raw: string): Promise<string> {
+  const key = `${ISOCITY_STORAGE_KEY}-corrupt-${Date.now()}`;
+  await writeSaveKey(key, raw);
+  return key;
+}
+
 export function clearIsoCityAutosave(): Promise<void> {
   return deleteSaveKey(ISOCITY_STORAGE_KEY);
 }

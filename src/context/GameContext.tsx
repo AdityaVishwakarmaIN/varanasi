@@ -2,7 +2,6 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
-import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { T } from 'gt-next';
 import { serializeAndCompressInSlicesAsync, decompressAndParseAsync } from '@/lib/saveWorkerManager';
 import { simulateTick } from '@/lib/simulation';
@@ -37,6 +36,8 @@ import {
   findBuildingOrigin,
 } from '@/lib/simulation';
 import { getPeakDisplayedPopulation, getUnlockedLandmarks, isLandmarkType, type LandmarkId } from '@/lib/landmarks';
+import { isToolAvailable } from '@/games/isocity/maps/varanasiCatalog';
+import { formatINR } from '@/lib/format';
 import {
   SPRITE_PACKS,
   DEFAULT_SPRITE_PACK_ID,
@@ -46,7 +47,6 @@ import {
 } from '@/lib/renderConfig';
 import {
   ISOCITY_DAY_NIGHT_MODE_STORAGE_KEY,
-  ISOCITY_SAVED_CITY_STORAGE_KEY,
   ISOCITY_SPRITE_PACK_STORAGE_KEY,
   clearIsoCityAutosave,
   deleteIsoCitySavedCityData,
@@ -60,8 +60,10 @@ import {
   trackPendingSave,
   updateIsoCitySavedCities,
   writeIsoCityAutosaveRaw,
+  writeIsoCityCorruptAutosaveRaw,
   writeIsoCitySavedCityRaw,
 } from '@/lib/isocityStorage';
+import { migrateAndValidateState } from '@/lib/saveMigration';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
 import { SaveErrorToast } from '@/components/game/SaveErrorToast';
 import {
@@ -85,16 +87,13 @@ import {
 
 // Map size for new games. The UI layer decides desktop vs phone; simulation.ts stays device-agnostic.
 const DEFAULT_GRID_SIZE = getDefaultGridSize(isMobile);
+/** Largest single addMoney grant (either sign): ₹100 crore. */
+const MAX_MONEY_GRANT = 1_000_000_000;
 
 export type DayNightMode = 'auto' | 'day' | 'night';
+/** Outcome of one placeAtTile call. */
+export type PlaceResult = 'placed' | 'unchanged' | 'noMoney';
 
-// Info about a saved city (for restore functionality)
-export type SavedCityInfo = {
-  cityName: string;
-  population: number;
-  money: number;
-  savedAt: number;
-} | null;
 
 type GameContextValue = {
   state: GameState;
@@ -113,7 +112,8 @@ type GameContextValue = {
   setActivePanel: (panel: GameState['activePanel']) => void;
   setBudgetFunding: (key: keyof Budget, funding: number) => void;
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
-  placeAtTile: (x: number, y: number, isRemote?: boolean) => void;
+  /** 'noMoney': the placement was valid but the city could not pay for it. */
+  placeAtTile: (x: number, y: number, isRemote?: boolean) => PlaceResult;
   /** Undo strokes: the canvas opens one on pointer down and closes it on release (one click or one drag). */
   beginPlacementStroke: () => void;
   endPlacementStroke: () => void;
@@ -162,11 +162,6 @@ type GameContextValue = {
   dayNightMode: DayNightMode;
   setDayNightMode: (mode: DayNightMode) => void;
   visualHour: number; // The hour to use for rendering (respects day/night mode override)
-  // Save/restore city for shared links
-  saveCurrentCityForRestore: () => void;
-  restoreSavedCity: () => boolean;
-  getSavedCityInfo: () => SavedCityInfo;
-  clearSavedCity: () => void;
   // Multi-city save system
   savedCities: SavedCityMeta[];
   saveCity: () => void;
@@ -255,139 +250,54 @@ const toolZoneMap: Partial<Record<Tool, ZoneType>> = {
   zone_dezone: 'none',
 };
 
-function normalizeGameStateVersions(state: GameState): GameState {
-  return {
-    ...state,
-    gameVersion: state.gameVersion ?? 0,
-    structureVersion: state.structureVersion ?? 0,
-    roadNetworkVersion: state.roadNetworkVersion ?? 0,
-  };
-}
-
 // Load the autosave from IndexedDB (S1-T9)
 // Supports both compressed (lz-string) and uncompressed (legacy) formats.
-// Decompression + JSON.parse run in the save worker.
-async function loadGameState(): Promise<GameState | null> {
-  if (typeof window === 'undefined') return null;
+// Decompression + JSON.parse run in the save worker; `migrateAndValidateState` checks and migrates it.
+type AutosaveLoadResult =
+  | { status: 'none' }
+  | { status: 'ok'; state: GameState }
+  /** The autosave exists but could not be loaded; `raw` is the stored blob to keep (null if it could not even be read). */
+  | { status: 'corrupt'; raw: string | null };
+
+async function loadGameState(): Promise<AutosaveLoadResult> {
+  if (typeof window === 'undefined') return { status: 'none' };
+  let saved: string | null;
   try {
     // Make sure a save started just before (e.g. when leaving the game) has landed.
     await flushPendingSaves();
-    const saved = await readIsoCityAutosaveRaw();
-    if (saved) {
-      const parsed = await decompressAndParseAsync<any>(saved);
-      if (!parsed) {
-        // Corrupted data: keep it (never destroy a save) - the next autosave replaces it
-        console.error('Corrupted save data detected, starting a new city');
-        return null;
-      }
-      // Validate it has essential properties
-      if (parsed && 
-          parsed.grid && 
-          Array.isArray(parsed.grid) &&
-          parsed.gridSize && 
-          typeof parsed.gridSize === 'number' &&
-          parsed.stats &&
-          parsed.stats.money !== undefined &&
-          parsed.stats.population !== undefined) {
-        // Migrate park_medium to park_large
-        if (parsed.grid) {
-          for (let y = 0; y < parsed.grid.length; y++) {
-            for (let x = 0; x < parsed.grid[y].length; x++) {
-              if (parsed.grid[y][x]?.building?.type === 'park_medium') {
-                parsed.grid[y][x].building.type = 'park_large';
-              }
-            }
-          }
-        }
-        // Migrate selectedTool if it's park_medium
-        if (parsed.selectedTool === 'park_medium') {
-          parsed.selectedTool = 'park_large';
-        }
-        // Ensure adjacentCities and waterBodies exist for backward compatibility
-        if (!parsed.adjacentCities) {
-          parsed.adjacentCities = [];
-        }
-        // Migrate adjacentCities to have 'discovered' property
-        for (const city of parsed.adjacentCities) {
-          if (city.discovered === undefined) {
-            // Old cities that exist are implicitly discovered (they were visible in the old system)
-            city.discovered = true;
-          }
-        }
-        if (!parsed.waterBodies) {
-          parsed.waterBodies = [];
-        }
-        // Ensure cities exists for multi-city support
-        if (!parsed.cities) {
-          // Create a default city covering the entire map
-          parsed.cities = [{
-            id: parsed.id || 'default-city',
-            name: parsed.cityName || 'City',
-            bounds: {
-              minX: 0,
-              minY: 0,
-              maxX: (parsed.gridSize || 50) - 1,
-              maxY: (parsed.gridSize || 50) - 1,
-            },
-            economy: {
-              population: parsed.stats?.population || 0,
-              jobs: parsed.stats?.jobs || 0,
-              income: parsed.stats?.income || 0,
-              expenses: parsed.stats?.expenses || 0,
-              happiness: parsed.stats?.happiness || 50,
-              lastCalculated: 0,
-            },
-            color: '#3b82f6',
-          }];
-        }
-        // Ensure hour exists for day/night cycle
-        if (parsed.hour === undefined) {
-          parsed.hour = 12; // Default to noon
-        }
-        // Ensure effectiveTaxRate exists for lagging tax effect
-        if (parsed.effectiveTaxRate === undefined) {
-          parsed.effectiveTaxRate = parsed.taxRate ?? 9; // Start at current tax rate
-        }
-        // Tax is capped at 0-20% (older saves allowed up to 100)
-        parsed.taxRate = Math.min(20, Math.max(0, parsed.taxRate ?? 9));
-        parsed.effectiveTaxRate = Math.min(20, Math.max(0, parsed.effectiveTaxRate));
-        // Migrate constructionProgress for existing buildings (they're already built)
-        if (parsed.grid) {
-          for (let y = 0; y < parsed.grid.length; y++) {
-            for (let x = 0; x < parsed.grid[y].length; x++) {
-              if (parsed.grid[y][x]?.building && parsed.grid[y][x].building.constructionProgress === undefined) {
-                parsed.grid[y][x].building.constructionProgress = 100; // Existing buildings are complete
-              }
-              // Migrate abandoned property for existing buildings (they're not abandoned)
-              if (parsed.grid[y][x]?.building && parsed.grid[y][x].building.abandoned === undefined) {
-                parsed.grid[y][x].building.abandoned = false;
-              }
-            }
-          }
-        }
-        // Ensure version fields exist for backward compatibility
-        if (parsed.gameVersion === undefined) {
-          parsed.gameVersion = 0;
-        }
-        if (parsed.structureVersion === undefined) {
-          parsed.structureVersion = 0;
-        }
-        if (parsed.roadNetworkVersion === undefined) {
-          parsed.roadNetworkVersion = 0;
-        }
-        // Migrate to include UUID if missing
-        if (!parsed.id) {
-          parsed.id = generateUUID();
-        }
-        return normalizeGameStateVersions(parsed as GameState);
-      } else {
-        console.error('Saved game state is missing required fields, starting a new city');
-      }
-    }
+    saved = await readIsoCityAutosaveRaw();
+  } catch (e) {
+    console.error('Failed to read the autosave:', e);
+    return { status: 'corrupt', raw: null };
+  }
+  if (!saved) return { status: 'none' };
+  try {
+    const state = migrateAndValidateState(await decompressAndParseAsync<unknown>(saved));
+    if (state) return { status: 'ok', state };
+    console.error('Saved game state is corrupt or missing required fields');
   } catch (e) {
     console.error('Failed to load game state:', e);
   }
-  return null;
+  return { status: 'corrupt', raw: saved };
+}
+
+export const LOAD_FAILED_MESSAGE = 'Could not load your city — a copy was kept';
+
+/** Tell the player the autosave could not be loaded (E3). */
+function withLoadFailedNotification(state: GameState): GameState {
+  return {
+    ...state,
+    notifications: [
+      {
+        id: `load-failed-${Date.now()}`,
+        title: LOAD_FAILED_MESSAGE,
+        description: 'Your saved city could not be opened, so a new city was started. The old save was kept, not overwritten.',
+        icon: 'alert',
+        timestamp: Date.now(),
+      },
+      ...(state.notifications ?? []).slice(0, 9),
+    ],
+  };
 }
 
 // Optimize game state for saving by removing unnecessary/transient data
@@ -504,97 +414,6 @@ function saveDayNightMode(mode: DayNightMode): void {
   }
 }
 
-// Save current city for later restoration (when viewing shared cities)
-function saveCityForRestore(state: GameState): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const savedData = {
-      state: state,
-      info: {
-        cityName: state.cityName,
-        population: state.stats.population,
-        money: state.stats.money,
-        savedAt: Date.now(),
-      },
-    };
-    const compressed = compressToUTF16(JSON.stringify(savedData));
-    localStorage.setItem(ISOCITY_SAVED_CITY_STORAGE_KEY, compressed);
-  } catch (e) {
-    console.error('Failed to save city for restore:', e);
-  }
-}
-
-// Helper to decompress saved city data (supports both compressed and legacy formats)
-function decompressSavedCity(saved: string): { state?: GameState; info?: SavedCityInfo } | null {
-  // Try to decompress first (new format)
-  let jsonString = decompressFromUTF16(saved);
-  if (!jsonString) {
-    // Legacy uncompressed format
-    jsonString = saved;
-  }
-  try {
-    return JSON.parse(jsonString);
-  } catch {
-    return null;
-  }
-}
-
-// Load saved city info (just metadata, not full state)
-function loadSavedCityInfo(): SavedCityInfo {
-  if (typeof window === 'undefined') return null;
-  try {
-    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
-    if (saved) {
-      const parsed = decompressSavedCity(saved);
-      if (parsed?.info) {
-        return parsed.info as SavedCityInfo;
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load saved city info:', e);
-  }
-  return null;
-}
-
-// Load full saved city state
-function loadSavedCityState(): GameState | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const saved = localStorage.getItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
-    if (saved) {
-      const parsed = decompressSavedCity(saved);
-      if (parsed?.state && parsed.state.grid && parsed.state.gridSize && parsed.state.stats) {
-        return normalizeGameStateVersions(parsed.state as GameState);
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load saved city state:', e);
-  }
-  return null;
-}
-
-// Clear saved city
-function clearSavedCityStorage(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(ISOCITY_SAVED_CITY_STORAGE_KEY);
-  } catch (e) {
-    console.error('Failed to clear saved city:', e);
-  }
-}
-
-// Generate a UUID v4
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  // Fallback for older environments
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
 
 // Save a city state to IndexedDB with compression (S1-T9)
 // PERF: Compression happens in the worker. Rejects if the save failed.
@@ -615,14 +434,9 @@ async function loadCityState(cityId: string): Promise<GameState | null> {
   try {
     const saved = await readIsoCitySavedCityRaw(cityId);
     if (saved) {
-      const parsed = await decompressAndParseAsync<any>(saved);
-      if (!parsed) {
-        console.error('Corrupted city save data for:', cityId);
-        return null;
-      }
-      if (parsed.grid && parsed.gridSize && parsed.stats) {
-        return normalizeGameStateVersions(parsed as GameState);
-      }
+      const state = migrateAndValidateState(await decompressAndParseAsync<unknown>(saved), { fallbackId: cityId });
+      if (!state) console.error('Corrupted city save data for:', cityId);
+      return state;
     }
   } catch (e) {
     console.error('Failed to load city state:', e);
@@ -706,7 +520,7 @@ export function GameProvider({
   newGameOptions?: NewGameOptions;
 }) {
   // Start with a default state, we'll load from IndexedDB after mount (unless startFresh is true)
-  const [state, setState] = useState<GameState>(() => createInitialGameState(DEFAULT_GRID_SIZE, 'IsoCity'));
+  const [state, setState] = useState<GameState>(() => createInitialGameState(DEFAULT_GRID_SIZE, 'Varanasi'));
   // Read once at load time; later prop changes must not restart the city.
   const newGameOptionsRef = useRef(newGameOptions);
   
@@ -715,6 +529,8 @@ export function GameProvider({
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextSaveRef = useRef(false);
+  /** Set when the autosave on disk could not be loaded and no copy of it was kept: autosaving would destroy it. */
+  const autosaveBlockedRef = useRef(false);
   const hasLoadedRef = useRef(false);
   
   // Callback for multiplayer action broadcast
@@ -746,9 +562,29 @@ export function GameProvider({
 
   // The state React last committed: lets the tick's UI sync see a newer player action.
   const committedStateRef = useRef(state);
+  // States pushed to React from latestStateRef (by `commit` or the tick's UI sync). The ref already holds
+  // them or something newer, so the sync effect below must not rewind the ref to them.
+  const pushedStatesRef = useRef(new WeakSet<GameState>());
+
+  /**
+   * The single way player actions change the city: apply `updater` to the newest simulation state
+   * (latestStateRef, which the ticks advance between 500 ms UI syncs), store it in the ref, then hand
+   * it to React. Building on React's `prev` instead would drop the ticks since the last sync.
+   */
+  const commit = useCallback((updater: (s: GameState) => GameState): GameState => {
+    const prev = latestStateRef.current;
+    const next = updater(prev);
+    if (next === prev) return prev;
+    latestStateRef.current = next;
+    stateChangedRef.current = true;
+    pushedStatesRef.current.add(next);
+    setState(next);
+    return next;
+  }, []);
 
   useEffect(() => {
-    latestStateRef.current = state;
+    // Only states that did not come from the ref (loads, setters not routed through commit) replace it
+    if (!pushedStatesRef.current.has(state)) latestStateRef.current = state;
     committedStateRef.current = state;
 
     // PERF: Keep the SoA mirror in sync with state.grid so worker/MiniMap/etc.
@@ -811,6 +647,21 @@ export function GameProvider({
     const savedDayNightMode = loadDayNightMode();
     setDayNightModeState(savedDayNightMode);
 
+    /** Copy an autosave that failed to load to its own key; if that is impossible, block autosaves. */
+    const keepCorruptAutosave = async (raw: string | null) => {
+      if (raw === null) {
+        autosaveBlockedRef.current = true;
+        return;
+      }
+      try {
+        const key = await writeIsoCityCorruptAutosaveRaw(raw);
+        console.error(`The autosave could not be loaded; a copy was kept as "${key}"`);
+      } catch (e) {
+        console.error('Failed to keep a copy of the corrupt autosave:', e);
+        autosaveBlockedRef.current = true;
+      }
+    };
+
     // City saves are in IndexedDB, which is async (the first call also
     // migrates old localStorage saves). Children render once this is done.
     const loadSaves = async () => {
@@ -820,26 +671,36 @@ export function GameProvider({
       setSavedCities(cities);
 
       // Load game state (unless startFresh is true - used for co-op to start with a new city)
-      const saved = startFresh ? null : await loadGameState();
+      const loaded: AutosaveLoadResult = startFresh ? { status: 'none' } : await loadGameState();
       if (cancelled) return;
-      if (saved) {
+      if (loaded.status === 'ok') {
         skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
         // Point the simulation loop at the loaded city right away
-        latestStateRef.current = saved;
-        setState(saved);
+        latestStateRef.current = loaded.state;
+        setState(loaded.state);
         setHasExistingGame(true);
-      } else {
-        // No save (or a fresh start): create the chosen map (default: Varanasi)
-        const fresh = createNewGameState(newGameOptionsRef.current, isMobile);
-        latestStateRef.current = fresh;
-        setState(fresh);
-        setHasExistingGame(false);
+        return;
       }
+      if (loaded.status === 'corrupt') {
+        // Never autosave over a city we could not load: keep a copy first, and if even that fails,
+        // stop autosaving until the player starts or loads a city themselves.
+        await keepCorruptAutosave(loaded.raw);
+        if (cancelled) return;
+      }
+      // No save (or a fresh start): create the chosen map (default: Varanasi)
+      const fresh = createNewGameState(newGameOptionsRef.current, isMobile);
+      const next = loaded.status === 'corrupt' ? withLoadFailedNotification(fresh) : fresh;
+      latestStateRef.current = next;
+      setState(next);
+      setHasExistingGame(false);
     };
 
     loadSaves()
       .catch((e) => {
         console.error('Failed to load saves:', e);
+        // Whatever is on disk was not loaded: do not let the placeholder city autosave over it
+        autosaveBlockedRef.current = true;
+        if (!cancelled) setState((prev) => withLoadFailedNotification(prev));
       })
       .finally(() => {
         if (cancelled) return;
@@ -895,8 +756,8 @@ export function GameProvider({
     let resaveRequested = false;
 
     const autosave = () => {
-      // Wait for the initial load
-      if (!hasLoadedRef.current) {
+      // Wait for the initial load; never overwrite an autosave that failed to load and was not copied
+      if (!hasLoadedRef.current || autosaveBlockedRef.current) {
         return;
       }
 
@@ -1009,6 +870,7 @@ export function GameProvider({
         lastUiSyncRef.current = now;
         // A player action queued since the last commit wins over this sync; its commit
         // re-points latestStateRef at the action's state and the next sync carries on.
+        pushedStatesRef.current.add(newState);
         setState((prev) => (prev === committedStateRef.current ? newState : prev));
       }
     }, () => tickIntervalRef.current);
@@ -1028,28 +890,28 @@ export function GameProvider({
   }, []);
 
   const setTool = useCallback((tool: Tool) => {
-    setState((prev) => ({ ...prev, selectedTool: tool, activePanel: 'none' }));
-  }, []);
+    commit((prev) => (isToolAvailable(tool, prev.mapId) ? { ...prev, selectedTool: tool, activePanel: 'none' } : prev));
+  }, [commit]);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
-    setState((prev) => (prev.gameOver ? prev : { ...prev, speed }));
-  }, []);
+    commit((prev) => (prev.gameOver ? prev : { ...prev, speed }));
+  }, [commit]);
 
   const setTaxRate = useCallback((rate: number) => {
-    setState((prev) => ({ ...prev, taxRate: clamp(rate, 0, 20) }));
-  }, []);
+    commit((prev) => ({ ...prev, taxRate: clamp(rate, 0, 20) }));
+  }, [commit]);
 
   const setActivePanel = useCallback(
     (panel: GameState['activePanel']) => {
-      setState((prev) => ({ ...prev, activePanel: panel }));
+      commit((prev) => ({ ...prev, activePanel: panel }));
     },
-    [],
+    [commit],
   );
 
   const setBudgetFunding = useCallback(
     (key: keyof Budget, funding: number) => {
       const clamped = clamp(funding, 0, 100);
-      setState((prev) => ({
+      commit((prev) => ({
         ...prev,
         budget: {
           ...prev.budget,
@@ -1057,7 +919,7 @@ export function GameProvider({
         },
       }));
     },
-    [],
+    [commit],
   );
 
   // One-step undo (ISSUE 6c). The canvas opens a stroke on pointer down and closes it on release;
@@ -1083,8 +945,7 @@ export function GameProvider({
     if (stroke.tiles.size === 0 || Date.now() - stroke.lastAt > UNDO_WINDOW_MS) return;
     let refund = 0;
     stroke.costs.forEach((c) => { refund += c; });
-    setState(() => {
-      const base = latestStateRef.current;
+    commit((base) => {
       if (base.gridSize !== stroke.gridSize) return base;
       const size = base.gridSize;
       const grid = base.grid.slice();
@@ -1109,12 +970,14 @@ export function GameProvider({
         notifications: pushNotifications(base.notifications, [note]),
       });
     });
-  }, []);
+  }, [commit]);
 
-  const placeAtTile = useCallback((x: number, y: number, isRemote = false) => {
+  const placeAtTile = useCallback((x: number, y: number, isRemote = false): PlaceResult => {
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
     const currentTool = latestStateRef.current.selectedTool;
+    // Map-hidden tools (e.g. subway, terraform on Varanasi) can never be used, even if selected somehow.
+    if (!isToolAvailable(currentTool, latestStateRef.current.mapId)) return 'unchanged';
 
     // S5-T1: bulldozing a landmark asks first (a remote bulldoze was already confirmed by that player)
     if (!isRemote && currentTool === 'bulldoze') {
@@ -1123,7 +986,7 @@ export function GameProvider({
       if (origin && isLandmarkType(origin.buildingType)) {
         const id = origin.buildingType;
         setPendingLandmarkBulldoze((p) => p ?? { x, y, id });
-        return;
+        return 'unchanged';
       }
     }
 
@@ -1141,6 +1004,7 @@ export function GameProvider({
       }
     }
 
+    let result: PlaceResult = 'unchanged';
     const applyPlacement = (prev: GameState): GameState => {
       const tool = prev.selectedTool;
       if (tool === 'select') return prev;
@@ -1150,7 +1014,6 @@ export function GameProvider({
       const tile = prev.grid[y]?.[x];
 
       if (!tile) return prev;
-      if (cost > 0 && prev.stats.money < cost) return prev;
 
       // Prevent wasted spend if nothing would change
       if (tool === 'bulldoze' && tile.building.type === 'grass' && tile.zone === 'none') {
@@ -1162,67 +1025,23 @@ export function GameProvider({
 
       if (zone && tile.zone === zone) return prev;
       if (building && tile.building.type === building) return prev;
-      
-      // Handle subway tool separately (underground placement)
-      if (tool === 'subway') {
-        // Can't place subway under water
-        if (tile.building.type === 'water') return prev;
-        // Already has subway
-        if (tile.hasSubway) return prev;
-        
-        const nextState = placeSubway(prev, x, y);
-        if (nextState === prev) return prev;
 
-        return recalculateDerivedState({
-          ...nextState,
-          stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        });
-      }
-      
-      // Handle water terraform tool separately
-      if (tool === 'zone_water') {
-        // Already water - do nothing
-        if (tile.building.type === 'water') return prev;
-        // Don't allow terraforming bridges - would break them
-        if (tile.building.type === 'bridge') return prev;
-        
-        const nextState = placeWaterTerraform(prev, x, y);
-        if (nextState === prev) return prev;
-
-        return recalculateDerivedState({
-          ...nextState,
-          stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        });
-      }
-      
-      // Handle land terraform tool separately
-      if (tool === 'zone_land') {
-        // Only works on water
-        if (tile.building.type !== 'water') return prev;
-        
-        const nextState = placeLandTerraform(prev, x, y);
-        if (nextState === prev) return prev;
-
-        return recalculateDerivedState({
-          ...nextState,
-          stats: { ...nextState.stats, money: nextState.stats.money - cost },
-        });
-      }
-
+      // The simulation functions hold the placement rules and return `prev` when refused
       let nextState: GameState;
-
-      if (tool === 'bulldoze') {
-        nextState = bulldozeTile(prev, x, y);
-      } else if (zone) {
-        nextState = placeBuilding(prev, x, y, null, zone);
-      } else if (building) {
-        nextState = placeBuilding(prev, x, y, building, null);
-      } else {
-        return prev;
-      }
+      if (tool === 'subway') nextState = placeSubway(prev, x, y);
+      else if (tool === 'zone_water') nextState = placeWaterTerraform(prev, x, y);
+      else if (tool === 'zone_land') nextState = placeLandTerraform(prev, x, y);
+      else if (tool === 'bulldoze') nextState = bulldozeTile(prev, x, y);
+      else if (zone) nextState = placeBuilding(prev, x, y, null, zone);
+      else if (building) nextState = placeBuilding(prev, x, y, building, null);
+      else return prev;
 
       if (nextState === prev) return prev;
-
+      // Money is checked after validity so the caller can tell "can't afford" from "can't build here"
+      if (cost > 0 && prev.stats.money < cost) {
+        result = 'noMoney';
+        return prev;
+      }
       if (cost > 0) {
         nextState = {
           ...nextState,
@@ -1233,7 +1052,8 @@ export function GameProvider({
       return recalculateDerivedState(nextState);
     };
 
-    setState((prev) => {
+    const before = latestStateRef.current;
+    const after = commit((prev) => {
       const next = applyPlacement(prev);
       if (undoStroke && next !== prev) {
         const r = UNDO_SCAN_RADIUS;
@@ -1241,26 +1061,23 @@ export function GameProvider({
       }
       return next;
     });
+    if (after !== before) result = 'placed';
 
     // S5-T9: sound for a local build/road/bulldoze that actually changed the tile.
     const sfx = isRemote ? null : sfxForTool(currentTool);
-    if (sfx) {
-      const before = latestStateRef.current.grid[y]?.[x];
-      setTimeout(() => {
-        if (latestStateRef.current.grid[y]?.[x] !== before) playSfx(sfx);
-      }, 50); // after React commits the placement (latestStateRef is synced in an effect)
-    }
+    if (sfx && after.grid[y]?.[x] !== before.grid[y]?.[x]) playSfx(sfx);
 
     // Broadcast to multiplayer if this is a local action (not remote)
     // We use the tool captured before setState since React 18 batches async
     if (!isRemote && currentTool !== 'select' && placeCallbackRef.current) {
       placeCallbackRef.current({ x, y, tool: currentTool });
     }
-  }, []);
+    return result;
+  }, [commit]);
 
   const upgradeServiceBuildingHandler = useCallback((x: number, y: number) => {
     let upgradeSucceeded = false;
-    setState((prev) => {
+    commit((prev) => {
       const upgradedState = upgradeServiceBuilding(prev, x, y);
       if (upgradedState) {
         upgradeSucceeded = true;
@@ -1269,14 +1086,14 @@ export function GameProvider({
       return prev;
     });
     return upgradeSucceeded;
-  }, []);
+  }, [commit]);
 
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
     // Bridges belong to the drag's undo stroke (full-grid diff: only runs when a bridge was built)
     const undoStroke = !isRemote ? undoStrokeRef.current : null;
     const undoCallId = ++placeCallIdRef.current;
-    setState((prev) => {
+    commit((prev) => {
       const bridged = createBridgesOnPath(prev, pathTiles, trackType);
       if (bridged === prev) return prev;
       if (undoStroke) recordUndoChange(undoStroke, prev, bridged, undoCallId, null);
@@ -1287,10 +1104,10 @@ export function GameProvider({
     if (!isRemote && bridgeCallbackRef.current) {
       bridgeCallbackRef.current({ pathTiles, trackType });
     }
-  }, []);
+  }, [commit]);
 
   const connectToCity = useCallback((cityId: string) => {
-    setState((prev) => {
+    commit((prev) => {
       const city = prev.adjacentCities.find(c => c.id === cityId);
       if (!city || city.connected) return prev;
 
@@ -1315,7 +1132,7 @@ export function GameProvider({
           {
             id: `city-connect-${Date.now()}`,
             title: 'City Connected!',
-            description: `Trade route established with ${city.name}. +$${tradeBonus} bonus and +$${tradeIncome}/month income.`,
+            description: `Trade route established with ${city.name}. +${formatINR(tradeBonus)} bonus and +${formatINR(tradeIncome)}/month income.`,
             icon: 'road',
             timestamp: Date.now(),
           },
@@ -1323,10 +1140,10 @@ export function GameProvider({
         ],
       };
     });
-  }, []);
+  }, [commit]);
 
   const discoverCity = useCallback((cityId: string) => {
-    setState((prev) => {
+    commit((prev) => {
       const city = prev.adjacentCities.find(c => c.id === cityId);
       if (!city || city.discovered) return prev;
 
@@ -1350,12 +1167,12 @@ export function GameProvider({
         ],
       };
     });
-  }, []);
+  }, [commit]);
 
   // Check for cities that should be discovered based on roads reaching edges
   // Calls onDiscover callback with city info if a new city was discovered
   const checkAndDiscoverCities = useCallback((onDiscover?: (city: { id: string; direction: 'north' | 'south' | 'east' | 'west'; name: string }) => void): void => {
-    setState((prev) => {
+    commit((prev) => {
       const newlyDiscovered = checkForDiscoverableCities(prev.grid, prev.gridSize, prev.adjacentCities);
       
       if (newlyDiscovered.length === 0) return prev;
@@ -1383,40 +1200,40 @@ export function GameProvider({
         adjacentCities: updatedCities,
       };
     });
-  }, []);
+  }, [commit]);
 
   const setDisastersEnabled = useCallback((enabled: boolean) => {
-    setState((prev) => ({ ...prev, disastersEnabled: enabled }));
-  }, []);
+    commit((prev) => ({ ...prev, disastersEnabled: enabled }));
+  }, [commit]);
 
   const setPauseOnCrisis = useCallback((enabled: boolean) => {
-    setState((prev) => ({ ...prev, pauseOnCrisis: enabled }));
-  }, []);
+    commit((prev) => ({ ...prev, pauseOnCrisis: enabled }));
+  }, [commit]);
 
   const acceptEmergencyLoan = useCallback(() => {
-    setState((prev) => {
+    commit((prev) => {
       if (prev.failure?.loanStatus !== 'offered') return prev;
       const { next, amount } = acceptLoan(prev.failure);
       return { ...prev, failure: next, stats: { ...prev.stats, money: prev.stats.money + amount } };
     });
-  }, []);
+  }, [commit]);
 
   const declineEmergencyLoan = useCallback(() => {
-    setState((prev) => (prev.failure?.loanStatus === 'offered' ? { ...prev, failure: declineLoan(prev.failure) } : prev));
-  }, []);
+    commit((prev) => (prev.failure?.loanStatus === 'offered' ? { ...prev, failure: declineLoan(prev.failure) } : prev));
+  }, [commit]);
   const markLandmarksSeen = useCallback(() => {
-    setState((prev) => {
+    commit((prev) => {
       const seen = getUnlockedLandmarks(getPeakDisplayedPopulation(prev)).length;
       return (prev.landmarksSeen ?? 0) >= seen ? prev : { ...prev, landmarksSeen: seen };
     });
-  }, []);
+  }, [commit]);
 
   const resolveLandmarkBulldoze = useCallback((confirmed: boolean) => {
     const pending = pendingLandmarkBulldoze;
     setPendingLandmarkBulldoze(null);
     if (!confirmed || !pending) return;
     const cost = TOOL_INFO.bulldoze.cost;
-    setState((prev) => {
+    commit((prev) => {
       if (prev.stats.money < cost) return prev;
       const next = bulldozeTile(prev, pending.x, pending.y);
       if (next === prev) return prev;
@@ -1424,7 +1241,7 @@ export function GameProvider({
       return recalculateDerivedState({ ...next, stats: { ...next.stats, money: next.stats.money - cost } });
     });
     placeCallbackRef.current?.({ x: pending.x, y: pending.y, tool: 'bulldoze' });
-  }, [pendingLandmarkBulldoze]);
+  }, [pendingLandmarkBulldoze, commit]);
 
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
@@ -1469,6 +1286,8 @@ export function GameProvider({
       structureVersion: (versionBase.structureVersion ?? 0) + 1,
       roadNetworkVersion: (versionBase.roadNetworkVersion ?? 0) + 1,
     };
+    // The player chose this city, so autosaving it is wanted again (see autosaveBlockedRef)
+    autosaveBlockedRef.current = false;
     latestStateRef.current = city;
     setState(city);
   }, []);
@@ -1500,8 +1319,8 @@ export function GameProvider({
     const raws = await readIsoCityMonthlyBackupsRaw();
     for (let i = raws.length - 1; i >= 0; i--) {
       const raw = raws[i];
-      const parsed = raw ? await decompressAndParseAsync<GameState>(raw).catch(() => null) : null;
-      if (parsed?.grid && parsed.id === latestStateRef.current.id && !parsed.gameOver) {
+      const parsed = raw ? migrateAndValidateState(await decompressAndParseAsync<unknown>(raw).catch(() => null)) : null;
+      if (parsed && parsed.id === latestStateRef.current.id && !parsed.gameOver) {
         return { city: parsed, monthsBack: i + 1 };
       }
     }
@@ -1520,7 +1339,7 @@ export function GameProvider({
     try {
       const found = await findOldestMonthlyBackup();
       if (!found) return false;
-      replaceCity({ ...normalizeGameStateVersions(found.city), speed: 0 }, latestStateRef.current);
+      replaceCity({ ...found.city, speed: 0 }, latestStateRef.current);
       return true;
     } catch (e) {
       console.error('Failed to load the last autosave:', e);
@@ -1530,92 +1349,21 @@ export function GameProvider({
 
   const loadState = useCallback((stateString: string): boolean => {
     try {
-      const parsed = JSON.parse(stateString);
-      // Validate it has essential properties
-      if (parsed && 
-          parsed.grid && 
-          Array.isArray(parsed.grid) &&
-          parsed.gridSize && 
-          typeof parsed.gridSize === 'number' &&
-          parsed.stats &&
-          parsed.stats.money !== undefined &&
-          parsed.stats.population !== undefined &&
-          // The grid must be gridSize x gridSize, or the renderer and simulation read past it
-          parsed.grid.length === parsed.gridSize &&
-          parsed.grid.every((row: unknown) => Array.isArray(row) && row.length === parsed.gridSize)) {
-        // Keep the city being replaced as a saved-city backup (5b)
-        void backupLiveCity(typeof parsed.id === 'string' ? parsed.id : undefined);
-        // Ensure new fields exist for backward compatibility
-        if (!parsed.adjacentCities) {
-          parsed.adjacentCities = [];
-        }
-        // Migrate adjacentCities to have 'discovered' property
-        for (const city of parsed.adjacentCities) {
-          if (city.discovered === undefined) {
-            // Old cities that exist are implicitly discovered (they were visible in the old system)
-            city.discovered = true;
-          }
-        }
-        if (!parsed.waterBodies) {
-          parsed.waterBodies = [];
-        }
-        // Ensure cities exists for multi-city support
-        if (!parsed.cities) {
-          parsed.cities = [{
-            id: parsed.id || 'default-city',
-            name: parsed.cityName || 'City',
-            bounds: {
-              minX: 0,
-              minY: 0,
-              maxX: (parsed.gridSize || 50) - 1,
-              maxY: (parsed.gridSize || 50) - 1,
-            },
-            economy: {
-              population: parsed.stats?.population || 0,
-              jobs: parsed.stats?.jobs || 0,
-              income: parsed.stats?.income || 0,
-              expenses: parsed.stats?.expenses || 0,
-              happiness: parsed.stats?.happiness || 50,
-              lastCalculated: 0,
-            },
-            color: '#3b82f6',
-          }];
-        }
-        // Ensure effectiveTaxRate exists for lagging tax effect
-        if (parsed.effectiveTaxRate === undefined) {
-          parsed.effectiveTaxRate = parsed.taxRate ?? 9;
-        }
-        // Tax is capped at 0-20% (older saves allowed up to 100)
-        parsed.taxRate = Math.min(20, Math.max(0, parsed.taxRate ?? 9));
-        parsed.effectiveTaxRate = Math.min(20, Math.max(0, parsed.effectiveTaxRate));
-        // Migrate constructionProgress for existing buildings (they're already built)
-        if (parsed.grid) {
-          for (let y = 0; y < parsed.grid.length; y++) {
-            for (let x = 0; x < parsed.grid[y].length; x++) {
-              if (parsed.grid[y][x]?.building && parsed.grid[y][x].building.constructionProgress === undefined) {
-                parsed.grid[y][x].building.constructionProgress = 100; // Existing buildings are complete
-              }
-              // Migrate abandoned property for existing buildings (they're not abandoned)
-              if (parsed.grid[y][x]?.building && parsed.grid[y][x].building.abandoned === undefined) {
-                parsed.grid[y][x].building.abandoned = false;
-              }
-            }
-          }
-        }
-        // Increment gameVersion to clear vehicles/entities when loading a new state
-        const normalizedState = normalizeGameStateVersions(parsed as GameState);
-        replaceCity(normalizedState, normalizedState);
-        return true;
-      }
-      return false;
+      const imported = migrateAndValidateState(JSON.parse(stateString));
+      if (!imported) return false;
+      // Keep the city being replaced as a saved-city backup (5b)
+      void backupLiveCity(imported.id);
+      // Bumps gameVersion to clear vehicles/entities when loading a new state
+      replaceCity(imported, imported);
+      return true;
     } catch {
       return false;
     }
   }, [replaceCity, backupLiveCity]);
 
   const exportState = useCallback((): string => {
-    return JSON.stringify(state);
-  }, [state]);
+    return JSON.stringify(latestStateRef.current);
+  }, []);
 
   const generateRandomCity = useCallback(() => {
     clearGameState(); // Clear saved state when generating a new city
@@ -1624,7 +1372,10 @@ export function GameProvider({
 
   // Expand the city grid by 15 tiles on each side (30x30 total increase)
   const expandCity = useCallback(() => {
+    // The fixed Varanasi map never changes size (it would break the river layout).
+    if (latestStateRef.current.mapId === 'varanasi') return;
     setState((prev) => {
+      if (prev.mapId === 'varanasi') return prev;
       const { grid: newGrid, newSize } = expandGrid(prev.grid, prev.gridSize, 15);
       
       // Create new service grids with expanded size (all initialized to 0)
@@ -1716,16 +1467,20 @@ export function GameProvider({
 
   // Shrink the city grid by 15 tiles on each side (30x30 total reduction)
   const shrinkCity = useCallback((): boolean => {
-    let success = false;
+    // The fixed Varanasi map never changes size (it would cut the river layout).
+    const current = latestStateRef.current;
+    if (current.mapId === 'varanasi') return false;
+    // Decide success before setState: an updater may run later (or twice), so a flag set inside it is unreliable.
+    const precomputed = shrinkGrid(current.grid, current.gridSize, 15);
+    if (!precomputed) return false;
     setState((prev) => {
-      const result = shrinkGrid(prev.grid, prev.gridSize, 15);
-      
+      const result = prev.grid === current.grid ? precomputed : shrinkGrid(prev.grid, prev.gridSize, 15);
+
       // If shrink failed (grid too small), return previous state unchanged
       if (!result) {
         return prev;
       }
-      
-      success = true;
+
       const { grid: newGrid, newSize } = result;
       
       // Create new service grids with shrunken size
@@ -1813,10 +1568,13 @@ export function GameProvider({
         roadNetworkVersion: (prev.roadNetworkVersion ?? 0) + 1,
       };
     });
-    return success;
+    return true;
   }, []);
 
   const addMoney = useCallback((amount: number) => {
+    // Only finite amounts; one grant is capped so a bad caller cannot corrupt the treasury.
+    if (!Number.isFinite(amount)) return;
+    amount = clamp(amount, -MAX_MONEY_GRANT, MAX_MONEY_GRANT);
     setState((prev) => ({
       ...prev,
       stats: {
@@ -1827,7 +1585,7 @@ export function GameProvider({
   }, []);
 
   const addNotification = useCallback((title: string, description: string, icon: string, extras?: NotificationExtras) => {
-    setState((prev) => {
+    commit((prev) => {
       const added = [{ id: `note-${Date.now()}-${Math.random()}`, title, description, icon, timestamp: Date.now(), ...extras }];
       return {
         ...prev,
@@ -1836,50 +1594,19 @@ export function GameProvider({
         ...(shouldPauseForCrisis(prev, added) ? { speed: 0 as const } : {}),
       };
     });
-  }, []);
+  }, [commit]);
 
   const addForecast = useCallback((title: string, description: string, daysAhead: number, icon = '🔮', extras?: Partial<Omit<ForecastInput, 'title' | 'description' | 'daysAhead' | 'icon'>>) => {
-    setState((prev) => ({
+    commit((prev) => ({
       ...prev,
       ...addForecastToState(prev, { id: extras?.id ?? `${title}-${daysAhead}`, title, description, daysAhead, icon, ...extras }),
     }));
-  }, []);
-
-  // Save current city for restore (when viewing shared cities)
-  const saveCurrentCityForRestore = useCallback(() => {
-    saveCityForRestore(state);
-  }, [state]);
-
-  // Restore saved city
-  const restoreSavedCity = useCallback((): boolean => {
-    const savedState = loadSavedCityState();
-    if (savedState) {
-      skipNextSaveRef.current = true;
-      const normalizedSavedState = normalizeGameStateVersions(savedState);
-      setState((prev) => ({
-        ...normalizedSavedState,
-        gameVersion: (prev.gameVersion ?? 0) + 1,
-        structureVersion: (normalizedSavedState.structureVersion ?? 0) + 1,
-        roadNetworkVersion: (normalizedSavedState.roadNetworkVersion ?? 0) + 1,
-      }));
-      clearSavedCityStorage();
-      return true;
-    }
-    return false;
-  }, []);
-
-  // Get saved city info
-  const getSavedCityInfo = useCallback((): SavedCityInfo => {
-    return loadSavedCityInfo();
-  }, []);
-
-  // Clear saved city
-  const clearSavedCity = useCallback(() => {
-    clearSavedCityStorage();
-  }, []);
+  }, [commit]);
 
   // Save current city to the multi-save system
   const saveCity = useCallback(() => {
+    // The ref, not React state: it holds the ticks since the last 500 ms UI sync
+    const state = latestStateRef.current;
     const cityMeta: SavedCityMeta = {
       id: state.id,
       cityName: state.cityName,
@@ -1927,87 +1654,25 @@ export function GameProvider({
         reportSaveResult(false);
       },
     );
-  }, [state, reportSaveResult]);
+  }, [reportSaveResult]);
 
   // Load a saved city from the multi-save system
   const loadSavedCity = useCallback(async (cityId: string): Promise<boolean> => {
+    // loadCityState migrates and validates (and uses cityId when the save has no id)
     const cityState = await loadCityState(cityId);
     if (!cityState) return false;
 
-    // Ensure the loaded state has an ID
-    if (!cityState.id) {
-      cityState.id = cityId;
-    }
     // Keep the city being replaced as a saved-city backup (5b)
     void backupLiveCity(cityState.id === latestStateRef.current.id ? cityState.id : cityId);
-    
-    // Perform migrations for backward compatibility
-    if (!cityState.adjacentCities) {
-      cityState.adjacentCities = [];
-    }
-    for (const city of cityState.adjacentCities) {
-      if (city.discovered === undefined) {
-        city.discovered = true;
-      }
-    }
-    if (!cityState.waterBodies) {
-      cityState.waterBodies = [];
-    }
-    // Ensure cities exists for multi-city support
-    if (!cityState.cities) {
-      cityState.cities = [{
-        id: cityState.id || 'default-city',
-        name: cityState.cityName || 'City',
-        bounds: {
-          minX: 0,
-          minY: 0,
-          maxX: (cityState.gridSize || 50) - 1,
-          maxY: (cityState.gridSize || 50) - 1,
-        },
-        economy: {
-          population: cityState.stats?.population || 0,
-          jobs: cityState.stats?.jobs || 0,
-          income: cityState.stats?.income || 0,
-          expenses: cityState.stats?.expenses || 0,
-          happiness: cityState.stats?.happiness || 50,
-          lastCalculated: 0,
-        },
-        color: '#3b82f6',
-      }];
-    }
-    if (cityState.effectiveTaxRate === undefined) {
-      cityState.effectiveTaxRate = cityState.taxRate ?? 9;
-    }
-    // Tax is capped at 0-20% (older saves allowed up to 100)
-    cityState.taxRate = Math.min(20, Math.max(0, cityState.taxRate ?? 9));
-    cityState.effectiveTaxRate = Math.min(20, Math.max(0, cityState.effectiveTaxRate));
-    if (cityState.grid) {
-      for (let y = 0; y < cityState.grid.length; y++) {
-        for (let x = 0; x < cityState.grid[y].length; x++) {
-          if (cityState.grid[y][x]?.building && cityState.grid[y][x].building.constructionProgress === undefined) {
-            cityState.grid[y][x].building.constructionProgress = 100;
-          }
-          if (cityState.grid[y][x]?.building && cityState.grid[y][x].building.abandoned === undefined) {
-            cityState.grid[y][x].building.abandoned = false;
-          }
-        }
-      }
-    }
-    
+
     skipNextSaveRef.current = true;
-    const normalizedCityState = normalizeGameStateVersions(cityState);
-    setState((prev) => ({
-      ...normalizedCityState,
-      gameVersion: (prev.gameVersion ?? 0) + 1,
-      structureVersion: (normalizedCityState.structureVersion ?? 0) + 1,
-      roadNetworkVersion: (normalizedCityState.roadNetworkVersion ?? 0) + 1,
-    }));
-    
+    replaceCity(cityState, cityState);
+
     // Also update the current game's autosave
-    saveGameState(normalizedCityState, reportSaveResult);
+    saveGameState(cityState, reportSaveResult);
 
     return true;
-  }, [reportSaveResult, backupLiveCity]);
+  }, [reportSaveResult, backupLiveCity, replaceCity]);
 
   // Delete a saved city from the multi-save system
   const deleteSavedCity = useCallback((cityId: string) => {
@@ -2098,11 +1763,6 @@ export function GameProvider({
     dayNightMode,
     setDayNightMode,
     visualHour,
-    // Save/restore city for shared links
-    saveCurrentCityForRestore,
-    restoreSavedCity,
-    getSavedCityInfo,
-    clearSavedCity,
     // Multi-city save system
     savedCities,
     saveCity,

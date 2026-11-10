@@ -46,7 +46,7 @@ import {
   isEnvironmentPlayableBuildingType,
   type CoverageAverages,
 } from './scoring';
-import type { Rng } from '@/lib/rng';
+import { createCitySeed, rollRng, type Rng } from '@/lib/rng';
 import {
   SEASON_CONFIG, absoluteDay, advanceWeather, getGangaRecoveryMultiplier, getSeason, type Season, type SimWeather,
 } from '@/lib/seasons';
@@ -58,7 +58,7 @@ import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import { advanceFailureState, applyLoanRepayment, createFailureState, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
-import { POPULATION_DISPLAY_SCALE } from '@/lib/format';
+import { formatINR, POPULATION_DISPLAY_SCALE } from '@/lib/format';
 import {
   applyFloodToServices,
   getCityFloodMask,
@@ -582,15 +582,15 @@ function generateOceans(grid: Tile[][], size: number, seed: number, rng: Rng = M
 }
 
 // Generate adjacent cities - always create one for each direction (undiscovered until road reaches edge)
-function generateAdjacentCities(): AdjacentCity[] {
+function generateAdjacentCities(mapId: MapId = 'random'): AdjacentCity[] {
   const cities: AdjacentCity[] = [];
   const directions: Array<'north' | 'south' | 'east' | 'west'> = ['north', 'south', 'east', 'west'];
   const usedNames = new Set<string>();
-  
+
   for (const direction of directions) {
     let name: string;
     do {
-      name = generateCityName();
+      name = generateCityName(mapId);
     } while (usedNames.has(name));
     usedNames.add(name);
     
@@ -1249,7 +1249,7 @@ export function createBridgesOnPath(
   };
 }
 
-function createInitialBudget(): Budget {
+export function createInitialBudget(): Budget {
   return {
     police: { name: 'Police', funding: 100, cost: 0 },
     fire: { name: 'Fire', funding: 100, cost: 0 },
@@ -1262,7 +1262,7 @@ function createInitialBudget(): Budget {
   };
 }
 
-function createInitialStats(): Stats {
+export function createInitialStats(): Stats {
   return {
     population: 0,
     jobs: 0,
@@ -1286,7 +1286,7 @@ function createInitialStats(): Stats {
 
 // PERF: Optimized service coverage grid creation
 // Uses typed arrays internally for faster operations
-function createServiceCoverage(size: number): ServiceCoverage {
+export function createServiceCoverage(size: number): ServiceCoverage {
   // Pre-allocate arrays with correct size to avoid resizing
   const createGrid = () => {
     const grid: number[][] = new Array(size);
@@ -1316,7 +1316,7 @@ function createServiceCoverage(size: number): ServiceCoverage {
 
 
 // Generate a UUID v4
-function generateUUID(): string {
+export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -1335,7 +1335,7 @@ export function createInitialGameState(
   mapId: MapId = 'random'
 ): GameState {
   const { grid, waterBodies } = generateTerrain(size, rng, mapId);
-  const adjacentCities = generateAdjacentCities();
+  const adjacentCities = generateAdjacentCities(mapId);
   let totalTiles = 0;
   let treeCount = 0;
 
@@ -1411,6 +1411,7 @@ export function createInitialGameState(
     roadNetworkVersion: 0,
     cities: [defaultCity],
     mapId,
+    seed: createCitySeed(rng),
   };
 }
 
@@ -1927,7 +1928,13 @@ function evolveBuilding(
   demand?: { residential: number; commercial: number; industrial: number },
   writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx],
   /** True on the first tick of an in-game day: per-day counters advance and level-ups are allowed. */
-  dayStart = false
+  dayStart = false,
+  /**
+   * Coverage before rolling cuts. A rolling cut is temporary load-shedding with its own penalties;
+   * only a tile with no supply at all counts as unserved. (Shrinking a cut block's population would
+   * lower demand, end the cut, restore the population and start the cut again, every tick.)
+   */
+  uncutServices: ServiceCoverage = services
 ): Building {
   const tile = grid[y][x];
   const building = tile.building;
@@ -1959,7 +1966,9 @@ function evolveBuilding(
 
   // Non-starter buildings without power or water keep living at reduced efficiency (see below):
   // no level-ups, and after UNSERVED_ABANDON_DAYS days without service they may be abandoned.
-  const unserved = !isStarter && (!hasPower || !hasWater);
+  const suppliedPower = uncutServices.power[y][x];
+  const suppliedWater = uncutServices.water[y][x];
+  const unserved = !isStarter && (!suppliedPower || !suppliedWater);
   if (unserved) {
     if (dayStart) building.unservedDays = (building.unservedDays ?? 0) + 1;
   } else if (building.unservedDays !== undefined) {
@@ -2183,9 +2192,9 @@ function evolveBuilding(
   // when there was no consolidation, so anchorBuilding is this tile's building)
   const efficiency = isStarter
     ? (anchorBuilding.powered ? 0.5 : 0) + (anchorBuilding.watered ? 0.5 : 0)
-    : (anchorBuilding.powered && anchorBuilding.watered) ? 1
-      : anchorBuilding.watered ? 0.5 // no power
-        : anchorBuilding.powered ? 0.3 // no water
+    : (suppliedPower && suppliedWater) ? 1
+      : suppliedWater ? 0.5 // no power
+        : suppliedPower ? 0.3 // no water
           : 0.15;
 
   anchorBuilding.population = buildingStats?.maxPop > 0
@@ -2779,7 +2788,7 @@ function generateAdvisorMessages(
     messages.push({
       name: 'Finance Advisor',
       icon: 'cash',
-      messages: [`City is running a deficit of $${Math.abs(netIncome)}/month. Consider raising taxes or cutting services.`],
+      messages: [`City is running a deficit of ${formatINR(Math.abs(netIncome))}/month. Consider raising taxes or cutting services.`],
       priority: netIncome < -500 ? 'critical' : 'high',
     });
   }
@@ -3340,7 +3349,7 @@ export function simulateTick(
         const beforeConstructionProgress = beforeBuilding.constructionProgress;
         const beforeOnFire = beforeBuilding.onFire;
         const beforeAbandoned = beforeBuilding.abandoned;
-        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile, state.tick === 0);
+        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile, state.tick === 0, baseServices);
         const evolvedBuilding = newGrid[y][x].building;
         const didEvolveStructureChange =
           beforeType !== evolvedBuilding.type ||
@@ -3560,6 +3569,7 @@ export function simulateTick(
         settlements: gridTotals.informalSettlements,
         hasRoadAccess: (tx, ty) => hasRoadAccess(newGrid, tx, ty, size),
         writable: writableTile,
+        rng,
       });
       newInformal = result.informal;
       if (result.changed > 0) didStructureChange = true;
@@ -3723,7 +3733,8 @@ export function simulateTick(
     const daySeason = getSeason(newMonth);
     const added: Omit<GameState['notifications'][number], 'id' | 'timestamp'>[] = [];
 
-    const heat = runHeatwaveDay(state.heatwave, today, daySeason, rng);
+    // Seeded per city and week, so reloading a save cannot re-roll the heatwave check
+    const heat = runHeatwaveDay(state.heatwave, today, daySeason, rollRng(state.seed, rng, 'heatwave', today));
     heatForecast = heat.forecast;
     added.push(...heat.notifications);
 
@@ -4165,6 +4176,107 @@ function applyBuildingFootprint(
   return grid[originY][originX].building;
 }
 
+/** Why `placeBuilding` refuses a placement (placement.ts turns these into player-facing text). */
+export type PlacementRefusal =
+  | 'outsideMap'
+  | 'water'
+  | 'occupied' // an existing building (or part of a multi-tile footprint) is on the tile
+  | 'road' // a non-track building on a road or bridge
+  | 'rail' // a non-track building on rail
+  | 'notZonable' // zoning a settlement anything but residential, or re-zoning it residential
+  | 'nothingToDezone'
+  | 'ghat'
+  | 'waterWorks'
+  | 'embankment'
+  | 'landmark'
+  | 'needsWater'
+  | 'offMap' // the footprint goes past the map edge
+  | 'footprint'; // a footprint tile other than the clicked one is not free
+
+export type PlacementValidation =
+  | { ok: true; flip: boolean }
+  | { ok: false; refusal: PlacementRefusal; landmarkReason?: string };
+
+/** Tile types a road or rail can be laid on (rail + road make a combined tile). */
+const TRACK_BASE_TYPES: ReadonlySet<BuildingType> = new Set<BuildingType>(['grass', 'tree', 'road', 'rail']);
+/** Tile types that can be zoned. 'empty' tiles are parts of multi-tile buildings, so they can't. */
+const ZONABLE_TYPES: ReadonlySet<BuildingType> = new Set<BuildingType>(['grass', 'tree', 'road']);
+
+/**
+ * The rules of `placeBuilding`, without building the new state. Pure; used by `placeBuilding` itself
+ * and by the placement preview (placement.ts), so the hover check and the click always agree.
+ */
+export function validatePlacement(
+  state: GameState,
+  x: number,
+  y: number,
+  buildingType: BuildingType | null,
+  zone: ZoneType | null
+): PlacementValidation {
+  const tile = state.grid[y]?.[x];
+  if (!tile) return { ok: false, refusal: 'outsideMap' };
+  const type = tile.building.type;
+  if (type === 'water') return { ok: false, refusal: 'water' };
+
+  const isTrack = buildingType === 'road' || buildingType === 'rail';
+  // Roads/rail only on grass, tree, road or rail; 'empty' (multi-tile footprint) tiles are refused too
+  if (isTrack && !TRACK_BASE_TYPES.has(type)) return { ok: false, refusal: 'occupied' };
+  // Roads, bridges, and rail can be combined, but other buildings require clearing first
+  if (buildingType && !isTrack && (type === 'road' || type === 'bridge')) return { ok: false, refusal: 'road' };
+  if (buildingType && !isTrack && type === 'rail') return { ok: false, refusal: 'rail' };
+
+  if (zone !== null) {
+    if (zone === 'none') {
+      // De-zoning works on any zoned tile and on every tile of a multi-tile building
+      if (!findBuildingOrigin(state.grid, x, y, state.gridSize) && tile.zone === 'none') {
+        return { ok: false, refusal: 'nothingToDezone' };
+      }
+    } else if (type === 'informal_housing') {
+      // Zoning a settlement residential starts formalisation (S3-T9); other zones don't apply to it
+      if (zone !== 'residential' || tile.zone === 'residential') return { ok: false, refusal: 'notZonable' };
+    } else if (!ZONABLE_TYPES.has(type)) {
+      return { ok: false, refusal: 'occupied' };
+    }
+    return { ok: true, flip: false };
+  }
+  if (!buildingType) return { ok: true, flip: false };
+
+  const size = getBuildingSize(buildingType);
+  let flip = false;
+  if (buildingType === 'ghat') {
+    // Ghats only go on the Ganga's west riverfront, with the steps facing the water (S2-T5)
+    const ghat = getGhatPlacement(state.grid, x, y, state.gridSize, state.mapId);
+    if (!ghat) return { ok: false, refusal: 'ghat' };
+    flip = ghat.flipped;
+  } else if (buildingType === 'jal_sansthan_water_works') {
+    // Draws from the Ganga, so it must stand close to the river (S3-T8)
+    if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return { ok: false, refusal: 'waterWorks' };
+  } else if (buildingType === 'embankment') {
+    // Varanasi only, on land within 4 tiles of the Ganga (S4-T6); ghats/water are refused by the tile check below
+    if (state.mapId !== 'varanasi' || !isEmbankmentSiteInRange(x, y, state.gridSize)) return { ok: false, refusal: 'embankment' };
+  } else if (isLandmarkType(buildingType)) {
+    // S5-T1: Varanasi only, unlocked, not built yet, and the landmark's own site rule
+    const landmark = canPlaceLandmark(buildingType, x, y, getLandmarkPlacementContext(state));
+    if (!landmark.ok) return { ok: false, refusal: 'landmark', landmarkReason: landmark.reason };
+  } else if (requiresWaterAdjacency(buildingType)) {
+    // Waterfront buildings must be placed next to water, facing it
+    const waterCheck = getWaterAdjacency(state.grid, x, y, size.width, size.height, state.gridSize);
+    if (!waterCheck.hasWater) return { ok: false, refusal: 'needsWater' };
+    flip = waterCheck.shouldFlip;
+  }
+
+  if (size.width > 1 || size.height > 1) {
+    if (x + size.width > state.gridSize || y + size.height > state.gridSize) return { ok: false, refusal: 'offMap' };
+    if (!canPlaceMultiTileBuilding(state.grid, x, y, size.width, size.height, state.gridSize)) {
+      return { ok: false, refusal: type === 'grass' || type === 'tree' ? 'footprint' : 'occupied' };
+    }
+  } else if (!TRACK_BASE_TYPES.has(type)) {
+    // Single tile: not on existing buildings or 'empty' footprint tiles (track-on-track is allowed above)
+    return { ok: false, refusal: 'occupied' };
+  }
+  return { ok: true, flip };
+}
+
 // Place a building or zone
 export function placeBuilding(
   state: GameState,
@@ -4173,46 +4285,19 @@ export function placeBuilding(
   buildingType: BuildingType | null,
   zone: ZoneType | null
 ): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
+  const check = validatePlacement(state, x, y, buildingType, zone);
+  if (!check.ok) return state;
+  const tile = state.grid[y][x];
 
-  // Can't build on water
-  if (tile.building.type === 'water') return state;
-
-  // Can't place roads on existing buildings (only allow on grass, tree, existing roads, or rail - rail+road creates combined tile)
-  // Note: 'empty' tiles are part of multi-tile building footprints, so roads can't be placed there either
-  if (buildingType === 'road') {
-    const allowedTypes: BuildingType[] = ['grass', 'tree', 'road', 'rail'];
-    if (!allowedTypes.includes(tile.building.type)) {
-      return state; // Can't place road on existing building
-    }
-  }
-
-  // Can't place rail on existing buildings (only allow on grass, tree, existing rail, or road - rail+road creates combined tile)
-  if (buildingType === 'rail') {
-    const allowedTypes: BuildingType[] = ['grass', 'tree', 'rail', 'road'];
-    if (!allowedTypes.includes(tile.building.type)) {
-      return state; // Can't place rail on existing building
-    }
-  }
-
-  // Roads, bridges, and rail can be combined, but other buildings require clearing first
-  if (buildingType && buildingType !== 'road' && buildingType !== 'rail' && (tile.building.type === 'road' || tile.building.type === 'bridge')) {
-    return state;
-  }
-  if (buildingType && buildingType !== 'road' && buildingType !== 'rail' && tile.building.type === 'rail') {
-    return state;
-  }
-
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
+  // Copy-on-write: only the rows and tiles written below are copied (25,600 tiles on a 160 map)
+  const cow = new CopyOnWriteGrid(state.grid, state.gridSize);
+  const write = (wx: number, wy: number) => cow.writable(wx, wy);
 
   if (zone !== null) {
-    // De-zoning (zone === 'none') can work on any zoned tile/building
-    // Regular zoning can only be applied to grass, tree, or road tiles
     if (zone === 'none') {
       // Check if this tile is part of a multi-tile building (handles both origin and 'empty' tiles)
-      const origin = findBuildingOrigin(newGrid, x, y, state.gridSize);
-      
+      const origin = findBuildingOrigin(state.grid, x, y, state.gridSize);
+
       if (origin) {
         // Dezone the entire multi-tile building
         const size = getBuildingSize(origin.buildingType);
@@ -4221,117 +4306,70 @@ export function placeBuilding(
             const clearX = origin.originX + dx;
             const clearY = origin.originY + dy;
             if (clearX < state.gridSize && clearY < state.gridSize) {
-              newGrid[clearY][clearX].building = createBuilding('grass');
-              newGrid[clearY][clearX].zone = 'none';
+              const cell = write(clearX, clearY);
+              cell.building = createBuilding('grass');
+              cell.zone = 'none';
             }
           }
         }
       } else {
-        // Single tile - can only dezone tiles that actually have a zone
-        if (tile.zone === 'none') {
-          return state;
-        }
-        newGrid[y][x].zone = 'none';
+        const cell = write(x, y);
+        cell.zone = 'none';
         // De-zoning resets to grass, except a settlement: its families stay (only the bulldozer removes them)
-        if (tile.building.type !== 'informal_housing') newGrid[y][x].building = createBuilding('grass');
+        if (tile.building.type !== 'informal_housing') cell.building = createBuilding('grass');
       }
     } else if (tile.building.type === 'informal_housing') {
-      // Zoning a settlement residential starts formalisation (S3-T9); other zones don't apply to it
-      if (zone !== 'residential' || tile.zone === 'residential') return state;
-      newGrid[y][x].zone = zone;
+      // Zoning a settlement residential starts formalisation (S3-T9)
+      write(x, y).zone = zone;
     } else {
-      // Can't zone over existing buildings (only allow zoning on grass, tree, or road)
-      // NOTE: 'empty' tiles are part of multi-tile buildings, so we can't zone them either
-      const allowedTypesForZoning: BuildingType[] = ['grass', 'tree', 'road'];
-      if (!allowedTypesForZoning.includes(tile.building.type)) {
-        return state; // Can't zone over existing building or part of multi-tile building
-      }
+      const cell = write(x, y);
       // Setting zone - clear trees to grass first for consistent replacement
       if (tile.building.type === 'tree') {
-        newGrid[y][x].building = createBuilding('grass');
+        cell.building = createBuilding('grass');
       }
-      newGrid[y][x].zone = zone;
+      cell.zone = zone;
     }
   } else if (buildingType) {
     const size = getBuildingSize(buildingType);
-    
-    // Check water adjacency requirement for waterfront buildings (marina, pier)
-    let shouldFlip = false;
-    if (buildingType === 'ghat') {
-      // Ghats only go on the Ganga's west riverfront, with the steps facing the water (S2-T5)
-      const ghat = getGhatPlacement(newGrid, x, y, state.gridSize, state.mapId);
-      if (!ghat) return state;
-      shouldFlip = ghat.flipped;
-    } else if (buildingType === 'jal_sansthan_water_works') {
-      // Draws from the Ganga, so it must stand close to the river (S3-T8)
-      if (!isWaterWorksPlacementValid(x, y, state.gridSize, state.mapId)) return state;
-    } else if (buildingType === 'embankment') {
-      // Varanasi only, on land within 4 tiles of the Ganga (S4-T6); ghats/water are refused by the tile check below
-      if (state.mapId !== 'varanasi' || !isEmbankmentSiteInRange(x, y, state.gridSize)) return state;
-    } else if (isLandmarkType(buildingType)) {
-      // S5-T1: Varanasi only, unlocked, not built yet, and the landmark's own site rule
-      if (!canPlaceLandmark(buildingType, x, y, getLandmarkPlacementContext(state)).ok) return state;
-    } else if (requiresWaterAdjacency(buildingType)) {
-      const waterCheck = getWaterAdjacency(newGrid, x, y, size.width, size.height, state.gridSize);
-      if (!waterCheck.hasWater) {
-        return state; // Waterfront buildings must be placed next to water
-      }
-      shouldFlip = waterCheck.shouldFlip;
-    }
-    
+
     if (size.width > 1 || size.height > 1) {
-      // Multi-tile building - check if we can place it
-      if (!canPlaceMultiTileBuilding(newGrid, x, y, size.width, size.height, state.gridSize)) {
-        return state; // Can't place here
-      }
-      applyBuildingFootprint(newGrid, x, y, buildingType, 'none', 1);
-      // Set flip for waterfront buildings to face the water
-      if (shouldFlip) {
-        newGrid[y][x].building.flipped = true;
-      }
+      applyBuildingFootprint(cow.rows, x, y, buildingType, 'none', 1, undefined, write);
     } else {
-      // Single tile building - check if tile is available
-      // Can't place on water, existing buildings, or 'empty' tiles (part of multi-tile buildings)
-      // Note: 'road' and 'rail' are included here so they can extend over existing roads/rails,
-      // but non-road/rail buildings are already blocked from roads/rails by the checks above
-      const allowedTypes: BuildingType[] = ['grass', 'tree', 'road', 'rail'];
-      if (!allowedTypes.includes(tile.building.type)) {
-        return state; // Can't place on existing building or part of multi-tile building
-      }
-      
+      const cell = write(x, y);
       // Handle combined rail+road tiles
       if (buildingType === 'rail' && tile.building.type === 'road') {
         // Placing rail on road: keep as road with rail overlay
-        newGrid[y][x].hasRailOverlay = true;
+        cell.hasRailOverlay = true;
         // Don't change the building type - it stays as road
       } else if (buildingType === 'road' && tile.building.type === 'rail') {
         // Placing road on rail: convert to road with rail overlay
-        newGrid[y][x].building = createBuilding('road');
-        newGrid[y][x].hasRailOverlay = true;
-        newGrid[y][x].zone = 'none';
+        cell.building = createBuilding('road');
+        cell.hasRailOverlay = true;
+        cell.zone = 'none';
       } else if (buildingType === 'rail' && tile.hasRailOverlay) {
         // Already has rail overlay, do nothing
       } else if (buildingType === 'road' && tile.hasRailOverlay) {
         // Already has road with rail overlay, do nothing
       } else {
         // Normal placement
-        newGrid[y][x].building = createBuilding(buildingType);
-        newGrid[y][x].zone = 'none';
+        cell.building = createBuilding(buildingType);
+        cell.zone = 'none';
         // Clear rail overlay if placing non-combined building
         if (buildingType !== 'road') {
-          newGrid[y][x].hasRailOverlay = false;
+          cell.hasRailOverlay = false;
         }
       }
-      // Set flip for waterfront buildings to face the water
-      if (shouldFlip) {
-        newGrid[y][x].building.flipped = true;
-      }
     }
-    
+    // Set flip for waterfront buildings to face the water
+    if (check.flip) {
+      write(x, y).building.flipped = true;
+    }
+
     // NOTE: Bridge creation is handled separately during drag operations across water
     // We do NOT auto-create bridges here because placing individual road tiles on opposite
     // sides of water should not automatically create a bridge - only explicit dragging should
   }
+  const newGrid = cow.finish();
 
   const nextStructureVersion = (state.structureVersion ?? 0) + 1;
   const nextRoadNetworkVersion = (state.roadNetworkVersion ?? 0) + (buildingType === 'road' || buildingType === 'rail' ? 1 : 0);
@@ -4504,54 +4542,49 @@ export function bulldozeTile(state: GameState, x: number, y: number): GameState 
 }
 
 function bulldozeTileStructure(state: GameState, x: number, y: number): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
-  if (tile.building.type === 'water') return state;
+  if (!canBulldozeTile(state, x, y)) return state;
+  const tile = state.grid[y][x];
 
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
-  
+  // Copy-on-write: only the cleared tiles (and their rows) are copied
+  const cow = new CopyOnWriteGrid(state.grid, state.gridSize);
+  // Surface reset of one tile; a subway under it stays (only water removes it)
+  const clear = (cx: number, cy: number, type: BuildingType) => {
+    const cell = cow.writable(cx, cy);
+    cell.building = createBuilding(type);
+    cell.zone = 'none';
+    cell.hasRailOverlay = false;
+  };
+
   // Special handling for bridges - delete the entire bridge and restore water
   if (tile.building.type === 'bridge') {
-    const bridgeTiles = findConnectedBridgeTiles(newGrid, state.gridSize, x, y);
-    for (const bt of bridgeTiles) {
-      newGrid[bt.y][bt.x].building = createBuilding('water');
-      newGrid[bt.y][bt.x].zone = 'none';
-      newGrid[bt.y][bt.x].hasRailOverlay = false;
-    }
+    for (const bt of findConnectedBridgeTiles(state.grid, state.gridSize, x, y)) clear(bt.x, bt.y, 'water');
     return {
       ...state,
-      grid: newGrid,
+      grid: cow.finish(),
       structureVersion: (state.structureVersion ?? 0) + 1,
       roadNetworkVersion: (state.roadNetworkVersion ?? 0) + 1,
     };
   }
-  
+
   // Special handling for roads - check if adjacent to a bridge start/end
   if (tile.building.type === 'road') {
-    const adjacentBridgeTiles = findAdjacentBridgeTiles(newGrid, state.gridSize, x, y);
+    const adjacentBridgeTiles = findAdjacentBridgeTiles(state.grid, state.gridSize, x, y);
     if (adjacentBridgeTiles.length > 0) {
-      // Delete the road first
-      newGrid[y][x].building = createBuilding('grass');
-      newGrid[y][x].zone = 'none';
-      newGrid[y][x].hasRailOverlay = false;
-      // Then delete all connected bridge tiles
-      for (const bt of adjacentBridgeTiles) {
-        newGrid[bt.y][bt.x].building = createBuilding('water');
-        newGrid[bt.y][bt.x].zone = 'none';
-        newGrid[bt.y][bt.x].hasRailOverlay = false;
-      }
+      // Delete the road, then all connected bridge tiles
+      clear(x, y, 'grass');
+      for (const bt of adjacentBridgeTiles) clear(bt.x, bt.y, 'water');
       return {
         ...state,
-        grid: newGrid,
+        grid: cow.finish(),
         structureVersion: (state.structureVersion ?? 0) + 1,
         roadNetworkVersion: (state.roadNetworkVersion ?? 0) + 1,
       };
     }
   }
-  
+
   // Check if this tile is part of a multi-tile building
-  const origin = findBuildingOrigin(newGrid, x, y, state.gridSize);
-  
+  const origin = findBuildingOrigin(state.grid, x, y, state.gridSize);
+
   if (origin) {
     // Bulldoze the entire multi-tile building
     const size = getBuildingSize(origin.buildingType);
@@ -4559,25 +4592,16 @@ function bulldozeTileStructure(state: GameState, x: number, y: number): GameStat
       for (let dx = 0; dx < size.width; dx++) {
         const clearX = origin.originX + dx;
         const clearY = origin.originY + dy;
-        if (clearX < state.gridSize && clearY < state.gridSize) {
-          newGrid[clearY][clearX].building = createBuilding('grass');
-          newGrid[clearY][clearX].zone = 'none';
-          newGrid[clearY][clearX].hasRailOverlay = false; // Clear rail overlay
-          // Don't remove subway when bulldozing surface buildings
-        }
+        if (clearX < state.gridSize && clearY < state.gridSize) clear(clearX, clearY, 'grass');
       }
     }
   } else {
-    // Single tile bulldoze
-    newGrid[y][x].building = createBuilding('grass');
-    newGrid[y][x].zone = 'none';
-    newGrid[y][x].hasRailOverlay = false; // Clear rail overlay
-    // Don't remove subway when bulldozing surface buildings
+    clear(x, y, 'grass');
   }
 
   return {
     ...state,
-    grid: newGrid,
+    grid: cow.finish(),
     structureVersion: (state.structureVersion ?? 0) + 1,
     roadNetworkVersion: tile.building.type === 'road' ? (state.roadNetworkVersion ?? 0) + 1 : (state.roadNetworkVersion ?? 0),
   };
@@ -4585,23 +4609,42 @@ function bulldozeTileStructure(state: GameState, x: number, y: number): GameStat
 
 // Place a subway line underground (doesn't affect surface buildings)
 export function placeSubway(state: GameState, x: number, y: number): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
-  
-  // Can't place subway under water
-  if (tile.building.type === 'water') return state;
-  
-  // Already has subway
-  if (tile.hasSubway) return state;
-
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
-  newGrid[y][x].hasSubway = true;
-
+  if (!canPlaceSubway(state, x, y)) return state;
   return {
     ...state,
-    grid: newGrid,
+    grid: withTileEdit(state, x, y, (cell) => { cell.hasSubway = true; }),
     structureVersion: (state.structureVersion ?? 0) + 1,
   };
+}
+
+/** Bulldozing refuses only water and tiles off the map (the no-op on bare grass is the caller's call). */
+export function canBulldozeTile(state: GameState, x: number, y: number): boolean {
+  const tile = state.grid[y]?.[x];
+  return !!tile && tile.building.type !== 'water';
+}
+
+/** Subways go under any land tile without one. */
+export function canPlaceSubway(state: GameState, x: number, y: number): boolean {
+  const tile = state.grid[y]?.[x];
+  return !!tile && tile.building.type !== 'water' && !tile.hasSubway;
+}
+
+/** Any land tile except bridges (terraforming under a bridge would break it). */
+export function canPlaceWaterTerraform(state: GameState, x: number, y: number): boolean {
+  const tile = state.grid[y]?.[x];
+  return !!tile && tile.building.type !== 'water' && tile.building.type !== 'bridge';
+}
+
+/** Only water tiles can be filled in. */
+export function canPlaceLandTerraform(state: GameState, x: number, y: number): boolean {
+  return state.grid[y]?.[x]?.building.type === 'water';
+}
+
+/** A copy of the grid with one tile edited: only that row and tile are copied (copy-on-write). */
+function withTileEdit(state: GameState, x: number, y: number, edit: (cell: Tile) => void): Tile[][] {
+  const cow = new CopyOnWriteGrid(state.grid, state.gridSize);
+  edit(cow.writable(x, y));
+  return cow.finish();
 }
 
 // Remove subway from a tile
@@ -4612,32 +4655,23 @@ export function removeSubway(state: GameState, x: number, y: number): GameState 
   // No subway to remove
   if (!tile.hasSubway) return state;
 
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
-  newGrid[y][x].hasSubway = false;
-
   return {
     ...state,
-    grid: newGrid,
+    grid: withTileEdit(state, x, y, (cell) => { cell.hasSubway = false; }),
     structureVersion: (state.structureVersion ?? 0) + 1,
   };
 }
 
 // Terraform a tile into water
 export function placeWaterTerraform(state: GameState, x: number, y: number): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
-  
-  // Already water - do nothing
-  if (tile.building.type === 'water') return state;
-  
-  // Don't allow terraforming bridges - would break them
-  if (tile.building.type === 'bridge') return state;
+  if (!canPlaceWaterTerraform(state, x, y)) return state;
+  const tile = state.grid[y][x];
 
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
-  
+  const cow = new CopyOnWriteGrid(state.grid, state.gridSize);
+
   // Check if this tile is part of a multi-tile building
-  const origin = findBuildingOrigin(newGrid, x, y, state.gridSize);
-  
+  const origin = findBuildingOrigin(state.grid, x, y, state.gridSize);
+
   if (origin) {
     // Clear the entire multi-tile building first, then place water on this tile
     const size = getBuildingSize(origin.buildingType);
@@ -4646,21 +4680,23 @@ export function placeWaterTerraform(state: GameState, x: number, y: number): Gam
         const clearX = origin.originX + dx;
         const clearY = origin.originY + dy;
         if (clearX < state.gridSize && clearY < state.gridSize) {
-          newGrid[clearY][clearX].building = createBuilding('grass');
-          newGrid[clearY][clearX].zone = 'none';
+          const cell = cow.writable(clearX, clearY);
+          cell.building = createBuilding('grass');
+          cell.zone = 'none';
         }
       }
     }
   }
-  
+
   // Now place water on the target tile
-  newGrid[y][x].building = createBuilding('water');
-  newGrid[y][x].zone = 'none';
-  newGrid[y][x].hasSubway = false; // Remove any subway under water
+  const cell = cow.writable(x, y);
+  cell.building = createBuilding('water');
+  cell.zone = 'none';
+  cell.hasSubway = false; // Remove any subway under water
 
   return {
     ...state,
-    grid: newGrid,
+    grid: cow.finish(),
     structureVersion: (state.structureVersion ?? 0) + 1,
     roadNetworkVersion: (state.roadNetworkVersion ?? 0) + (tile.building.type === 'road' ? 1 : 0),
   };
@@ -4668,21 +4704,15 @@ export function placeWaterTerraform(state: GameState, x: number, y: number): Gam
 
 // Terraform a tile into land (grass)
 export function placeLandTerraform(state: GameState, x: number, y: number): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
-  
-  // Only works on water tiles
-  if (tile.building.type !== 'water') return state;
-
-  const newGrid = state.grid.map(row => row.map(t => ({ ...t, building: { ...t.building } })));
-  
-  // Convert water to grass
-  newGrid[y][x].building = createBuilding('grass');
-  newGrid[y][x].zone = 'none';
+  if (!canPlaceLandTerraform(state, x, y)) return state;
 
   return {
     ...state,
-    grid: newGrid,
+    // Convert water to grass
+    grid: withTileEdit(state, x, y, (cell) => {
+      cell.building = createBuilding('grass');
+      cell.zone = 'none';
+    }),
     structureVersion: (state.structureVersion ?? 0) + 1,
   };
 }

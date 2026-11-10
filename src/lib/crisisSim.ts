@@ -336,6 +336,7 @@ export function runCollapseDay(
       result.collapsed.push({ x, y });
       result.notifications.push({
         title: 'An old building has collapsed',
+        kind: 'collapse',
         description: 'Ageing buildings can fall, most often in the monsoon. Fire stations nearby inspect them and cut the risk.',
         icon: 'alert',
         severity: 'crisis',

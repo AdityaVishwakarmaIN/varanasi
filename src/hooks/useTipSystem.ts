@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { GameState } from '@/types/game';
 import { msg } from 'gt-next';
 import { calculateGangaTargetHealth, getGangaTrend } from '@/lib/scoring';
@@ -13,11 +13,16 @@ import {
   nextGangaFallingDays,
 } from '@/lib/gangaTips';
 import { SYSTEM_TIP_CHECKS, type SystemTipId } from '@/lib/systemTips';
-import { SHOWN_TIPS_KEY, TIPS_RESET_EVENT } from '@/lib/feedbackPrefs';
+import {
+  SHOWN_TIPS_KEY,
+  TIPS_RESET_EVENT,
+  getTipsEnabled,
+  setTipsEnabled as setTipsEnabledPref,
+  subscribeFeedbackPrefs,
+} from '@/lib/feedbackPrefs';
 
 // Tip definitions with their conditions and messages
-export type TipId = 
-  | 'get_started'
+export type TipId =
   | 'needs_utilities'
   | 'negative_demand'
   | 'needs_safety_services'
@@ -48,33 +53,7 @@ export interface TipDefinition {
 
 // Define all tips with their conditions
 const TIP_DEFINITIONS: TipDefinition[] = [
-  {
-    id: 'get_started',
-    message: msg('Welcome! Start by laying roads, then zone residential, commercial, and industrial areas along them. Then add power and water so buildings can grow.'),
-    priority: 0, // Highest priority - shows first on fresh cities
-    check: (state: GameState) => {
-      // Check if this is a fresh/empty city - no zones placed yet
-      let hasAnyZone = false;
-      let hasAnyBuilding = false;
-      
-      for (let y = 0; y < state.gridSize; y++) {
-        for (let x = 0; x < state.gridSize; x++) {
-          const tile = state.grid[y][x];
-          if (tile.zone !== 'none') {
-            hasAnyZone = true;
-          }
-          const type = tile.building.type;
-          // Check for any placed buildings (not natural terrain)
-          if (type !== 'grass' && type !== 'water' && type !== 'tree') {
-            hasAnyBuilding = true;
-          }
-        }
-      }
-      
-      // Show on fresh cities with no zones and no buildings
-      return !hasAnyZone && !hasAnyBuilding;
-    },
-  },
+  // Fresh cities get the "Getting started" checklist (GettingStartedChecklist) instead of a welcome tip.
   {
     id: 'needs_utilities',
     message: msg('Buildings need power, water, and roads for construction to begin.'),
@@ -256,7 +235,6 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   },
 ];
 
-const STORAGE_KEY = 'isocity-tips-disabled';
 const MIN_TIP_INTERVAL_MS = 15000; // Minimum 15 seconds between tips
 const TIP_CHECK_INTERVAL_MS = 5000; // Check for tip conditions every 5 seconds
 const INITIAL_TIP_DELAY_MS = 3000; // Wait 3 seconds before first tip
@@ -270,8 +248,22 @@ interface UseTipSystemReturn {
   setTipsEnabled: (enabled: boolean) => void;
 }
 
+/** Reads the stored shown-tips list for `cityId`. A list saved for another city (or an old plain array) is ignored. */
+function loadShownTips(cityId: string): Set<TipId> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(SHOWN_TIPS_KEY) ?? 'null');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const { cityId: storedId, ids } = parsed as { cityId?: unknown; ids?: unknown };
+      if (storedId === cityId && Array.isArray(ids)) return new Set(ids as TipId[]);
+    }
+  } catch (e) {
+    console.error('Failed to load tip preferences:', e);
+  }
+  return new Set();
+}
+
 export function useTipSystem(state: GameState): UseTipSystemReturn {
-  const [tipsEnabled, setTipsEnabledState] = useState(true);
+  const tipsEnabled = useSyncExternalStore(subscribeFeedbackPrefs, getTipsEnabled, () => true);
   const [currentTip, setCurrentTip] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [shownTips, setShownTips] = useState<Set<TipId>>(new Set());
@@ -309,29 +301,16 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     };
   }, [year, month, day, mapId]);
 
-  // Load preferences from localStorage
+  // Shown tips are per city: a new city (new id) starts with every tip available again
+  const cityId = state.id;
+  const cityIdRef = useRef(cityId);
+  cityIdRef.current = cityId;
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
-    try {
-      const disabled = localStorage.getItem(STORAGE_KEY);
-      if (disabled === 'true') {
-        setTipsEnabledState(false);
-      }
-      
-      const shown = localStorage.getItem(SHOWN_TIPS_KEY);
-      if (shown) {
-        const parsed = JSON.parse(shown);
-        if (Array.isArray(parsed)) {
-          setShownTips(new Set(parsed as TipId[]));
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load tip preferences:', e);
-    }
-    
+    hasLoadedRef.current = false;
+    setShownTips(loadShownTips(cityId));
     hasLoadedRef.current = true;
-  }, []);
+  }, [cityId]);
 
   // Settings -> "Reset tips" (S5-T8): every tip can show once more
   useEffect(() => {
@@ -347,27 +326,22 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     if (typeof window === 'undefined') return;
     
     try {
-      localStorage.setItem(SHOWN_TIPS_KEY, JSON.stringify(Array.from(shownTips)));
+      localStorage.setItem(SHOWN_TIPS_KEY, JSON.stringify({ cityId: cityIdRef.current, ids: Array.from(shownTips) }));
     } catch (e) {
       console.error('Failed to save shown tips:', e);
     }
   }, [shownTips]);
 
-  // Set tips enabled preference
+  // Set tips enabled preference (shared with Settings -> "Show tips")
   const setTipsEnabled = useCallback((enabled: boolean) => {
-    setTipsEnabledState(enabled);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(STORAGE_KEY, enabled ? 'false' : 'true');
-      } catch (e) {
-        console.error('Failed to save tip preference:', e);
-      }
-    }
-    if (!enabled) {
-      setIsVisible(false);
-      setCurrentTip(null);
-    }
+    setTipsEnabledPref(enabled);
   }, []);
+  // Turning tips off (here or in Settings) hides the current one
+  useEffect(() => {
+    if (tipsEnabled) return;
+    setIsVisible(false);
+    setCurrentTip(null);
+  }, [tipsEnabled]);
 
   // Track shown tips in a ref as well for synchronous access
   const shownTipsRef = useRef<Set<TipId>>(new Set());

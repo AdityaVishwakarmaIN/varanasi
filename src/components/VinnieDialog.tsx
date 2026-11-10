@@ -11,6 +11,10 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
+import { formatINR } from '@/lib/format';
+
+const VINNIE_OFFER = 500000;
+const VINNIE_DECLINE_BONUS = 10000;
 
 interface VinnieDialogProps {
   open: boolean;
@@ -21,20 +25,20 @@ export function VinnieDialog({ open, onOpenChange }: VinnieDialogProps) {
   const { addMoney, addNotification } = useGame();
 
   const handleAccept = () => {
-    addMoney(500000);
+    addMoney(VINNIE_OFFER);
     addNotification(
       'Questionable Finances',
-      'You received ₹5 lakh from Cousin Vinnie. Your accountants are... concerned.',
+      `You received ${formatINR(VINNIE_OFFER)} from Cousin Vinnie. Your accountants are... concerned.`,
       'disaster'
     );
     onOpenChange(false);
   };
 
   const handleDecline = () => {
-    addMoney(10000);
+    addMoney(VINNIE_DECLINE_BONUS);
     addNotification(
       'Integrity Bonus',
-      'You declined Vinnie\'s offer. A mysterious benefactor rewards your honesty with $10,000.',
+      `You declined Vinnie's offer. A mysterious benefactor rewards your honesty with ${formatINR(VINNIE_DECLINE_BONUS)}.`,
       'trophy'
     );
     onOpenChange(false);
@@ -51,7 +55,7 @@ export function VinnieDialog({ open, onOpenChange }: VinnieDialogProps) {
                 Hey there, Mayor... My associate Vinnie heard you could use some help with the city budget.
               </p>
               <p className="mb-2">
-                He&apos;s offering <span className="text-green-400 font-semibold">₹5 lakh</span>... no strings attached.
+                He&apos;s offering <span className="text-green-400 font-semibold">{formatINR(VINNIE_OFFER)}</span>... no strings attached.
               </p>
               <p className="text-slate-400 italic">
                 Well, maybe a few strings.
