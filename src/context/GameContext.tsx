@@ -125,6 +125,8 @@ type GameContextValue = {
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
   /** 'noMoney': the placement was valid but the city could not pay for it. */
   placeAtTile: (x: number, y: number, isRemote?: boolean) => PlaceResult;
+  /** Runs many placeAtTile calls (a dragged rectangle) and recalculates the city's derived numbers once at the end. */
+  placeBatch: (run: () => void) => void;
   /** Undoes the last build / bulldoze (up to 10 deep). Returns false when there is nothing to undo. */
   undoLast: () => boolean;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
@@ -924,6 +926,7 @@ export function GameProvider({
     if (entry) undoStackRef.current = pushUndoEntry(undoStackRef.current, entry, ++undoSeqRef.current);
   }, []);
 
+  const deferRecalcRef = useRef(false);
   const placeAtTile = useCallback((x: number, y: number, isRemote = false): PlaceResult => {
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
@@ -987,7 +990,8 @@ export function GameProvider({
         };
       }
 
-      return recalculateDerivedState(nextState);
+      // Inside placeBatch the (whole-grid) recalculation runs once, after the last tile
+      return deferRecalcRef.current ? nextState : recalculateDerivedState(nextState);
     };
 
     // Multiplayer actions are broadcast tile by tile, so only a solo city can be undone.
@@ -1011,6 +1015,17 @@ export function GameProvider({
     }
     return result;
   }, [commit, rememberForUndo]);
+
+  const placeBatch = useCallback((run: () => void) => {
+    const before = latestStateRef.current;
+    deferRecalcRef.current = true;
+    try {
+      run();
+    } finally {
+      deferRecalcRef.current = false;
+      if (latestStateRef.current !== before) commit((prev) => recalculateDerivedState(prev));
+    }
+  }, [commit]);
 
   const upgradeServiceBuildingHandler = useCallback((x: number, y: number) => {
     let upgradeSucceeded = false;
@@ -1697,6 +1712,7 @@ export function GameProvider({
     setActivePanel,
     setBudgetFunding,
     placeAtTile,
+    placeBatch,
     undoLast,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,

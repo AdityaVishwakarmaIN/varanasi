@@ -433,31 +433,28 @@ export default function HomePage() {
     setShowGame(true);
   };
 
+  // Every menu button shares one shape (height, radius, type); only the fill differs.
+  // Backgrounds are opaque so nothing behind a button ever shows through.
+  const titleButton = 'press h-11 w-full gap-2 rounded-xl text-base font-semibold tracking-wide';
+  const secondaryButton = `${titleButton} border border-gold/35 bg-[hsl(var(--hud-top))] text-sandstone hover:border-gold/60 hover:bg-secondary hover:text-foreground`;
+
   const menu = (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full flex-col gap-2.5">
       <Button
         onClick={handlePrimary}
-        className="press h-14 w-full rounded-xl text-lg font-semibold tracking-wide shadow-[inset_0_1px_0_hsl(48_100%_85%/0.6),0_14px_34px_-12px_hsl(var(--saffron)/0.9)]"
+        className={`${titleButton} bg-chrome-accent text-chrome-accentText hover:bg-chrome-accent hover:brightness-110 shadow-[inset_0_1px_0_hsl(var(--chrome-accentText)/0.25),0_10px_28px_-14px_hsl(var(--saffron)/0.8)]`}
       >
         {hasSaved ? <T>Continue</T> : <T>New Game</T>}
       </Button>
 
       {hasSaved && (
-        <Button
-          onClick={() => setShowResetDialog(true)}
-          variant="outline"
-          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_11%/0.78)] border-gold/35 text-sandstone hover:bg-[hsl(233_40%_15%/0.9)] hover:text-foreground"
-        >
+        <Button onClick={() => setShowResetDialog(true)} variant="outline" className={secondaryButton}>
           <T>New Game</T>
         </Button>
       )}
 
       {FEATURES.coop && (
-        <Button
-          onClick={() => setShowCoopModal(true)}
-          variant="outline"
-          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_11%/0.78)] border-gold/35 text-sandstone hover:bg-[hsl(233_40%_15%/0.9)] hover:text-foreground"
-        >
+        <Button onClick={() => setShowCoopModal(true)} variant="outline" className={secondaryButton}>
           <Users className="w-4 h-4" aria-hidden />
           <T>Co-op</T>
         </Button>
@@ -468,7 +465,7 @@ export default function HomePage() {
         <Button
           onClick={handleLoadExample}
           variant="outline"
-          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_9%/0.6)] border-sandstone/15 text-sandstone/80 hover:bg-[hsl(233_40%_13%/0.85)] hover:text-sandstone"
+          className={`${secondaryButton} border-sandstone/20 text-sandstone/75 hover:border-sandstone/40`}
         >
           <T>Load Example</T>
         </Button>
@@ -476,23 +473,23 @@ export default function HomePage() {
     </div>
   );
 
+  // One centred group; every item gets the same side padding so the dots sit evenly between them.
+  const footerItem = 'min-h-11 px-2 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent transition-colors duration-200';
+  const footerDot = <span className="text-sandstone/30 select-none" aria-hidden>·</span>;
   const footer = (
-    <div className="flex w-full flex-col gap-1">
-      <div className="flex w-full items-center justify-between gap-3 text-sm tracking-wide">
-        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-          <a
-            href="https://github.com/amilich/isometric-city"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex min-h-11 items-center text-sandstone/60 hover:text-marigold transition-colors duration-200"
-          >
-            <T>Built on IsoCity</T>
-          </a>
-          <span className="text-sandstone/30" aria-hidden>·</span>
-          <CreditsButton variant="ghost" className="h-auto min-h-11 px-1 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
-        </div>
-        <LanguageSelector variant="ghost" className="shrink-0 text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
-      </div>
+    <div className="flex w-full flex-wrap items-center justify-center whitespace-nowrap">
+      <a
+        href="https://github.com/amilich/isometric-city"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`flex items-center ${footerItem}`}
+      >
+        <T>Built on IsoCity</T>
+      </a>
+      {footerDot}
+      <CreditsButton variant="ghost" className={`h-auto ${footerItem}`} />
+      {footerDot}
+      <LanguageSelector variant="ghost" className={`h-11 gap-1.5 [&>span]:text-sm ${footerItem}`} />
     </div>
   );
 
@@ -564,20 +561,25 @@ export default function HomePage() {
   if (isMobile) {
     return (
       <MultiplayerContextProvider>
-        <main className="theme-dark relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
+        <main className="theme-dark title-stage title-stage-compact relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
           <TitleBackdrop compact />
           <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto short:grid short:grid-cols-2 short:content-center short:items-start short:gap-x-8 short:px-8">
-            <div className="flex-shrink-0 h-2 sm:h-6 short:hidden" />
-            <div className="short:row-span-3 short:justify-self-center short:self-start"><TitleMark compact /></div>
-            <div className="mt-6 short:mt-0 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
-              {menu}
-            </div>
-            {visibleSavedCities.length > 0 && (
-              <div className="title-panel w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] short:mt-2 short:min-h-0 short:max-h-24 flex flex-col animate-rise-in [animation-delay:200ms]">
-                {savedList}
+            {/* Top spacer and the menu block share the free height, so title + menu sit centred above the skyline */}
+            <div className="flex-1 short:hidden" aria-hidden />
+            <div className="flex-shrink-0 short:row-span-3 short:justify-self-center short:self-start"><TitleMark compact /></div>
+            <div className="flex w-full max-w-xs min-h-0 flex-[1_1_auto] flex-col">
+              <div className="mt-6 short:mt-0 w-full flex-shrink-0 animate-rise-in [animation-delay:120ms]">
+                {menu}
               </div>
-            )}
-            <div className="mt-auto short:mt-0 w-full max-w-xs flex-shrink-0 pt-3 short:pt-1">{footer}</div>
+              {visibleSavedCities.length > 0 && (
+                <div className="title-panel w-full mt-4 rounded-2xl p-3 min-h-[7rem] max-h-[40dvh] short:mt-2 short:min-h-0 short:max-h-24 flex flex-col animate-rise-in [animation-delay:200ms]">
+                  {savedList}
+                </div>
+              )}
+            </div>
+            {/* Keeps the block above out of the skyline band (the footer sits in the river below it) */}
+            <div className="title-skyline-spacer short:hidden" aria-hidden />
+            <div className="w-full max-w-xs flex-shrink-0 pt-3 short:pt-1">{footer}</div>
           </div>
           {dialogs}
         </main>
@@ -588,20 +590,26 @@ export default function HomePage() {
   // Desktop landing page
   return (
     <MultiplayerContextProvider>
-      <main className="theme-dark relative min-h-screen bg-background overflow-hidden">
+      <main className="theme-dark title-stage relative min-h-[100dvh] bg-background overflow-hidden">
         <TitleBackdrop />
-        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-[calc(21vh+9rem)]">
+        {/* The stage ends where the skyline band begins (padding = --title-reserve), so nothing in it can reach the art */}
+        <div className="relative z-10 flex h-[100dvh] min-h-[36rem] flex-col items-center px-8 pt-[clamp(1rem,3dvh,2rem)] pb-[var(--title-reserve)]">
+          {/* Equal growth for this spacer and the menu block centres title + menu in the stage */}
+          <div className="flex-1" aria-hidden />
           <TitleMark />
-          <div className="mt-8 w-72 animate-rise-in [animation-delay:120ms]">
-            {menu}
+          <div className="relative mt-[clamp(1.25rem,3.5dvh,2.5rem)] flex w-full min-h-0 flex-[1_1_auto] justify-center">
+            <div className="w-60 animate-rise-in [animation-delay:120ms]">
+              {menu}
+            </div>
+            {/* Beside the menu (not under it) so it never pushes the menu down; capped at the stage bottom */}
+            {visibleSavedCities.length > 0 && (
+              <aside className="title-panel absolute top-0 left-[calc(50%+9rem)] w-[min(18rem,calc(50%-9rem))] max-h-[min(18rem,100%)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
+                {savedList}
+              </aside>
+            )}
           </div>
-          {visibleSavedCities.length > 0 && (
-            <aside className="title-panel mt-5 w-72 max-h-[min(18rem,32vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
-              {savedList}
-            </aside>
-          )}
-          <div className="absolute bottom-5 left-1/2 z-10 w-72 -translate-x-1/2">{footer}</div>
         </div>
+        <div className="absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 px-8">{footer}</div>
 
         {dialogs}
       </main>
@@ -616,12 +624,13 @@ function TitleMark({ compact = false }: { compact?: boolean }) {
       <span
         lang="hi"
         aria-hidden
-        className={`font-display text-gold/85 tracking-[0.2em] ${compact ? 'text-base' : 'text-xl'}`}
+        className={`font-display text-gold/85 tracking-[0.2em] ${compact ? 'text-base' : 'text-[length:clamp(1rem,2dvh,1.25rem)] leading-[1.4]'}`}
       >
         वाराणसी
       </span>
+      {/* Desktop: 120px from ~1000px tall, scaling down to 72px so short screens keep the menu clear */}
       <h1
-        className={`font-display text-saffron-gradient leading-[0.95] tracking-wide drop-shadow-[0_4px_24px_hsl(var(--saffron)/0.35)] ${compact ? 'text-6xl mt-1' : 'text-[7.5rem] mt-1'}`}
+        className={`font-display text-saffron-gradient leading-[0.95] tracking-wide drop-shadow-[0_4px_24px_hsl(var(--saffron)/0.35)] ${compact ? 'text-6xl mt-1' : 'text-[length:clamp(4.5rem,12dvh,7.5rem)] mt-1'}`}
       >
         Varanasi
       </h1>

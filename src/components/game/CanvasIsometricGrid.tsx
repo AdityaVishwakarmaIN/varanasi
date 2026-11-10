@@ -390,6 +390,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     state,
     latestStateRef,
     placeAtTile,
+    placeBatch,
     finishTrackDrag,
     connectToCity,
     checkAndDiscoverCities,
@@ -3502,19 +3503,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
     
     };
+    // Highlights are painted ONCE, on this Canvas2D hover canvas (updated synchronously on every
+    // hover change). Replaying them into the GPU 'hover' layer as well drew a second diamond: the
+    // GPU canvas sits on top and only refreshes on the effects loop's render(), so the two copies
+    // never stack exactly (it showed offset, larger and with a thicker outline). Keep that layer empty.
     paintHighlights(ctx);
-    const pixiHover = pixiRendererRef.current;
-    if (pixiHover) {
-      const dprHover = getRenderDpr();
-      pixiHover.redrawLayer('hover', () => {
-        pixiHover.save();
-        pixiHover.scale(dprHover, dprHover);
-        pixiHover.translate(offset.x, offset.y);
-        pixiHover.scale(zoom, zoom);
-        paintHighlights(pixiHover);
-        pixiHover.restore();
-      });
-    }
+    pixiRendererRef.current?.redrawLayer('hover', () => {});
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, [hoveredTile, selectedTile, selectedTool, offset, zoom, gridSize, grid, isDragging, dragStartTile, dragEndTile, placementPreview]);
@@ -3611,6 +3605,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     };
   }, []);
 
+  // PERF: the system functions above are new closures on every render (the createXSystems calls run in
+  // render, and the React Compiler does not compile this component). The animation loop reads the latest
+  // ones each frame from this ref instead of listing them as deps: it used to restart on every render
+  // (every pan step / hovered tile), which also reset its frame clock and made moving entities stutter.
+  const animationSystems = {
+    updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles,
+    drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes,
+    updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges,
+    updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog,
+    updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust,
+  };
+  const animationSystemsRef = useRef(animationSystems);
+  useEffect(() => {
+    animationSystemsRef.current = animationSystems;
+  });
+
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
@@ -3687,6 +3697,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const delta = Math.min((time - lastTime) / 1000, 0.3);
       lastTime = time;
       lastRenderTime = time;
+      const {
+        updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles,
+        drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes,
+        updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges,
+        updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog,
+        updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust,
+      } = animationSystemsRef.current;
       const gpuActive = !!(pixiRendererRef.current && pixiAppRef.current);
       const profileFrame = gpuActive && time - lastSlowFrameLogRef.current > 2000;
       const profileStart = profileFrame ? performance.now() : 0;
@@ -3894,7 +3911,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
   // PERF: Removed grid, gridSize, speed from deps - they're accessed via worldStateRef to avoid restarting animation on every tick
-  }, [canvasSize.width, canvasSize.height, updateCars, updateBuses, drawCars, drawBuses, spawnCrimeIncidents, updateCrimeIncidents, updateEmergencyVehicles, drawEmergencyVehicles, updatePedestrians, drawPedestrians, drawRecreationPedestrians, updateAirplanes, drawAirplanes, updateHelicopters, drawHelicopters, updateSeaplanes, drawSeaplanes, updateBoats, drawBoats, updateBarges, drawBarges, updateTrains, drawTrainsCallback, drawIncidentIndicators, updateFireworks, drawFireworks, updateSmog, drawSmog, updateClouds, drawClouds, updateWind, drawWindTrees, drawWindDust, visualHour, isMobile, festivalVisuals, latestStateRef]);
+  // (the update/draw functions come from animationSystemsRef each frame, so they are not deps)
+  }, [canvasSize.width, canvasSize.height, visualHour, isMobile, festivalVisuals, latestStateRef]);
   
   // Day/Night cycle lighting rendering - extracted to useLightingSystem hook
   useLightingSystem({
@@ -4212,8 +4230,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         
         // Update drag rectangle end point for zoning tools
+        // PERF: keep the same object while the pointer stays on the same tile. A new object on every
+        // pointer move redrew the whole static map (dragEndTile is part of its scene key) per event.
         if (isDragging && showsDragGrid && dragStartTile) {
-          setDragEndTile({ x: gridX, y: gridY });
+          setDragEndTile(prev => (prev?.x === gridX && prev?.y === gridY) ? prev : { x: gridX, y: gridY });
         }
         // For roads, rail, and subways, use straight-line snapping
         else if (isDragging && (selectedTool === 'road' || selectedTool === 'rail' || selectedTool === 'subway') && dragStartTile) {
@@ -4237,8 +4257,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             targetX = dragStartTile.x; // Lock to vertical
           }
           
-          setDragEndTile({ x: targetX, y: targetY });
-          
+          setDragEndTile(prev => (prev?.x === targetX && prev?.y === targetY) ? prev : { x: targetX, y: targetY });
+
           // Place all tiles from start to target in a straight line
           // Skip water tiles - they'll be handled on mouse up for bridge creation
           const minX = Math.min(dragStartTile.x, targetX);
@@ -4307,11 +4327,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const maxY = Math.max(dragStartTile.y, dragEndTile.y);
 
       startStroke(); // the whole rectangle is one stroke (one spend total)
-      for (let x = minX; x <= maxX; x++) {
-        for (let y = minY; y <= maxY; y++) {
-          placeInStroke(x, y, true);
+      placeBatch(() => {
+        for (let x = minX; x <= maxX; x++) {
+          for (let y = minY; y <= maxY; y++) {
+            placeInStroke(x, y, true);
+          }
         }
-      }
+      });
     }
 
     // Buildings: place exactly once, at the tile under the pointer on release
@@ -4369,7 +4391,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, startStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, placeBatch, startStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
 
   // Mouse leaving the map: cancel an in-progress zone/line drag without committing it
   // (no rectangle fill, no bridges), drop a held single placement, and clear the hover ghost.
@@ -4768,7 +4790,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           ref={gpuCanvasRef}
           width={canvasSize.width}
           height={canvasSize.height}
-          className="absolute top-0 left-0 pointer-events-none"
+          // Backing store is in device pixels (Pixi autoDensity is off): show it at CSS size like the
+          // other layers, or everything on it is magnified by the DPR from the top-left corner.
+          className="absolute top-0 left-0 w-full h-full pointer-events-none"
         />
       )}
       

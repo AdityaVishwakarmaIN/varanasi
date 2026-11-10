@@ -36,13 +36,20 @@ function Skyline({ scale, className, compact }: { scale: number; className?: str
   return (
     <div className={cn('flex items-end justify-center', className)}>
       {(compact ? SKYLINE_COMPACT : SKYLINE).map((b, i) => (
-        <BuildingArtThumb
+        // Box sized in skyline pixels (--title-sky-u, see .title-stage) so the row shrinks on
+        // short screens; `size` still picks the thumb's paint resolution.
+        <span
           key={i}
-          type={b.type}
-          variant={b.variant}
-          size={Math.round(b.size * scale)}
-          className="-mx-[1.5%]"
-        />
+          className="-mx-[1.5%] inline-flex shrink-0"
+          style={{ width: `calc(var(--title-sky-u) * ${b.size})`, height: `calc(var(--title-sky-u) * ${b.size})` }}
+        >
+          <BuildingArtThumb
+            type={b.type}
+            variant={b.variant}
+            size={Math.round(b.size * scale)}
+            className="!h-full !w-full"
+          />
+        </span>
       ))}
     </div>
   );
@@ -51,14 +58,19 @@ function Skyline({ scale, className, compact }: { scale: number; className?: str
 /**
  * Title-screen backdrop: a dusk sky over the Ganga with the city's code-drawn skyline, its
  * reflection, and floating diyas. Pure CSS (transform/opacity animations), no canvas loop.
+ * River, ghat and skyline sizes come from the .title-stage CSS variables (globals.css), which
+ * the title page also uses to keep its menu clear of the skyline.
  */
 export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
   const scale = compact ? 0.5 : 1;
-  const riverHeight = compact ? '28%' : '21%';
-  const groundH = compact ? 18 : 30; // ghat / land strip the buildings stand on
+  const riverHeight = 'var(--title-river)';
+  const groundH = 'var(--title-ground)'; // ghat / land strip the buildings stand on
   const sunSize = compact ? 64 : 110;
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+    <div
+      className={cn('title-stage pointer-events-none fixed inset-0 overflow-hidden', compact && 'title-stage-compact')}
+      aria-hidden
+    >
       {/* Dusk sky */}
       <div
         className="absolute inset-0"
@@ -85,7 +97,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
           width: sunSize,
           height: sunSize,
           marginLeft: -sunSize / 2,
-          bottom: `calc(${riverHeight} + ${groundH}px - ${Math.round(sunSize * 0.35)}px)`,
+          bottom: `calc(${riverHeight} + ${groundH} - ${Math.round(sunSize * 0.35)}px)`,
           borderRadius: '9999px',
           background:
             'radial-gradient(circle at 50% 50%, hsl(44 100% 78%) 0%, hsl(36 100% 64%) 42%, hsl(22 95% 54% / 0.6) 62%, hsl(14 90% 45% / 0) 78%)',
@@ -110,7 +122,7 @@ export function TitleBackdrop({ compact = false }: { compact?: boolean }) {
       </div>
 
       {/* Skyline on the ghats */}
-      <div className="absolute inset-x-0 short:hidden" style={{ bottom: `calc(${riverHeight} + ${Math.round(groundH * 0.45)}px)` }}>
+      <div className="absolute inset-x-0 short:hidden" style={{ bottom: `calc(${riverHeight} + ${groundH} * 0.45)` }}>
         <Skyline compact={compact} scale={scale} className="drop-shadow-[0_-6px_24px_rgba(0,0,0,0.35)] [filter:saturate(0.92)_brightness(0.86)]" />
         {/* Dusk haze over the buildings so the text reads */}
         <div className="absolute inset-0 bg-gradient-to-t from-[hsl(236_45%_10%/0.35)] to-transparent" />
