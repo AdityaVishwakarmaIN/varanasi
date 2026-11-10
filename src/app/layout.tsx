@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import { getLocale } from "gt-next/server";
 import { GTProvider } from "gt-next";
+import { TempRecorder } from '@/components/debug/TempRecorder'; // TEMP-RECORDER
 
 // Display face: Rozha One, a high-contrast Devanagari/Latin display type (titles and headings only)
 const rozha = Rozha_One({
@@ -89,7 +90,7 @@ export default async function RootLayout({ children }: {children: React.ReactNod
         type="image/webp" />
 
       </head>
-      <body className="bg-background text-foreground antialiased font-sans overflow-hidden" suppressHydrationWarning><GTProvider>{children}{/* The analytics script only exists on Vercel; elsewhere it 404s. */}{process.env.VERCEL ? <Analytics /> : null}</GTProvider></body>
+      <body className="bg-background text-foreground antialiased font-sans overflow-hidden" suppressHydrationWarning><GTProvider>{children}{/* The analytics script only exists on Vercel; elsewhere it 404s. */}{process.env.VERCEL ? <Analytics /> : null}</GTProvider>{/* TEMP-RECORDER: dev-only flight recorder */}{process.env.NODE_ENV === 'development' ? <TempRecorder /> : null}</body>
     </html>
   );
 }

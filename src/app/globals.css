@@ -315,6 +315,30 @@
     background-image: var(--jaali-svg);
     background-size: 36px 36px;
   }
+
+  /* Title-screen geometry, shared by TitleBackdrop and the page so the menu column can reserve
+     exactly the band the skyline covers: the river, the ghat lift and the tallest building box
+     (208 = largest size in TitleBackdrop's SKYLINE lists), scaled by one skyline pixel (--title-sky-u). */
+  .title-stage {
+    --title-river: 21dvh;
+    --title-ground: 30px;
+    --title-sky-u: clamp(0.66px, 0.1dvh, 1px);
+    --title-sky-gap: clamp(1.25rem, 3dvh, 2.5rem);
+    --title-sky-top: calc(var(--title-river) + var(--title-ground) * 0.45 + var(--title-sky-u) * 208);
+    --title-reserve: calc(var(--title-sky-top) + var(--title-sky-gap));
+  }
+  .title-stage-compact {
+    --title-river: 28dvh;
+    --title-ground: 18px;
+    --title-sky-u: 0.5px;
+    --title-sky-gap: 1rem;
+  }
+  /* Phone layout: keeps the menu above the skyline. The footer (3.5rem with its top padding) and
+     the container's bottom padding already sit inside the reserved band. */
+  .title-skyline-spacer {
+    flex-shrink: 0;
+    height: calc(var(--title-reserve) - 3.5rem - max(1rem, env(safe-area-inset-bottom)));
+  }
 }
 
 :root {

@@ -12,7 +12,8 @@ import {
   BOAT_MIN_ZOOM_FAR,
 } from './constants';
 import { gridToScreen } from './utils';
-import { findMarinasAndPiers, findAdjacentWaterTile, isOverWater, generateTourWaypoints } from './gridFinders';
+import { findAdjacentWaterTile, isOverWater, generateTourWaypoints } from './gridFinders';
+import { findMarinasAndPiersCached } from './gridScanCache';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
 import { deviceValue } from '@/lib/qualityConfig';
@@ -51,10 +52,10 @@ export function createBoatSystem(
   const { boatsRef, boatIdRef, boatSpawnTimerRef } = refs;
   const { worldStateRef, isMobile, visualHour, mapId, gameVersion, structureVersionRef } = systemState;
 
-  // Find marinas and piers callback
+  // Find marinas and piers callback (called every frame: cached per map structure, see gridScanCache)
   const findMarinasAndPiersCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findMarinasAndPiers(currentGrid, currentGridSize);
+    return findMarinasAndPiersCached(currentGrid, currentGridSize);
   };
 
   // Find adjacent water tile callback

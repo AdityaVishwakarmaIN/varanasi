@@ -25,7 +25,8 @@ import {
   WAKE_MAX_AGE,
   WAKE_SPAWN_INTERVAL,
 } from './constants';
-import { findBays, getRandomBayTile, isOverWater, BayInfo, findMarinasAndPiers, findAdjacentWaterTile, DockInfo } from './gridFinders';
+import { getRandomBayTile, isOverWater, BayInfo, findAdjacentWaterTile, DockInfo } from './gridFinders';
+import { findBaysCached, findMarinasAndPiersCached } from './gridScanCache';
 import { gridToScreen } from './utils';
 
 export interface SeaplaneSystemRefs {
@@ -43,8 +44,8 @@ export interface SeaplaneSystemState {
 
 // Helper to find docks within a bay's water tiles
 function findDocksInBay(
-  docks: DockInfo[],
-  bayWaterTiles: { x: number; y: number }[],
+  docks: readonly DockInfo[],
+  bayWaterTiles: readonly { x: number; y: number }[],
   grid: import('@/types/game').Tile[][],
   gridSize: number
 ): { dock: DockInfo; waterTile: { x: number; y: number } }[] {
@@ -69,16 +70,16 @@ export function createSeaplaneSystem(
   const { seaplanesRef, seaplaneIdRef, seaplaneSpawnTimerRef } = refs;
   const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile } = systemState;
 
-  // Find bays callback
-  const findBaysCallback = (): BayInfo[] => {
+  // Find bays callback (called every frame: the flood fill is cached per map structure, see gridScanCache)
+  const findBaysCallback = (): readonly BayInfo[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findBays(currentGrid, currentGridSize, SEAPLANE_MIN_BAY_SIZE);
+    return findBaysCached(currentGrid, currentGridSize, SEAPLANE_MIN_BAY_SIZE);
   };
 
-  // Find marinas and piers callback
-  const findDocksCallback = (): DockInfo[] => {
+  // Find marinas and piers callback (cached per map structure)
+  const findDocksCallback = (): readonly DockInfo[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findMarinasAndPiers(currentGrid, currentGridSize);
+    return findMarinasAndPiersCached(currentGrid, currentGridSize);
   };
 
   // Check if screen position is over water callback

@@ -8,6 +8,7 @@ import { simulateTick } from '@/lib/simulation';
 import { recordSave, recordTick } from '@/lib/perfStats';
 import { GAME_LOOP_CONFIG, SimulationScheduler, getTickIntervalMs } from '@/lib/gameLoop';
 import { isBenchmarkState } from '@/lib/benchmark';
+import { recordEvent as tempRecord, markPhase as tempMarkPhase, endPhase as tempEndPhase } from '@/lib/debug/tempRecorder'; // TEMP-RECORDER
 import {
   Budget,
   BuildingType,
@@ -125,6 +126,8 @@ type GameContextValue = {
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
   /** 'noMoney': the placement was valid but the city could not pay for it. */
   placeAtTile: (x: number, y: number, isRemote?: boolean) => PlaceResult;
+  /** Runs many placeAtTile calls (a dragged rectangle) and recalculates the city's derived numbers once at the end. */
+  placeBatch: (run: () => void) => void;
   /** Undoes the last build / bulldoze (up to 10 deep). Returns false when there is nothing to undo. */
   undoLast: () => boolean;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
@@ -647,6 +650,16 @@ export function GameProvider({
       // Load game state (unless startFresh is true - used for co-op to start with a new city)
       const loaded: AutosaveLoadResult = startFresh ? { status: 'none' } : await loadGameState();
       if (cancelled) return;
+      // TEMP-RECORDER: how the session's city was obtained (autosave / fresh / corrupt)
+      if (process.env.NODE_ENV === 'development') {
+        tempRecord('game:initialLoad', {
+          startFresh,
+          status: loaded.status,
+          gridSize: loaded.status === 'ok' ? loaded.state.gridSize : undefined,
+          mapId: loaded.status === 'ok' ? loaded.state.mapId : newGameOptionsRef.current?.mapId,
+          newGameOptions: loaded.status === 'ok' ? undefined : newGameOptionsRef.current,
+        });
+      }
       if (loaded.status === 'ok') {
         skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
         // Point the simulation loop at the loaded city right away
@@ -830,8 +843,15 @@ export function GameProvider({
       // PERF: Run simulation and update ref immediately (for canvas)
       const prevSpeed = latestStateRef.current.speed;
       const prevMonth = latestStateRef.current.month;
+      if (process.env.NODE_ENV === 'development') tempMarkPhase('simulateTick'); // TEMP-RECORDER
       const newState = simulateTick(latestStateRef.current);
       recordTick(performance.now() - now);
+      // TEMP-RECORDER: slow ticks only (> 50 ms)
+      if (process.env.NODE_ENV === 'development') {
+        tempEndPhase('simulateTick', { silent: true });
+        const tickMs = performance.now() - now;
+        if (tickMs > 50) tempRecord('game:slowTick', { ms: Math.round(tickMs), tick: tickCountRef.current, speed: prevSpeed, gridSize: newState.gridSize });
+      }
       latestStateRef.current = newState;
       stateChangedRef.current = true;
       // Three rolling autosave copies, rotated once per in-game month, never of a finished city (S4-T11)
@@ -869,11 +889,38 @@ export function GameProvider({
     };
   }, []);
 
+  // TEMP-RECORDER: compact game snapshot every 5 s (never the whole state)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const id = window.setInterval(() => {
+      try {
+        const s = latestStateRef.current;
+        tempRecord('game:snapshot', {
+          date: `${s.year}-${s.month}-${s.day} ${s.hour}h`,
+          population: s.stats?.population,
+          money: s.stats?.money,
+          speed: s.speed,
+          gridSize: s.gridSize,
+          mapId: s.mapId,
+          tool: s.selectedTool,
+          panel: s.activePanel,
+          ticks: tickCountRef.current,
+          gameVersion: s.gameVersion,
+        });
+      } catch {
+        // never throw into game code
+      }
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const setTool = useCallback((tool: Tool) => {
+    if (process.env.NODE_ENV === 'development') tempRecord('game:setTool', { tool }); // TEMP-RECORDER
     commit((prev) => (isToolAvailable(tool, prev.mapId) ? { ...prev, selectedTool: tool, activePanel: 'none' } : prev));
   }, [commit]);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
+    if (process.env.NODE_ENV === 'development') tempRecord('game:setSpeed', { speed }); // TEMP-RECORDER
     if (speed !== 0) setLastRunSpeed(speed);
     setPausedByPlayer(speed === 0);
     commit((prev) => (prev.gameOver ? prev : { ...prev, speed }));
@@ -892,6 +939,7 @@ export function GameProvider({
     : null;
 
   const setTaxRate = useCallback((rate: number) => {
+    if (process.env.NODE_ENV === 'development') tempRecord('game:setTaxRate', { rate }); // TEMP-RECORDER
     commit((prev) => ({ ...prev, taxRate: clampTaxRate(rate) }));
   }, [commit]);
 
@@ -904,6 +952,7 @@ export function GameProvider({
 
   const setBudgetFunding = useCallback(
     (key: keyof Budget, funding: number) => {
+      if (process.env.NODE_ENV === 'development') tempRecord('game:setBudgetFunding', { key, funding }); // TEMP-RECORDER
       const clamped = clamp(funding, 0, 100);
       commit((prev) => ({
         ...prev,
@@ -924,6 +973,9 @@ export function GameProvider({
     if (entry) undoStackRef.current = pushUndoEntry(undoStackRef.current, entry, ++undoSeqRef.current);
   }, []);
 
+  const deferRecalcRef = useRef(false);
+  // TEMP-RECORDER: per-batch placement tally (placeAtTile inside placeBatch is summarised, not logged per tile)
+  const tempBatchRef = useRef<{ tiles: number; counts: Record<string, number> } | null>(null);
   const placeAtTile = useCallback((x: number, y: number, isRemote = false): PlaceResult => {
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
@@ -987,7 +1039,8 @@ export function GameProvider({
         };
       }
 
-      return recalculateDerivedState(nextState);
+      // Inside placeBatch the (whole-grid) recalculation runs once, after the last tile
+      return deferRecalcRef.current ? nextState : recalculateDerivedState(nextState);
     };
 
     // Multiplayer actions are broadcast tile by tile, so only a solo city can be undone.
@@ -1009,8 +1062,57 @@ export function GameProvider({
     if (!isRemote && currentTool !== 'select' && placeCallbackRef.current) {
       placeCallbackRef.current({ x, y, tool: currentTool });
     }
+    // TEMP-RECORDER: each placement outside a batch; inside a batch only the first 3 plus a tally
+    if (process.env.NODE_ENV === 'development') {
+      const batch = tempBatchRef.current;
+      if (batch) {
+        batch.tiles++;
+        batch.counts[result] = (batch.counts[result] ?? 0) + 1;
+        if (batch.tiles <= 3) tempRecord('game:placeAtTile', { x, y, tool: currentTool, result, inBatch: true });
+      } else {
+        tempRecord('game:placeAtTile', { x, y, tool: currentTool, result, remote: isRemote });
+      }
+    }
     return result;
   }, [commit, rememberForUndo]);
+
+  const placeBatch = useCallback((run: () => void) => {
+    const before = latestStateRef.current;
+    // TEMP-RECORDER: batch start / end with tile count and timings; phases for hang attribution
+    const tempStart = process.env.NODE_ENV === 'development' ? performance.now() : 0;
+    if (process.env.NODE_ENV === 'development') {
+      tempBatchRef.current = { tiles: 0, counts: {} };
+      tempRecord('game:placeBatch:start', { tool: before.selectedTool });
+      tempMarkPhase('placeBatch', { tool: before.selectedTool });
+    }
+    deferRecalcRef.current = true;
+    try {
+      run();
+    } finally {
+      deferRecalcRef.current = false;
+      const tempRunEnd = process.env.NODE_ENV === 'development' ? performance.now() : 0; // TEMP-RECORDER
+      if (process.env.NODE_ENV === 'development') {
+        tempEndPhase('placeBatch', { silent: true }); // TEMP-RECORDER
+        tempMarkPhase('placeBatch:recalculateDerivedState'); // TEMP-RECORDER
+      }
+      if (latestStateRef.current !== before) commit((prev) => recalculateDerivedState(prev));
+      // TEMP-RECORDER
+      if (process.env.NODE_ENV === 'development') {
+        tempEndPhase('placeBatch:recalculateDerivedState', { silent: true });
+        const tally = tempBatchRef.current;
+        tempBatchRef.current = null;
+        tempRecord('game:placeBatch:end', {
+          tool: before.selectedTool,
+          tiles: tally?.tiles ?? 0,
+          counts: tally?.counts,
+          changed: latestStateRef.current !== before,
+          runMs: Math.round(tempRunEnd - tempStart),
+          recalcMs: Math.round(performance.now() - tempRunEnd),
+          gridSize: before.gridSize,
+        });
+      }
+    }
+  }, [commit]);
 
   const upgradeServiceBuildingHandler = useCallback((x: number, y: number) => {
     let upgradeSucceeded = false;
@@ -1043,6 +1145,7 @@ export function GameProvider({
 
   const undoLast = useCallback((): boolean => {
     const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (process.env.NODE_ENV === 'development') tempRecord('game:undo', { ok: !!entry, kind: entry?.kind, count: entry?.count, depth: undoStackRef.current.length }); // TEMP-RECORDER
     if (!entry) return false;
     undoStackRef.current = undoStackRef.current.slice(0, -1);
     commit((prev) => recalculateDerivedState(applyUndo(prev, entry)));
@@ -1275,6 +1378,7 @@ export function GameProvider({
   }, []);
 
   const newGame = useCallback((options?: NewGameOptions) => {
+    if (process.env.NODE_ENV === 'development') tempRecord('game:newGame', { options }); // TEMP-RECORDER
     void backupLiveCity();
     clearGameState(); // Clear saved state when starting fresh
     replaceCity(createNewGameState(options, isMobile), latestStateRef.current);
@@ -1305,6 +1409,7 @@ export function GameProvider({
   const loadLastAutosave = useCallback(async (): Promise<boolean> => {
     try {
       const found = await findOldestMonthlyBackup();
+      if (process.env.NODE_ENV === 'development') tempRecord('game:loadLastAutosave', { ok: !!found, monthsBack: found?.monthsBack }); // TEMP-RECORDER
       if (!found) return false;
       replaceCity({ ...found.city, speed: 0 }, latestStateRef.current);
       return true;
@@ -1317,6 +1422,7 @@ export function GameProvider({
   const loadState = useCallback((stateString: string): boolean => {
     try {
       const migrated = migrateAndValidateState(JSON.parse(stateString));
+      if (process.env.NODE_ENV === 'development') tempRecord('game:importState', { ok: !!migrated, chars: stateString.length, gridSize: migrated?.gridSize, mapId: migrated?.mapId }); // TEMP-RECORDER
       if (!migrated) return false;
       const imported = withCalmSpeed(migrated);
       // Keep the city being replaced as a saved-city backup (5b)
@@ -1334,6 +1440,7 @@ export function GameProvider({
   }, []);
 
   const generateRandomCity = useCallback(() => {
+    if (process.env.NODE_ENV === 'development') tempRecord('game:generateRandomCity'); // TEMP-RECORDER
     clearGameState(); // Clear saved state when generating a new city
     replaceCity(ensureUtilityCapacity(generateRandomAdvancedCity(DEFAULT_GRID_SIZE)), latestStateRef.current);
   }, [replaceCity]);
@@ -1628,6 +1735,7 @@ export function GameProvider({
   const loadSavedCity = useCallback(async (cityId: string): Promise<boolean> => {
     // loadCityState migrates and validates (and uses cityId when the save has no id)
     const loadedCity = await loadCityState(cityId);
+    if (process.env.NODE_ENV === 'development') tempRecord('game:loadSavedCity', { cityId, ok: !!loadedCity, gridSize: loadedCity?.gridSize, mapId: loadedCity?.mapId }); // TEMP-RECORDER
     if (!loadedCity) return false;
     const cityState = withCalmSpeed(loadedCity);
 
@@ -1697,6 +1805,7 @@ export function GameProvider({
     setActivePanel,
     setBudgetFunding,
     placeAtTile,
+    placeBatch,
     undoLast,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,

@@ -18,11 +18,10 @@ import {
 } from './constants';
 import { gridToScreen } from './utils';
 import {
-  findOceanConnectedMarinas,
-  findOceanSpawnPoints,
   findAdjacentWaterTileForMarina,
   isOverWater,
 } from './gridFinders';
+import { findOceanConnectedMarinasCached, findOceanSpawnPointsCached } from './gridScanCache';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import { getRenderDpr } from '@/lib/graphicsSettings';
 
@@ -46,16 +45,17 @@ export function createBargeSystem(
   const { bargesRef, bargeIdRef, bargeSpawnTimerRef } = refs;
   const { worldStateRef, isMobile, visualHour, onBargeDelivery } = systemState;
 
-  // Find ocean-connected marinas callback
+  // Find ocean-connected marinas callback (called every frame: the flood fill is cached per map structure,
+  // see gridScanCache)
   const findOceanMarinasCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findOceanConnectedMarinas(currentGrid, currentGridSize);
+    return findOceanConnectedMarinasCached(currentGrid, currentGridSize);
   };
 
-  // Find ocean spawn points callback
+  // Find ocean spawn points callback (cached per map structure)
   const findOceanSpawnPointsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findOceanSpawnPoints(currentGrid, currentGridSize);
+    return findOceanSpawnPointsCached(currentGrid, currentGridSize);
   };
 
   // Find adjacent water tile for marina (2x2 building) callback

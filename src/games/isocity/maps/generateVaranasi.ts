@@ -14,6 +14,20 @@ export type TileFactory = (x: number, y: number, buildingType?: BuildingType) =>
 /** Land value given to river tiles, matching generated lakes/oceans. */
 const RIVER_LAND_VALUE = 60;
 
+/** Whether any of the 8 tiles around (x, y) is river water in the layout. */
+function touchesWater(water: ArrayLike<number>, size: number, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if ((dx || dy) && nx >= 0 && ny >= 0 && nx < size && ny < size && water[ny * size + nx] !== LAYOUT_WATER.none) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function generateVaranasiTerrain(
   size: number,
   rng: Rng,
@@ -33,7 +47,10 @@ export function generateVaranasiTerrain(
       }
       const density =
         layout.side[idx] === LAYOUT_SIDE.west ? VARANASI_MAP.treeDensity.westBank : VARANASI_MAP.treeDensity.eastBank;
-      row.push(createTile(x, y, rng() < density ? 'tree' : 'grass'));
+      // The roll is always taken so the rest of the map keeps its trees. Tiles touching a river (8 neighbours)
+      // stay open bank: a tree there overhangs the water around it and reads as standing in the river.
+      const roll = rng();
+      row.push(createTile(x, y, roll < density && !touchesWater(layout.water, size, x, y) ? 'tree' : 'grass'));
     }
     grid.push(row);
   }

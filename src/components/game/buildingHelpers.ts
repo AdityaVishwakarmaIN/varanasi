@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react';
-import { getGridVisualVersion } from './visualSignature';
+import { useCallback } from 'react';
+import { getCachedGridScan } from './gridScanCache';
 import { Tile, BuildingType } from '@/types/game';
 import { getBuildingSize } from '@/lib/simulation';
 
@@ -39,228 +39,233 @@ const ALL_PARK_TYPES = new Set<BuildingType>([
   'mountain_lodge', 'mountain_trailhead'
 ]);
 
-export function useBuildingHelpers(grid: Tile[][], gridSize: number, structureVersion: number) {
-  // PERF: the simulation hands over a new grid object every tick, but the metadata below depends only on
-  // building types. Rebuild it when the grid's visual version changes, not on every tick; this also keeps
-  // getTileMetadata stable so the map canvas does not redraw for ticks that changed nothing visible.
-  const visualVersion = getGridVisualVersion(grid, gridSize);
-  // Pre-compute all tile metadata once when grid changes
-  // This converts O(n) per-tile lookups during render to O(1) map lookups
-  // PERF: Store gridSize for numeric key calculation
-  const tileMetadataMap = useMemo(() => {
-    // PERF: Use numeric keys (y * gridSize + x) instead of string keys
-    const map = new Map<number, TileMetadata>();
-    const maxSize = 4;
-    
-    // Helper to check if a position has water
-    const isWater = (x: number, y: number): boolean => {
-      if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
-      return grid[y][x].building.type === 'water';
-    };
-    
-    // First pass: compute isPartOfMultiTileBuilding and isPartOfParkBuilding for all tiles
-    // These are expensive O(16) lookups that we want to do once
-    // PERF: Use numeric keys
-    const multiTileMap = new Map<number, boolean>();
-    const parkBuildingMap = new Map<number, boolean>();
-    
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const key = y * gridSize + x;
-        
-        // Check isPartOfMultiTileBuilding
-        let isMultiTile = false;
-        for (let dy = 0; dy < maxSize && !isMultiTile; dy++) {
-          for (let dx = 0; dx < maxSize && !isMultiTile; dx++) {
-            const originX = x - dx;
-            const originY = y - dy;
+/**
+ * Metadata of every tile, keyed y * gridSize + x. Reads only `building.type`, so it is cached per map
+ * structure (gridScanCache): the simulation hands over a new grid object every tick, and the metadata is
+ * rebuilt only when a building type actually changed. The map is shared: callers must not modify it.
+ */
+function getTileMetadataMap(grid: Tile[][], gridSize: number): ReadonlyMap<number, TileMetadata> {
+  return getCachedGridScan(grid, gridSize, 'tileMetadata', computeTileMetadataMap);
+}
+
+function computeTileMetadataMap(grid: Tile[][], gridSize: number): Map<number, TileMetadata> {
+  // PERF: Use numeric keys (y * gridSize + x) instead of string keys
+  const map = new Map<number, TileMetadata>();
+  const maxSize = 4;
+  
+  // Helper to check if a position has water
+  const isWater = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
+    return grid[y][x].building.type === 'water';
+  };
+  
+  // First pass: compute isPartOfMultiTileBuilding and isPartOfParkBuilding for all tiles
+  // These are expensive O(16) lookups that we want to do once
+  // PERF: Use numeric keys
+  const multiTileMap = new Map<number, boolean>();
+  const parkBuildingMap = new Map<number, boolean>();
+  
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const key = y * gridSize + x;
+      
+      // Check isPartOfMultiTileBuilding
+      let isMultiTile = false;
+      for (let dy = 0; dy < maxSize && !isMultiTile; dy++) {
+        for (let dx = 0; dx < maxSize && !isMultiTile; dx++) {
+          const originX = x - dx;
+          const originY = y - dy;
+          
+          if (originX >= 0 && originX < gridSize && originY >= 0 && originY < gridSize) {
+            const originTile = grid[originY][originX];
+            const buildingSize = getBuildingSize(originTile.building.type);
             
-            if (originX >= 0 && originX < gridSize && originY >= 0 && originY < gridSize) {
-              const originTile = grid[originY][originX];
-              const buildingSize = getBuildingSize(originTile.building.type);
-              
-              if (buildingSize.width > 1 || buildingSize.height > 1) {
-                if (x >= originX && x < originX + buildingSize.width &&
-                    y >= originY && y < originY + buildingSize.height) {
-                  isMultiTile = true;
-                }
+            if (buildingSize.width > 1 || buildingSize.height > 1) {
+              if (x >= originX && x < originX + buildingSize.width &&
+                  y >= originY && y < originY + buildingSize.height) {
+                isMultiTile = true;
               }
             }
           }
         }
-        multiTileMap.set(key, isMultiTile);
-        
-        // Check isPartOfParkBuilding
-        let isParkBuilding = false;
-        for (let dy = 0; dy < maxSize && !isParkBuilding; dy++) {
-          for (let dx = 0; dx < maxSize && !isParkBuilding; dx++) {
-            const originX = x - dx;
-            const originY = y - dy;
-            
-            if (originX >= 0 && originX < gridSize && originY >= 0 && originY < gridSize) {
-              const originTile = grid[originY][originX];
-              
-              if (PARK_BUILDINGS_SET.has(originTile.building.type)) {
-                const buildingSize = getBuildingSize(originTile.building.type);
-                if (x >= originX && x < originX + buildingSize.width &&
-                    y >= originY && y < originY + buildingSize.height) {
-                  isParkBuilding = true;
-                }
-              }
-            }
-          }
-        }
-        parkBuildingMap.set(key, isParkBuilding);
       }
+      multiTileMap.set(key, isMultiTile);
+      
+      // Check isPartOfParkBuilding
+      let isParkBuilding = false;
+      for (let dy = 0; dy < maxSize && !isParkBuilding; dy++) {
+        for (let dx = 0; dx < maxSize && !isParkBuilding; dx++) {
+          const originX = x - dx;
+          const originY = y - dy;
+          
+          if (originX >= 0 && originX < gridSize && originY >= 0 && originY < gridSize) {
+            const originTile = grid[originY][originX];
+            
+            if (PARK_BUILDINGS_SET.has(originTile.building.type)) {
+              const buildingSize = getBuildingSize(originTile.building.type);
+              if (x >= originX && x < originX + buildingSize.width &&
+                  y >= originY && y < originY + buildingSize.height) {
+                isParkBuilding = true;
+              }
+            }
+          }
+        }
+      }
+      parkBuildingMap.set(key, isParkBuilding);
     }
-    
-    // Helper to check if a position has a road or bridge (for building orientation)
-    const isRoad = (checkX: number, checkY: number): boolean => {
-      if (checkX < 0 || checkY < 0 || checkX >= gridSize || checkY >= gridSize) return false;
-      const type = grid[checkY][checkX].building.type;
-      return type === 'road' || type === 'bridge';
-    };
-    
-    // Second pass: compute all derived metadata
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const key = y * gridSize + x;
-        const tile = grid[y][x];
-        const buildingType = tile.building.type;
+  }
+  
+  // Helper to check if a position has a road or bridge (for building orientation)
+  const isRoad = (checkX: number, checkY: number): boolean => {
+    if (checkX < 0 || checkY < 0 || checkX >= gridSize || checkY >= gridSize) return false;
+    const type = grid[checkY][checkX].building.type;
+    return type === 'road' || type === 'bridge';
+  };
+  
+  // Second pass: compute all derived metadata
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const key = y * gridSize + x;
+      const tile = grid[y][x];
+      const buildingType = tile.building.type;
+      
+      // Check water adjacency (all 8 directions for isAdjacentToWater, 4 for dirs)
+      const adjacentWaterDirs = {
+        north: isWater(x - 1, y),
+        east: isWater(x, y - 1),
+        south: isWater(x + 1, y),
+        west: isWater(x, y + 1),
+      };
+      
+      // Check diagonal directions too for isAdjacentToWater
+      const isAdjacentToWater = adjacentWaterDirs.north || adjacentWaterDirs.east || 
+                                 adjacentWaterDirs.south || adjacentWaterDirs.west ||
+                                 isWater(x - 1, y - 1) || isWater(x + 1, y - 1) ||
+                                 isWater(x - 1, y + 1) || isWater(x + 1, y + 1);
+      
+      const isPartOfMultiTileBuilding = multiTileMap.get(key) || false;
+      const isPartOfParkBuilding = parkBuildingMap.get(key) || false;
+      
+      // Compute isPark
+      const isPark = ALL_PARK_TYPES.has(buildingType) ||
+                     (buildingType === 'empty' && isPartOfParkBuilding);
+      
+      // Compute isBuilding (for grey base)
+      // Rail tiles are excluded because they have their own gravel base rendering
+      // Bridge tiles are excluded because they render water underneath with their own structure
+      const isDirectBuilding = !isPark &&
+        buildingType !== 'grass' &&
+        buildingType !== 'empty' &&
+        buildingType !== 'water' &&
+        buildingType !== 'road' &&
+        buildingType !== 'bridge' &&
+        buildingType !== 'rail' &&
+        buildingType !== 'tree';
+      const isPartOfBuilding = buildingType === 'empty' && isPartOfMultiTileBuilding;
+      const needsGreyBase = (isDirectBuilding || isPartOfBuilding) && !isPark;
+      
+      // Compute green base needs
+      const hasGreenBase = buildingType === 'grass' || buildingType === 'empty' || buildingType === 'tree';
+      const needsGreenBaseOverWater = hasGreenBase && isAdjacentToWater;
+      const needsGreenBaseForPark = (buildingType === 'park' || buildingType === 'park_large') ||
+                                    (buildingType === 'empty' && isPartOfParkBuilding);
+      
+      // PERF: Pre-compute road adjacency and flip direction for building orientation
+      // This replaces the expensive per-frame getRoadAdjacency() call during rendering
+      // For multi-tile buildings, we only compute this for origin tiles (building type != 'empty')
+      let hasAdjacentRoad = false;
+      let shouldFlipForRoad = false;
+      
+      // Only compute for actual building tiles (not 'empty' parts of multi-tile buildings)
+      // The render loop will use the origin tile's metadata
+      if (isDirectBuilding) {
+        const buildingSize = getBuildingSize(buildingType);
+        const width = buildingSize.width;
+        const height = buildingSize.height;
         
-        // Check water adjacency (all 8 directions for isAdjacentToWater, 4 for dirs)
-        const adjacentWaterDirs = {
-          north: isWater(x - 1, y),
-          east: isWater(x, y - 1),
-          south: isWater(x + 1, y),
-          west: isWater(x, y + 1),
-        };
+        // Check all four edges for roads - same logic as getRoadAdjacency
+        let roadOnSouthOrEast = false; // "Front" sides - no flip needed
+        let roadOnNorthOrWest = false; // "Back" sides - flip needed
         
-        // Check diagonal directions too for isAdjacentToWater
-        const isAdjacentToWater = adjacentWaterDirs.north || adjacentWaterDirs.east || 
-                                   adjacentWaterDirs.south || adjacentWaterDirs.west ||
-                                   isWater(x - 1, y - 1) || isWater(x + 1, y - 1) ||
-                                   isWater(x - 1, y + 1) || isWater(x + 1, y + 1);
+        // Check south edge (y + height) - front-right in isometric view
+        for (let dx = 0; dx < width && !roadOnSouthOrEast; dx++) {
+          if (isRoad(x + dx, y + height)) {
+            roadOnSouthOrEast = true;
+          }
+        }
         
-        const isPartOfMultiTileBuilding = multiTileMap.get(key) || false;
-        const isPartOfParkBuilding = parkBuildingMap.get(key) || false;
-        
-        // Compute isPark
-        const isPark = ALL_PARK_TYPES.has(buildingType) ||
-                       (buildingType === 'empty' && isPartOfParkBuilding);
-        
-        // Compute isBuilding (for grey base)
-        // Rail tiles are excluded because they have their own gravel base rendering
-        // Bridge tiles are excluded because they render water underneath with their own structure
-        const isDirectBuilding = !isPark &&
-          buildingType !== 'grass' &&
-          buildingType !== 'empty' &&
-          buildingType !== 'water' &&
-          buildingType !== 'road' &&
-          buildingType !== 'bridge' &&
-          buildingType !== 'rail' &&
-          buildingType !== 'tree';
-        const isPartOfBuilding = buildingType === 'empty' && isPartOfMultiTileBuilding;
-        const needsGreyBase = (isDirectBuilding || isPartOfBuilding) && !isPark;
-        
-        // Compute green base needs
-        const hasGreenBase = buildingType === 'grass' || buildingType === 'empty' || buildingType === 'tree';
-        const needsGreenBaseOverWater = hasGreenBase && isAdjacentToWater;
-        const needsGreenBaseForPark = (buildingType === 'park' || buildingType === 'park_large') ||
-                                      (buildingType === 'empty' && isPartOfParkBuilding);
-        
-        // PERF: Pre-compute road adjacency and flip direction for building orientation
-        // This replaces the expensive per-frame getRoadAdjacency() call during rendering
-        // For multi-tile buildings, we only compute this for origin tiles (building type != 'empty')
-        let hasAdjacentRoad = false;
-        let shouldFlipForRoad = false;
-        
-        // Only compute for actual building tiles (not 'empty' parts of multi-tile buildings)
-        // The render loop will use the origin tile's metadata
-        if (isDirectBuilding) {
-          const buildingSize = getBuildingSize(buildingType);
-          const width = buildingSize.width;
-          const height = buildingSize.height;
-          
-          // Check all four edges for roads - same logic as getRoadAdjacency
-          let roadOnSouthOrEast = false; // "Front" sides - no flip needed
-          let roadOnNorthOrWest = false; // "Back" sides - flip needed
-          
-          // Check south edge (y + height) - front-right in isometric view
-          for (let dx = 0; dx < width && !roadOnSouthOrEast; dx++) {
-            if (isRoad(x + dx, y + height)) {
+        // Check east edge (x + width) - front-left in isometric view
+        if (!roadOnSouthOrEast) {
+          for (let dy = 0; dy < height && !roadOnSouthOrEast; dy++) {
+            if (isRoad(x + width, y + dy)) {
               roadOnSouthOrEast = true;
             }
           }
-          
-          // Check east edge (x + width) - front-left in isometric view
-          if (!roadOnSouthOrEast) {
-            for (let dy = 0; dy < height && !roadOnSouthOrEast; dy++) {
-              if (isRoad(x + width, y + dy)) {
-                roadOnSouthOrEast = true;
-              }
-            }
-          }
-          
-          // Check north edge (y - 1) - back-left in isometric view
-          if (!roadOnSouthOrEast) {
-            for (let dx = 0; dx < width && !roadOnNorthOrWest; dx++) {
-              if (isRoad(x + dx, y - 1)) {
-                roadOnNorthOrWest = true;
-              }
-            }
-          }
-          
-          // Check west edge (x - 1) - back-right in isometric view
-          if (!roadOnSouthOrEast && !roadOnNorthOrWest) {
-            for (let dy = 0; dy < height && !roadOnNorthOrWest; dy++) {
-              if (isRoad(x - 1, y + dy)) {
-                roadOnNorthOrWest = true;
-              }
-            }
-          }
-          
-          hasAdjacentRoad = roadOnSouthOrEast || roadOnNorthOrWest;
-          // Should flip if road is on back sides (north/west) to face the road
-          shouldFlipForRoad = roadOnNorthOrWest && !roadOnSouthOrEast;
         }
         
-        // PERF: Pre-compute intersection status for road tiles
-        // This avoids repeated getDirectionOptions() calls in the vehicle update loop
-        let isIntersection = false;
-        let roadConnectionCount = 0;
-        
-        if (buildingType === 'road' || buildingType === 'bridge') {
-          // Count road connections in all 4 directions
-          if (isRoad(x - 1, y)) roadConnectionCount++;
-          if (isRoad(x + 1, y)) roadConnectionCount++;
-          if (isRoad(x, y - 1)) roadConnectionCount++;
-          if (isRoad(x, y + 1)) roadConnectionCount++;
-          
-          // Intersection = 3 or more connections
-          isIntersection = roadConnectionCount >= 3;
+        // Check north edge (y - 1) - back-left in isometric view
+        if (!roadOnSouthOrEast) {
+          for (let dx = 0; dx < width && !roadOnNorthOrWest; dx++) {
+            if (isRoad(x + dx, y - 1)) {
+              roadOnNorthOrWest = true;
+            }
+          }
         }
         
-        map.set(key, {
-          isPartOfMultiTileBuilding,
-          isPartOfParkBuilding,
-          isAdjacentToWater,
-          adjacentWaterDirs,
-          needsGreyBase,
-          needsGreenBaseOverWater,
-          needsGreenBaseForPark,
-          shouldFlipForRoad,
-          hasAdjacentRoad,
-          isIntersection,
-          roadConnectionCount,
-        });
+        // Check west edge (x - 1) - back-right in isometric view
+        if (!roadOnSouthOrEast && !roadOnNorthOrWest) {
+          for (let dy = 0; dy < height && !roadOnNorthOrWest; dy++) {
+            if (isRoad(x - 1, y + dy)) {
+              roadOnNorthOrWest = true;
+            }
+          }
+        }
+        
+        hasAdjacentRoad = roadOnSouthOrEast || roadOnNorthOrWest;
+        // Should flip if road is on back sides (north/west) to face the road
+        shouldFlipForRoad = roadOnNorthOrWest && !roadOnSouthOrEast;
       }
+      
+      // PERF: Pre-compute intersection status for road tiles
+      // This avoids repeated getDirectionOptions() calls in the vehicle update loop
+      let isIntersection = false;
+      let roadConnectionCount = 0;
+      
+      if (buildingType === 'road' || buildingType === 'bridge') {
+        // Count road connections in all 4 directions
+        if (isRoad(x - 1, y)) roadConnectionCount++;
+        if (isRoad(x + 1, y)) roadConnectionCount++;
+        if (isRoad(x, y - 1)) roadConnectionCount++;
+        if (isRoad(x, y + 1)) roadConnectionCount++;
+        
+        // Intersection = 3 or more connections
+        isIntersection = roadConnectionCount >= 3;
+      }
+      
+      map.set(key, {
+        isPartOfMultiTileBuilding,
+        isPartOfParkBuilding,
+        isAdjacentToWater,
+        adjacentWaterDirs,
+        needsGreyBase,
+        needsGreenBaseOverWater,
+        needsGreenBaseForPark,
+        shouldFlipForRoad,
+        hasAdjacentRoad,
+        isIntersection,
+        roadConnectionCount,
+      });
     }
-    
-    return map;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the visual version, which tracks every type change in grid
-  }, [visualVersion, gridSize, structureVersion]);
+  }
   
+  return map;
+}
+
+export function useBuildingHelpers(grid: Tile[][], gridSize: number) {
+  // PERF: the same map instance while building types are unchanged, which also keeps getTileMetadata
+  // stable so the map canvas does not redraw for ticks that changed nothing visible.
+  const tileMetadataMap = getTileMetadataMap(grid, gridSize);
+
   // O(1) lookup functions that use the pre-computed map
   // PERF: Use numeric key calculation (gridY * gridSize + gridX)
   const isPartOfMultiTileBuilding = useCallback((gridX: number, gridY: number): boolean => {
