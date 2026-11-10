@@ -2,7 +2,7 @@
  * Disease outbreaks (Sprint 4, S4-T9). Pure functions; tunables in DISEASE_CONFIG.
  *
  * Checked once per in-game week per feeder zone (see `feederZones.ts`):
- *   risk = base × densityFactor × waterFactor × riverFactor × floodFactor × seasonFactor
+ *   risk = base × densityFactor × waterFactor × riverFactor × floodFactor × seasonFactor × hospitalFactor
  * An outbreak lasts at least `minDurationDays`, costs the block 1% population per week, and ends either
  * `cureDelayDays` after hospital and water coverage are good enough, or on its own after `selfResolveDays`
  * with an extra population loss.
@@ -14,7 +14,9 @@ import type { Season } from '@/lib/seasons';
 
 export const DISEASE_CONFIG = {
   /** Weekly outbreak chance before multipliers. */
-  baseRisk: 0.01,
+  baseRisk: 0.004,
+  /** Full hospital coverage (100) cuts the outbreak chance by this share: factor = 1 − cut × coverage/100. */
+  hospitalRiskCut: 0.8,
   /** densityFactor = 1 + blockPopulation / densityPopulation. */
   densityPopulation: 2000,
   /** riverFactor applies when Ganga Health is below this (blocks with catchment tiles only). */
@@ -60,10 +62,12 @@ export interface DiseaseRiskInputs {
   /** Whether the block had flooded tiles in the last `recentFloodDays` days (see `wasFloodedRecently`). */
   floodedRecently: boolean;
   season: Season;
+  /** Average hospital coverage over the block, 0–100 (missing = 0, no hospital). */
+  hospitalCoverage?: number;
 }
 
 /** The named multipliers in the risk formula. */
-export type DiseaseRiskFactor = 'density' | 'water' | 'river' | 'flood' | 'season';
+export type DiseaseRiskFactor = 'density' | 'water' | 'river' | 'flood' | 'season' | 'hospital';
 
 /** Each multiplier of the risk formula for a block. */
 export function getDiseaseRiskFactors(inputs: DiseaseRiskInputs): Record<DiseaseRiskFactor, number> {
@@ -81,24 +85,30 @@ export function getDiseaseRiskFactors(inputs: DiseaseRiskInputs): Record<Disease
         : 1,
     flood: inputs.floodedRecently ? c.floodFactor : 1,
     season: c.riskySeasons.includes(inputs.season) ? c.seasonFactor : 1,
+    hospital: 1 - c.hospitalRiskCut * Math.min(1, Math.max(0, (inputs.hospitalCoverage ?? 0) / 100)),
   };
 }
 
 /** Weekly outbreak probability for a block: base × all factors, capped at `maxRisk`. */
 export function calculateDiseaseRisk(inputs: DiseaseRiskInputs): number {
   const f = getDiseaseRiskFactors(inputs);
-  const risk = DISEASE_CONFIG.baseRisk * f.density * f.water * f.river * f.flood * f.season;
+  const risk = DISEASE_CONFIG.baseRisk * f.density * f.water * f.river * f.flood * f.season * f.hospital;
   return Math.min(DISEASE_CONFIG.maxRisk, risk);
 }
 
 /** Tie-break order: player-fixable causes first. */
-const FACTOR_PRIORITY: readonly DiseaseRiskFactor[] = ['flood', 'water', 'river', 'density', 'season'];
+const FACTOR_PRIORITY: readonly DiseaseRiskFactor[] = ['flood', 'water', 'hospital', 'river', 'density', 'season'];
 
-/** The factor that multiplies risk the most, for the advisor explanation. Ties go to the more fixable cause. */
+/**
+ * The factor that raises risk the most, for the advisor explanation. Ties go to the more fixable cause.
+ * The hospital factor only lowers risk, so it is scored by what is missing: 1 + cut × (1 − coverage/100),
+ * i.e. 1.8 with no hospital nearby, 1 with full coverage.
+ */
 export function getTopRiskFactor(inputs: DiseaseRiskInputs): DiseaseRiskFactor {
   const f = getDiseaseRiskFactors(inputs);
+  const score: Record<DiseaseRiskFactor, number> = { ...f, hospital: f.hospital + DISEASE_CONFIG.hospitalRiskCut };
   let best: DiseaseRiskFactor = FACTOR_PRIORITY[0];
-  for (const k of FACTOR_PRIORITY) if (f[k] > f[best]) best = k;
+  for (const k of FACTOR_PRIORITY) if (score[k] > score[best]) best = k;
   return best;
 }
 
@@ -109,6 +119,7 @@ export const DISEASE_FACTOR_LABELS: Record<DiseaseRiskFactor, string> = {
   river: 'A polluted Ganga',
   density: 'Overcrowding',
   season: 'Monsoon-season infections',
+  hospital: 'No hospital nearby',
 };
 
 /** True when a block flooded within the last `recentFloodDays` days. */

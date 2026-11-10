@@ -25,38 +25,43 @@ const calm: DiseaseRiskInputs = {
 
 describe('calculateDiseaseRisk', () => {
   it('is the base risk for an empty, watered block in winter', () => {
-    expect(calculateDiseaseRisk(calm)).toBeCloseTo(0.01, 10);
+    expect(calculateDiseaseRisk(calm)).toBeCloseTo(0.004, 10);
   });
 
   it('densityFactor = 1 + population / 2000', () => {
-    expect(calculateDiseaseRisk({ ...calm, population: 2000 })).toBeCloseTo(0.02, 10);
-    expect(calculateDiseaseRisk({ ...calm, population: 1000 })).toBeCloseTo(0.015, 10);
+    expect(calculateDiseaseRisk({ ...calm, population: 2000 })).toBeCloseTo(0.008, 10);
+    expect(calculateDiseaseRisk({ ...calm, population: 1000 })).toBeCloseTo(0.006, 10);
   });
 
   it('waterFactor = 1 + share of residential tiles without water', () => {
-    expect(calculateDiseaseRisk({ ...calm, residentialTilesWithoutWater: 5 })).toBeCloseTo(0.015, 10);
-    expect(calculateDiseaseRisk({ ...calm, residentialTilesWithoutWater: 10 })).toBeCloseTo(0.02, 10);
+    expect(calculateDiseaseRisk({ ...calm, residentialTilesWithoutWater: 5 })).toBeCloseTo(0.006, 10);
+    expect(calculateDiseaseRisk({ ...calm, residentialTilesWithoutWater: 10 })).toBeCloseTo(0.008, 10);
     expect(getDiseaseRiskFactors({ ...calm, residentialTiles: 0, residentialTilesWithoutWater: 0 }).water).toBe(1);
   });
 
   it('riverFactor 1.5 only when Ganga Health < 50 and the block touches the catchment', () => {
-    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 49 })).toBeCloseTo(0.015, 10);
-    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 50 })).toBeCloseTo(0.01, 10);
-    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 20, hasCatchmentTiles: false })).toBeCloseTo(0.01, 10);
-    expect(calculateDiseaseRisk({ ...calm, gangaHealth: undefined })).toBeCloseTo(0.01, 10);
+    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 49 })).toBeCloseTo(0.006, 10);
+    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 50 })).toBeCloseTo(0.004, 10);
+    expect(calculateDiseaseRisk({ ...calm, gangaHealth: 20, hasCatchmentTiles: false })).toBeCloseTo(0.004, 10);
+    expect(calculateDiseaseRisk({ ...calm, gangaHealth: undefined })).toBeCloseTo(0.004, 10);
   });
 
   it('floodFactor 2 and seasonFactor 2 in monsoon and post-monsoon', () => {
-    expect(calculateDiseaseRisk({ ...calm, floodedRecently: true })).toBeCloseTo(0.02, 10);
-    expect(calculateDiseaseRisk({ ...calm, season: 'monsoon' })).toBeCloseTo(0.02, 10);
-    expect(calculateDiseaseRisk({ ...calm, season: 'postMonsoon' })).toBeCloseTo(0.02, 10);
-    expect(calculateDiseaseRisk({ ...calm, season: 'summer' })).toBeCloseTo(0.01, 10);
+    expect(calculateDiseaseRisk({ ...calm, floodedRecently: true })).toBeCloseTo(0.008, 10);
+    expect(calculateDiseaseRisk({ ...calm, season: 'monsoon' })).toBeCloseTo(0.008, 10);
+    expect(calculateDiseaseRisk({ ...calm, season: 'postMonsoon' })).toBeCloseTo(0.008, 10);
+    expect(calculateDiseaseRisk({ ...calm, season: 'summer' })).toBeCloseTo(0.004, 10);
   });
 
   it('multiplies everything: dense, dry, dirty, flooded, monsoon block', () => {
     const worst = { ...calm, population: 4000, residentialTilesWithoutWater: 10, gangaHealth: 30, floodedRecently: true, season: 'monsoon' as const };
-    // 0.01 × 3 × 2 × 1.5 × 2 × 2 = 0.36
-    expect(calculateDiseaseRisk(worst)).toBeCloseTo(0.36, 10);
+    // 0.004 × 3 × 2 × 1.5 × 2 × 2 = 0.144
+    expect(calculateDiseaseRisk(worst)).toBeCloseTo(0.144, 10);
+  });
+
+  it('hospital coverage cuts the risk: × (1 − 0.8 × coverage / 100)', () => {
+    expect(calculateDiseaseRisk({ ...calm, hospitalCoverage: 100 })).toBeCloseTo(0.004 * 0.2, 10);
+    expect(calculateDiseaseRisk({ ...calm, hospitalCoverage: 50 })).toBeCloseTo(0.004 * 0.6, 10);
   });
 
   it('is capped at 1', () => {
@@ -77,15 +82,21 @@ describe('calculateDiseaseRisk', () => {
 });
 
 describe('getTopRiskFactor', () => {
+  const covered = { ...calm, hospitalCoverage: 100 };
   it('names the biggest multiplier', () => {
-    expect(getTopRiskFactor({ ...calm, population: 6000 })).toBe('density');
-    expect(getTopRiskFactor({ ...calm, population: 500, residentialTilesWithoutWater: 9 })).toBe('water');
-    expect(getTopRiskFactor({ ...calm, gangaHealth: 10 })).toBe('river');
+    expect(getTopRiskFactor({ ...covered, population: 6000 })).toBe('density');
+    expect(getTopRiskFactor({ ...covered, population: 500, residentialTilesWithoutWater: 9 })).toBe('water');
+    expect(getTopRiskFactor({ ...covered, gangaHealth: 10 })).toBe('river');
+  });
+
+  it('can name a missing hospital', () => {
+    expect(getTopRiskFactor({ ...calm, gangaHealth: 10 })).toBe('hospital');
+    expect(DISEASE_FACTOR_LABELS.hospital).toBe('No hospital nearby');
   });
 
   it('breaks ties toward the more fixable cause (flood before season)', () => {
-    expect(getTopRiskFactor({ ...calm, floodedRecently: true, season: 'monsoon' })).toBe('flood');
-    expect(getTopRiskFactor({ ...calm, season: 'monsoon' })).toBe('season');
+    expect(getTopRiskFactor({ ...covered, floodedRecently: true, season: 'monsoon' })).toBe('flood');
+    expect(getTopRiskFactor({ ...covered, season: 'monsoon' })).toBe('season');
     expect(DISEASE_FACTOR_LABELS.flood).toMatch(/flood/i);
   });
 });

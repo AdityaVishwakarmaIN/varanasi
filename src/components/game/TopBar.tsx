@@ -359,7 +359,7 @@ export const TopBar = React.memo(function TopBar({
             value={[taxRate]}
             onValueChange={(value) => setTaxRate(value[0])}
             min={0}
-            max={100}
+            max={20}
             step={1}
             className="w-14"
             aria-label={String(m(UI_LABELS.tax))}

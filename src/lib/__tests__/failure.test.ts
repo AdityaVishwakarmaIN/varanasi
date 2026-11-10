@@ -123,7 +123,7 @@ describe('bankruptcy', () => {
 });
 
 describe('exodus', () => {
-  it('starts after 12 consecutive months of happiness below 30, abandoning 2% per month', () => {
+  it('starts after 12 consecutive months of happiness below 30, abandoning 2%, 4%, 6%… per month (max 20%)', () => {
     const r = run(undefined, Array(11).fill(miserable));
     expect(r.state.exodusActive).toBe(false);
     expect(monthsUntilExodus(r.state)).toBe(1);
@@ -134,7 +134,16 @@ describe('exodus', () => {
     expect(twelfth.events).toContainEqual({ type: 'exodusAbandonment', share: 0.02 });
     const thirteenth = advanceFailureState(twelfth.next, miserable);
     expect(types(thirteenth.events)).not.toContain('exodusStarted');
-    expect(thirteenth.events).toContainEqual({ type: 'exodusAbandonment', share: 0.02 });
+    expect(thirteenth.events).toContainEqual({ type: 'exodusAbandonment', share: 0.04 });
+    const later = run(thirteenth.next, Array(15).fill(miserable));
+    expect(later.events[0]).toContainEqual({ type: 'exodusAbandonment', share: 0.06 });
+    expect(later.events[14]).toContainEqual({ type: 'exodusAbandonment', share: 0.2 });
+  });
+
+  it('the low-happiness counter does not advance while nobody lives in the city', () => {
+    const r = run(undefined, Array(20).fill({ ...miserable, displayedPopulation: 0 }));
+    expect(r.state.lowHappinessMonths).toBe(0);
+    expect(r.state.exodusActive).toBe(false);
   });
 
   it('a happy month resets the counter and ends the exodus', () => {
@@ -171,6 +180,10 @@ describe('getTopFailingStat', () => {
     expect(getTopFailingStat(stats)).toMatchObject({ stat: 'health', value: 30 });
     expect(getTopFailingStat({ ...stats, gangaHealth: 10 }).stat).toBe('gangaHealth');
     expect(getTopFailingStat(stats).line.length).toBeGreaterThan(0);
+  });
+  it('can blame jobs or taxes', () => {
+    expect(getTopFailingStat({ ...stats, jobSatisfaction: 10 }).stat).toBe('jobs');
+    expect(getTopFailingStat({ ...stats, taxRate: 30 })).toMatchObject({ stat: 'taxes', value: 10 });
   });
   it('tracks the peak Ganga Health for the game-over screen', () => {
     const s = run(createFailureState(), [{ ...ok, gangaHealth: 60 }, { ...ok, gangaHealth: 75 }, { ...ok, gangaHealth: 50 }]).state;

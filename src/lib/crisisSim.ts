@@ -189,15 +189,18 @@ function scanBlock(input: DiseaseDayInput, feeder: number): BlockScan {
       tiles++;
       hospital += Math.min(100, services.health[y][x]);
       if (services.water[y][x]) watered++;
-      if (tile.zone === 'residential') {
+      // Informal housing (S3-T9) has residents too, though it is not zoned
+      if (tile.zone === 'residential' || tile.building.type === 'informal_housing') {
         residential++;
         population += tile.building.population || 0;
         if (!services.water[y][x]) dry++;
       }
       if (!catchment && getDistanceToGanga(x, y, size, input.mapId) <= catchmentRadius) catchment = true;
-      if (!flooded && input.recentFloodMask?.[y * size + x]) flooded = true;
+      // Only flooded homes count: water over empty land makes nobody sick
+      if (!flooded && (tile.building.population || 0) > 0 && input.recentFloodMask?.[y * size + x]) flooded = true;
     }
   }
+  const hospitalCoverage = tiles > 0 ? hospital / tiles : 0;
   return {
     inputs: {
       population,
@@ -207,8 +210,9 @@ function scanBlock(input: DiseaseDayInput, feeder: number): BlockScan {
       hasCatchmentTiles: catchment,
       floodedRecently: flooded,
       season: input.season,
+      hospitalCoverage,
     },
-    hospitalCoverage: tiles > 0 ? hospital / tiles : 0,
+    hospitalCoverage,
     waterCoverage: tiles > 0 ? (watered / tiles) * 100 : 0,
   };
 }

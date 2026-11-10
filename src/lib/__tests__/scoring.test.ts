@@ -4,6 +4,8 @@ import {
   calculateEnvironmentScore,
   calculateHappiness,
   calculateJobSatisfaction,
+  calculateOccupiedCoverageAverages,
+  isEnvironmentPlayableBuildingType,
 } from '@/lib/scoring';
 
 describe('scoring', () => {
@@ -25,6 +27,30 @@ describe('scoring', () => {
   it('average coverage handles empty and filled grids', () => {
     expect(calculateAverageCoverage([])).toBe(0);
     expect(calculateAverageCoverage([[0, 100], [100, 0]])).toBe(50);
+  });
+
+  it('occupied coverage averages only over tiles with residents or jobs, weighted by them', () => {
+    const g = (vals: number[][]) => vals;
+    const services = {
+      police: g([[100, 0], [0, 0]]),
+      fire: g([[0, 0], [0, 0]]),
+      health: g([[50, 0], [100, 0]]),
+      education: g([[0, 0], [0, 0]]),
+    } as unknown as Parameters<typeof calculateOccupiedCoverageAverages>[0];
+    const tile = (population: number, jobs: number) => ({ building: { population, jobs } });
+    const grid = [[tile(10, 0), tile(0, 0)], [tile(0, 30), tile(0, 0)]];
+    const avg = calculateOccupiedCoverageAverages(services, grid);
+    expect(avg.police).toBeCloseTo(25);
+    expect(avg.health).toBeCloseTo(87.5);
+    const empty = [[tile(0, 0)]];
+    expect(calculateOccupiedCoverageAverages(services, empty)).toEqual({ police: 0, fire: 0, health: 0, education: 0 });
+  });
+
+  it('grass, water and empty tiles are not part of the developed footprint', () => {
+    expect(isEnvironmentPlayableBuildingType('grass')).toBe(false);
+    expect(isEnvironmentPlayableBuildingType('water')).toBe(false);
+    expect(isEnvironmentPlayableBuildingType('empty')).toBe(false);
+    expect(isEnvironmentPlayableBuildingType('road')).toBe(true);
   });
 
   it('job satisfaction is 100 when jobs cover population', () => {

@@ -64,8 +64,10 @@ function setup(intervalMs: number, tickCostMs = 0) {
 describe('getTickIntervalMs', () => {
   it('uses the named config and pauses at speed 0', () => {
     expect(getTickIntervalMs(1, false)).toBe(TICK_INTERVAL_MS.desktop[0]);
-    expect(getTickIntervalMs(3, false)).toBe(200);
-    expect(getTickIntervalMs(2, true)).toBe(450);
+    expect(getTickIntervalMs(2, false)).toBe(200);
+    expect(getTickIntervalMs(3, false)).toBe(80);
+    expect(getTickIntervalMs(2, true)).toBe(300);
+    expect(getTickIntervalMs(3, true)).toBe(120);
     expect(getTickIntervalMs(0, false)).toBe(Infinity);
   });
 });

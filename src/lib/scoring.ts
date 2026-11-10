@@ -11,8 +11,8 @@ import type { BuildingType, ServiceCoverage } from '@/types/game';
 /** All tunable scoring weights and targets, grouped by the score they drive. */
 export const SCORING_CONFIG = {
   environment: {
-    /** Tree coverage (% of all tiles) that yields the maximum green score. */
-    targetTreePercent: 25,
+    /** Tree coverage (% of the developed footprint) that yields the maximum green score. */
+    targetTreePercent: 15,
     /** Maximum value any rating can reach. */
     scoreMax: 100,
     /** A park counts as this fraction (%) of a tree toward green coverage. */
@@ -75,12 +75,47 @@ export const SCORING_CONFIG = {
 const { environment: ENV, safety: SAFETY, health: HEALTH, happiness: HAPPINESS } =
   SCORING_CONFIG;
 
-/** Tiles that count toward the playable area used by environment scoring. */
+/**
+ * Tiles that count toward the city's developed footprint, used by environment scoring and the pollution
+ * penalties: anything that is not bare grass, water or an empty multi-tile filler.
+ */
 export function isEnvironmentPlayableBuildingType(buildingType: BuildingType): boolean {
-  return buildingType !== 'empty';
+  return buildingType !== 'empty' && buildingType !== 'grass' && buildingType !== 'water';
 }
 
-/** Average value across a service-coverage grid (0 when empty). */
+/** Minimal tile shape for occupancy-weighted coverage. */
+interface OccupancyTile {
+  building: { population: number; jobs: number };
+}
+
+/**
+ * Average coverage (0-100) of each service grid over the tiles people live or work on, weighted by
+ * (population + jobs). 0 when nobody lives or works anywhere. One pass over the grid.
+ */
+export function calculateOccupiedCoverageAverages(services: ServiceCoverage, grid: OccupancyTile[][]): CoverageAverages {
+  let weight = 0;
+  let police = 0;
+  let fire = 0;
+  let health = 0;
+  let education = 0;
+  for (let y = 0; y < grid.length; y++) {
+    const row = grid[y];
+    for (let x = 0; x < row.length; x++) {
+      const b = row[x].building;
+      const w = b.population + b.jobs;
+      if (!(w > 0)) continue;
+      weight += w;
+      police += (services.police[y]?.[x] ?? 0) * w;
+      fire += (services.fire[y]?.[x] ?? 0) * w;
+      health += (services.health[y]?.[x] ?? 0) * w;
+      education += (services.education[y]?.[x] ?? 0) * w;
+    }
+  }
+  if (weight <= 0) return { police: 0, fire: 0, health: 0, education: 0 };
+  return { police: police / weight, fire: fire / weight, health: health / weight, education: education / weight };
+}
+
+/** Plain average value across a service-coverage grid (0 when empty). */
 export function calculateAverageCoverage(coverage: number[][]): number {
   let total = 0;
   let count = 0;
@@ -94,8 +129,8 @@ export function calculateAverageCoverage(coverage: number[][]): number {
 }
 
 /**
- * Environment rating (0-100). Tree coverage is measured against the full map
- * area (including water); parks act as a partial bonus; pollution subtracts.
+ * Environment rating (0-100). Tree coverage is measured against the developed
+ * footprint (`totalTiles`); parks act as a partial bonus; pollution subtracts.
  */
 export function calculateEnvironmentScore(
   treeCount: number,
@@ -178,16 +213,16 @@ export interface CoverageAverages {
 export interface RatingsInput {
   services: ServiceCoverage;
   /**
-   * Optional precomputed `calculateAverageCoverage` of each `services` grid. The simulation caches
-   * these while coverage is unchanged; when omitted they are computed from `services`.
+   * Optional precomputed coverage averages (the simulation passes `calculateOccupiedCoverageAverages`,
+   * weighted by residents + jobs); when omitted, plain grid averages of `services` are used.
    */
   coverageAverages?: CoverageAverages;
   treeCount: number;
   parkCount: number;
   totalPollution: number;
-  /** Tiles used for the health clean-air term (full grid: size * size). */
+  /** Full grid size (size * size). Kept for callers; the ratings use `playableTileCount`. */
   totalTiles: number;
-  /** Playable tiles used for the environment term. */
+  /** Developed-footprint tiles (see `isEnvironmentPlayableBuildingType`) for the environment and clean-air terms. */
   playableTileCount: number;
   jobs: number;
   population: number;
@@ -223,13 +258,15 @@ export function calculateRatings(input: RatingsInput): Ratings {
   const healthCoverage = input.ganga
     ? Math.max(0, averages.health - getGangaHealthCoveragePenalty(input.ganga.health, input.ganga.catchmentPopulationShare))
     : averages.health;
-  const health = calculateHealthScore(healthCoverage, input.totalPollution, input.totalTiles);
+  // Pollution and green cover are measured against the developed footprint, not the whole map (min 1)
+  const footprint = Math.max(1, input.playableTileCount);
+  const health = calculateHealthScore(healthCoverage, input.totalPollution, footprint);
   const education = calculateEducationScore(averages.education);
   const environment = calculateEnvironmentScore(
     input.treeCount,
     input.parkCount,
     input.totalPollution,
-    input.playableTileCount
+    footprint
   );
   const jobSatisfaction = calculateJobSatisfaction(input.jobs, input.population);
   const happiness = calculateHappiness({

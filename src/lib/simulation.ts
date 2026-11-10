@@ -40,7 +40,7 @@ import {
 } from './fireConfig';
 import { tryGrowTree, TREE_GROWTH_CONFIG } from './treeGrowth';
 import {
-  calculateAverageCoverage,
+  calculateOccupiedCoverageAverages,
   calculateRatings,
   calculateEnvironmentScore,
   isEnvironmentPlayableBuildingType,
@@ -57,7 +57,7 @@ import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
-import { advanceFailureState, applyLoanRepayment, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
+import { advanceFailureState, applyLoanRepayment, createFailureState, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
 import { POPULATION_DISPLAY_SCALE } from '@/lib/format';
 import {
   applyFloodToServices,
@@ -68,6 +68,8 @@ import {
   runFloodDay,
   type FloodStateFields,
   getCityEmbankments,
+  FLOOD_REPAIR_SHARE,
+  getFloodRepairNotification,
 } from '@/lib/floodSim';
 import {
   getDiseaseHealthPenalty,
@@ -1453,14 +1455,14 @@ export const SERVICE_UPGRADE_COST_BASE = 2; // Cost = baseCost * (2 ^ currentLev
 //
 // Coverage depends ONLY on the grid size and on the list of active service buildings: the position,
 // type and level of every tile whose type is in SERVICE_BUILDING_TYPES, that has finished
-// construction and is not abandoned. Nothing else is read (not power, fire, money or budget).
+// construction and is not abandoned, plus department budget funding (police/fire/health/education
+// strength and radius scale with funding). Nothing else is read (not power, fire or money).
 //
 // The cache is keyed on exactly that list, which one cheap scan per call collects. So the cache stays
 // correct even when some code path changes buildings without bumping `structureVersion` (fire trucks
 // put out fires in place, saves are loaded, grids are expanded, ...). `structureVersion` alone would
 // also be a poor key: it goes up on almost every tick in a growing city, so the cache would rarely hit.
-// Budget funding is part of the key as well, so the cache stays correct if coverage ever starts to
-// depend on funding.
+// Budget funding is part of the key as well, so slider changes take effect immediately.
 //
 // The cached ServiceCoverage object is shared between game states. It must be treated as read-only;
 // nothing in the codebase writes into it (checked in S1-T5).
@@ -1529,7 +1531,7 @@ function collectActiveServiceBuildings(grid: Tile[][], size: number, out: number
 }
 
 /** Compute the coverage grids from a service list made by collectActiveServiceBuildings. */
-function computeServiceCoverage(serviceList: number[], size: number): ServiceCoverage {
+function computeServiceCoverage(serviceList: number[], size: number, budget?: Budget): ServiceCoverage {
   const services = createServiceCoverage(size);
 
   for (let i = 0; i < serviceList.length; i += SERVICE_LIST_STRIDE) {
@@ -1571,18 +1573,28 @@ function computeServiceCoverage(serviceList: number[], size: number): ServiceCov
       // Handle percentage-based coverage (police, fire, health, education)
       const serviceType = (config as { type: 'police' | 'fire' | 'health' | 'education' }).type;
       const currentCoverage = services[serviceType] as number[][];
+      // Department funding scales coverage: strength x funding/100, radius x (0.5 + 0.5*funding/100).
+      const fundingFrac = Math.max(0, (budget?.[serviceType]?.funding ?? 100) / 100);
+      if (fundingFrac <= 0) continue;
+      const fRange = Math.floor(effectiveRange * (0.5 + 0.5 * fundingFrac));
+      if (fRange < 1) continue;
+      const fRangeSquared = fRange * fRange;
+      const fMinY = Math.max(0, y - fRange);
+      const fMaxY = Math.min(size - 1, y + fRange);
+      const fMinX = Math.max(0, x - fRange);
+      const fMaxX = Math.min(size - 1, x + fRange);
 
-      for (let ny = minY; ny <= maxY; ny++) {
+      for (let ny = fMinY; ny <= fMaxY; ny++) {
         const coverageRow = currentCoverage[ny];
-        for (let nx = minX; nx <= maxX; nx++) {
+        for (let nx = fMinX; nx <= fMaxX; nx++) {
           const dx = nx - x;
           const dy = ny - y;
           const distSquared = dx * dx + dy * dy;
 
-          if (distSquared <= rangeSquared) {
+          if (distSquared <= fRangeSquared) {
             // Only compute sqrt when we need the actual distance for coverage falloff
             const distance = Math.sqrt(distSquared);
-            const coverage = Math.max(0, (1 - distance / range) * 100);
+            const coverage = Math.max(0, (1 - distance / fRange) * 100 * fundingFrac);
             coverageRow[nx] = Math.min(100, coverageRow[nx] + coverage);
           }
         }
@@ -1655,28 +1667,23 @@ function serviceCoverageForList(serviceList: number[], size: number, budget?: Bu
     return cached.services;
   }
 
-  const services = computeServiceCoverage(serviceList, size);
+  const services = computeServiceCoverage(serviceList, size, budget);
   if (serviceCoverageCacheEnabled) {
     serviceCoverageCache = { size, fundingKey, serviceList: serviceList.slice(), services };
   }
   return services;
 }
 
-// Average coverage per service grid, computed once per ServiceCoverage object (the grids are read-only
-// once built, see above). Saves four full-grid passes per tick while coverage is unchanged.
-const coverageAveragesCache = new WeakMap<ServiceCoverage, CoverageAverages>();
+// Coverage averaged over the tiles people live or work on, weighted by residents + jobs. Cached per
+// ServiceCoverage object (read-only once built, see above) and invalidated when city population or jobs
+// change, so the one-pass recompute only runs when where people are could have changed.
+const coverageAveragesCache = new WeakMap<ServiceCoverage, { population: number; jobs: number; averages: CoverageAverages }>();
 
-function getCoverageAverages(services: ServiceCoverage): CoverageAverages {
-  let averages = coverageAveragesCache.get(services);
-  if (!averages) {
-    averages = {
-      police: calculateAverageCoverage(services.police),
-      fire: calculateAverageCoverage(services.fire),
-      health: calculateAverageCoverage(services.health),
-      education: calculateAverageCoverage(services.education),
-    };
-    coverageAveragesCache.set(services, averages);
-  }
+function getCoverageAverages(services: ServiceCoverage, grid: Tile[][], population: number, jobs: number): CoverageAverages {
+  const cached = coverageAveragesCache.get(services);
+  if (cached && cached.population === population && cached.jobs === jobs) return cached.averages;
+  const averages = calculateOccupiedCoverageAverages(services, grid);
+  coverageAveragesCache.set(services, { population, jobs, averages });
   return averages;
 }
 
@@ -1859,15 +1866,68 @@ function hasRoadAccess(
  */
 type WritableTileAccessor = (x: number, y: number) => Tile;
 
+/**
+ * Recompute `landValue` for zoned tiles (called once per in-game day). Unzoned tiles are skipped.
+ * 50 + 3 per tree/park tile within radius 3 (max +20) + 10 if water within radius 2
+ * - min(30, pollution/10) + 0.1 * max(0, avg(police, health, education coverage) - 50), clamped 10..100.
+ */
+export function updateLandValues(
+  grid: Tile[][],
+  size: number,
+  services: ServiceCoverage,
+  writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx]
+): void {
+  for (let y = 0; y < size; y++) {
+    const row = grid[y];
+    for (let x = 0; x < size; x++) {
+      const tile = row[x];
+      if (tile.zone === 'none') continue;
+      let green = 0;
+      let nearWater = false;
+      const minY = Math.max(0, y - 3), maxY = Math.min(size - 1, y + 3);
+      const minX = Math.max(0, x - 3), maxX = Math.min(size - 1, x + 3);
+      for (let ny = minY; ny <= maxY; ny++) {
+        const nrow = grid[ny];
+        for (let nx = minX; nx <= maxX; nx++) {
+          const dx = nx - x, dy = ny - y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > 9) continue;
+          const t = nrow[nx].building.type;
+          if (t === 'tree' || t === 'park' || t === 'park_large') green++;
+          else if (t === 'water' && d2 <= 4) nearWater = true;
+        }
+      }
+      const coverageAvg = (services.police[y][x] + services.health[y][x] + services.education[y][x]) / 3;
+      const value = 50
+        + Math.min(20, green * 3)
+        + (nearWater ? 10 : 0)
+        - Math.min(30, (tile.pollution || 0) / 10)
+        + 0.1 * Math.max(0, coverageAvg - 50);
+      const landValue = Math.round(Math.max(10, Math.min(100, value)));
+      if (tile.landValue !== landValue) writableTile(x, y).landValue = landValue;
+    }
+  }
+}
+
+/** Consecutive unserved (no power or no water) days after which a building may be abandoned. */
+const UNSERVED_ABANDON_DAYS = 30;
+/** Per-day abandonment chance once a building has been unserved for UNSERVED_ABANDON_DAYS. */
+const UNSERVED_ABANDON_CHANCE = 0.05;
+
 // Evolve buildings based on conditions, reserving footprints as density increases.
 // The tile at (x, y) must already be writable; other tiles are written through `writableTile`.
+/** Set by simulateTick each tick: true while an exodus is active, so abandoned homes are not cleared and rebuilt. */
+let exodusBlocksResidentialRebuild = false;
+
 function evolveBuilding(
   grid: Tile[][],
   x: number,
   y: number,
   services: ServiceCoverage,
   demand?: { residential: number; commercial: number; industrial: number },
-  writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx]
+  writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx],
+  /** True on the first tick of an in-game day: per-day counters advance and level-ups are allowed. */
+  dayStart = false
 ): Building {
   const tile = grid[y][x];
   const building = tile.building;
@@ -1897,7 +1957,17 @@ function evolveBuilding(
   // Starter buildings (farms, house_small, shop_small) don't require power/water
   const isStarter = isStarterBuilding(x, y, building.type);
 
-  if (!isStarter && (!hasPower || !hasWater)) {
+  // Non-starter buildings without power or water keep living at reduced efficiency (see below):
+  // no level-ups, and after UNSERVED_ABANDON_DAYS days without service they may be abandoned.
+  const unserved = !isStarter && (!hasPower || !hasWater);
+  if (unserved) {
+    if (dayStart) building.unservedDays = (building.unservedDays ?? 0) + 1;
+  } else if (building.unservedDays !== undefined) {
+    delete building.unservedDays; // service is back
+  }
+
+  // Construction cannot progress without power and water (except starter buildings)
+  if (unserved && building.constructionProgress !== undefined && building.constructionProgress < 100) {
     return building;
   }
 
@@ -1931,7 +2001,7 @@ function evolveBuilding(
     // Abandoned building - check for recovery
     // When demand is positive, abandoned buildings have a chance to be cleared
     // The cleared land (zoned grass) can then be redeveloped
-    if (zoneDemandValue > 10) {
+    if (zoneDemandValue > 10 && !(zone === 'residential' && exodusBlocksResidentialRebuild)) {
       // Higher demand = higher chance of clearing abandoned building
       // At demand 30, ~3% chance per tick; at demand 60, ~8% chance
       const clearingChance = Math.min(0.12, (zoneDemandValue - 10) / 600);
@@ -1990,6 +2060,14 @@ function evolveBuilding(
       building.jobs = 0;
       return building;
     }
+  }
+
+  // Long without power or water: a small chance per day that the occupants give up
+  if (unserved && dayStart && (building.unservedDays ?? 0) > UNSERVED_ABANDON_DAYS && Math.random() < UNSERVED_ABANDON_CHANCE) {
+    building.abandoned = true;
+    building.population = 0;
+    building.jobs = 0;
+    return building;
   }
 
   building.age = (building.age || 0) + 1;
@@ -2070,16 +2148,21 @@ function evolveBuilding(
   // because consolidation upgrades buildings to larger types that need utilities
   const ageRequirement = 12;
   const hasUtilitiesForConsolidation = hasPower && hasWater;
-  if (hasUtilitiesForConsolidation && building.age > ageRequirement && (targetLevel > building.level || targetType !== building.type) && Math.random() < consolidationChance) {
+  // Hysteresis: a merged (multi-tile) building only reverts when its target is at least 2 levels lower
+  const currentSize = getBuildingSize(building.type);
+  const isMerged = currentSize.width > 1 || currentSize.height > 1;
+  const blockedRevert = isMerged && targetLevel < building.level && building.level - targetLevel < 2;
+  if (hasUtilitiesForConsolidation && !blockedRevert && building.age > ageRequirement && (targetLevel > building.level || targetType !== building.type) && Math.random() < consolidationChance) {
     const size = getBuildingSize(targetType);
     const footprint = findFootprintIncludingTile(grid, x, y, size.width, size.height, zone, grid.length, allowBuildingConsolidation);
 
     if (footprint) {
-      const anchor = applyBuildingFootprint(grid, footprint.originX, footprint.originY, targetType, zone, targetLevel, services, writableTile);
+      // Carry the age over so the new building's target level does not drop and make it revert
+      const anchor = applyBuildingFootprint(grid, footprint.originX, footprint.originY, targetType, zone, targetLevel, services, writableTile, building.age);
       anchor.level = targetLevel;
       anchorX = footprint.originX;
       anchorY = footprint.originY;
-    } else if (targetLevel > building.level) {
+    } else if (dayStart && targetLevel > building.level) {
       // If we can't merge lots, still allow incremental level gain
       building.level = Math.min(targetLevel, building.level + 1);
     }
@@ -2090,10 +2173,20 @@ function evolveBuilding(
   const anchorBuilding = anchorTile.building;
   anchorBuilding.powered = services.power[anchorY][anchorX];
   anchorBuilding.watered = services.water[anchorY][anchorX];
-  anchorBuilding.level = Math.max(anchorBuilding.level, Math.min(targetLevel, anchorBuilding.level + 1));
+  // Level-ups: at most one step per in-game day, and none while unserved
+  if (dayStart && !unserved) {
+    anchorBuilding.level = Math.max(anchorBuilding.level, Math.min(targetLevel, anchorBuilding.level + 1));
+  }
 
   const buildingStats = BUILDING_STATS[anchorBuilding.type];
-  const efficiency = (anchorBuilding.powered ? 0.5 : 0) + (anchorBuilding.watered ? 0.5 : 0);
+  // Starters keep the old split; other buildings get a utility penalty (only reachable unserved
+  // when there was no consolidation, so anchorBuilding is this tile's building)
+  const efficiency = isStarter
+    ? (anchorBuilding.powered ? 0.5 : 0) + (anchorBuilding.watered ? 0.5 : 0)
+    : (anchorBuilding.powered && anchorBuilding.watered) ? 1
+      : anchorBuilding.watered ? 0.5 // no power
+        : anchorBuilding.powered ? 0.3 // no water
+          : 0.15;
 
   anchorBuilding.population = buildingStats?.maxPop > 0
     ? Math.floor(buildingStats.maxPop * Math.max(1, anchorBuilding.level) * efficiency * 0.8)
@@ -2485,8 +2578,9 @@ function calculateStats(
   // Commercial tiles earn half while their power is cut (S3-T7)
   const utility = totals.utility;
   const cutJobLoss = utility ? utility.powerCutCommercialJobs * (1 - POWER_CONFIG.cutCommercialIncomeFactor) : 0;
-  // Informal settlements pay no tax (S3-T9)
-  const taxIncome = calculateTaxIncome(population - totals.informalPopulation, jobs - cutJobLoss, taxRate);
+  // Informal settlements pay no tax (S3-T9). Income uses the lagged effectiveTaxRate (like demand and
+  // happiness) so a rate spike right before a deposit day cannot be exploited.
+  const taxIncome = calculateTaxIncome(population - totals.informalPopulation, jobs - cutJobLoss, effectiveTaxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
   let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
@@ -2522,7 +2616,7 @@ function calculateStats(
   // Calculate ratings — centralized in ./scoring (single source of truth)
   const ratings = calculateRatings({
     services,
-    coverageAverages: getCoverageAverages(services),
+    coverageAverages: getCoverageAverages(services, grid, population, jobs),
     treeCount,
     parkCount,
     totalPollution,
@@ -2530,7 +2624,7 @@ function calculateStats(
     playableTileCount,
     jobs,
     population,
-    taxRate,
+    taxRate: effectiveTaxRate,
     ganga: gangaRatingsInput,
   });
 
@@ -2803,7 +2897,7 @@ const BUILDING_FIELDS_COMPARED: Record<keyof Building, true> = {
   type: true, level: true, population: true, jobs: true, powered: true, watered: true, onFire: true,
   fireProgress: true, age: true, constructionProgress: true, abandoned: true, flipped: true, cityId: true,
   bridgeType: true, bridgeOrientation: true, bridgeVariant: true, bridgePosition: true, bridgeIndex: true,
-  bridgeSpan: true, bridgeTrackType: true,
+  bridgeSpan: true, bridgeTrackType: true, unservedDays: true, floodedThisSeason: true,
 };
 void TILE_FIELDS_COMPARED;
 void BUILDING_FIELDS_COMPARED;
@@ -2830,7 +2924,8 @@ function sameTileValues(a: Tile, b: Tile): boolean {
     p.abandoned === q.abandoned && p.flipped === q.flipped && p.cityId === q.cityId &&
     p.bridgeType === q.bridgeType && p.bridgeOrientation === q.bridgeOrientation &&
     p.bridgeVariant === q.bridgeVariant && p.bridgePosition === q.bridgePosition &&
-    p.bridgeIndex === q.bridgeIndex && p.bridgeSpan === q.bridgeSpan && p.bridgeTrackType === q.bridgeTrackType
+    p.bridgeIndex === q.bridgeIndex && p.bridgeSpan === q.bridgeSpan && p.bridgeTrackType === q.bridgeTrackType &&
+    p.unservedDays === q.unservedDays && p.floodedThisSeason === q.floodedThisSeason
   );
 }
 
@@ -3016,6 +3111,8 @@ export function simulateTick(
   const size = state.gridSize;
   const cloudWeatherMode: CloudWeatherMode = forcedWeather ?? state.weather ?? 'clear';
   const season = getSeason(state.month);
+  // Exodus (S4-T11): abandoned homes stay empty while people are leaving (read by evolveBuilding)
+  exodusBlocksResidentialRebuild = failureStatesEnabled && !!state.failure?.exodusActive;
   
   // Pre-calculate service coverage once (read-only operation on original grid). The same scan counts
   // burning tiles: with none, fire cannot spread, so the neighbour checks below can be skipped.
@@ -3243,7 +3340,7 @@ export function simulateTick(
         const beforeConstructionProgress = beforeBuilding.constructionProgress;
         const beforeOnFire = beforeBuilding.onFire;
         const beforeAbandoned = beforeBuilding.abandoned;
-        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile);
+        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile, state.tick === 0);
         const evolvedBuilding = newGrid[y][x].building;
         const didEvolveStructureChange =
           beforeType !== evolvedBuilding.type ||
@@ -3382,6 +3479,9 @@ export function simulateTick(
     gridTotals.totalPollution = totalPollution;
   }
 
+  // Land value is recomputed once per in-game day (zoned tiles only)
+  if (state.tick === 0) updateLandValues(newGrid, size, services, writableTile);
+
   // Drop copies whose values did not change, so unchanged tiles and rows keep their identity
   cowGrid.finish();
 
@@ -3499,18 +3599,28 @@ export function simulateTick(
 
   // Failure states (S4-T11): once per in-game month, debt → emergency loan → bankruptcy, and exodus.
   // Not switched off by the Crises (disastersEnabled) setting. Notifications ride on informalNotifications.
+  // Happiness is sampled once per in-game day and the monthly check uses the month's average, so a single
+  // tick (e.g. a tax dip on the last day) cannot decide it.
   let failureFields: Pick<GameState, 'failure' | 'gameOver'> & { speed?: 0 } = {};
+  let monthHappinessSum = state.failure?.monthHappinessSum ?? 0;
+  let monthHappinessDays = state.failure?.monthHappinessDays ?? 0;
+  if (newTick === 0) {
+    monthHappinessSum += newStats.happiness;
+    monthHappinessDays++;
+  }
   if (failureStatesEnabled && newMonth !== state.month && !state.gameOver) {
     const repayment = applyLoanRepayment(newStats.income, state.failure?.loan);
     newStats.money -= Math.round(repayment.payment);
     const prevFailure = state.failure?.loan ? { ...state.failure, loan: repayment.loan } : state.failure;
     const { next, events } = advanceFailureState(prevFailure, {
       money: newStats.money,
-      happiness: newStats.happiness,
+      happiness: monthHappinessDays > 0 ? monthHappinessSum / monthHappinessDays : newStats.happiness,
       displayedPopulation: newStats.population * POPULATION_DISPLAY_SCALE,
       monthlyExpenses: newStats.expenses,
       gangaHealth: newStats.gangaHealth,
     });
+    next.monthHappinessSum = 0;
+    next.monthHappinessDays = 0;
     failureFields = { failure: next };
     const note = (key: string, title: string, description: string, icon: string, severity: 'warning' | 'crisis') =>
       informalNotifications.push({ id: `failure-${key}-${newYear}-${newMonth}`, title, description, icon, severity, timestamp: Date.now() });
@@ -3538,7 +3648,7 @@ export function simulateTick(
           didStructureChange = true;
         }
       } else if (e.type === 'gameOver') {
-        const top = getTopFailingStat(newStats);
+        const top = getTopFailingStat({ ...newStats, taxRate: newEffectiveTaxRate });
         failureFields.speed = 0;
         failureFields.gameOver = {
           reason: e.reason,
@@ -3552,6 +3662,9 @@ export function simulateTick(
         note('gameover', e.reason === 'bankruptcy' ? 'The city is bankrupt' : 'The city has emptied', FAILING_STAT_LINES[failureFields.gameOver.failingStat], 'alert', 'crisis');
       }
     }
+  } else if (failureStatesEnabled && newTick === 0 && !state.gameOver) {
+    // New day, same month: store the running happiness sample
+    failureFields = { failure: { ...(state.failure ?? createFailureState()), monthHappinessSum, monthHappinessDays } };
   }
 
   // Weather (S4-T2): checked once per in-game day, and right away for old saves without it
@@ -3565,7 +3678,10 @@ export function simulateTick(
   let floodFields: FloodStateFields = {};
   let floodForecast: ForecastInput | undefined;
   const floodNotifications: GameState['notifications'] = [];
-  if (floodsEnabled && newTick === 0 && state.mapId === 'varanasi') {
+  if (state.disastersEnabled === false) {
+    // Crises off (S4-T11): no floods at all, and no flood water left on the map
+    if (state.riverLevel) floodFields = { riverLevel: 0 };
+  } else if (floodsEnabled && newTick === 0 && state.mapId === 'varanasi') {
     const today = absoluteDay(newYear, newMonth, newDay);
     const flood = runFloodDay({ ...state, grid: newGrid }, newMonth, newDay, today, rng);
     floodFields = flood.fields;
@@ -3579,6 +3695,22 @@ export function simulateTick(
       b.population = 0;
       b.jobs = 0;
       didStructureChange = true;
+    }
+    for (const { x, y } of flood.flooded) writableTile(x, y).building.floodedThisSeason = true;
+    // Automatic repairs once the water has gone down: 20% of the build cost, even if it puts the city in debt
+    let repairTotal = 0;
+    for (const { x, y } of flood.repairs) {
+      const b = writableTile(x, y).building;
+      delete b.floodedThisSeason;
+      repairTotal += Math.round(FLOOD_REPAIR_SHARE * (TOOL_INFO[b.type as keyof typeof TOOL_INFO]?.cost ?? 0));
+    }
+    if (flood.repairs.length > 0) {
+      newStats.money -= repairTotal;
+      floodNotifications.push({
+        ...getFloodRepairNotification(flood.repairs.length, repairTotal),
+        id: `flood-${today}-${floodNotifications.length}`,
+        timestamp: Date.now(),
+      });
     }
   }
 
@@ -3625,7 +3757,11 @@ export function simulateTick(
       for (let y = b.y0; y < b.y1; y++) {
         for (let x = b.x0; x < b.x1; x++) {
           const pop = newGrid[y][x].building.population;
-          if (pop > 0) writableTile(x, y).building.population = Math.floor(pop * (1 - fraction));
+          if (pop <= 0) continue;
+          // Stochastic rounding: the expected loss is exactly `fraction`, not "at least 1 resident per tile"
+          const loss = pop * fraction;
+          const whole = Math.floor(loss) + (rng() < loss - Math.floor(loss) ? 1 : 0);
+          if (whole > 0) writableTile(x, y).building.population = pop - whole;
         }
       }
     }
@@ -3649,6 +3785,9 @@ export function simulateTick(
     crisisFields = { heatwave: heat.heatwave, outbreaks: disease.outbreaks };
     // The heatwave owns the sky while it lasts
     if (isHeatwaveActive(heat.heatwave, today)) weatherFields = { ...weatherFields, weather: 'heat_haze' };
+  } else if (state.disastersEnabled === false && (state.outbreaks || state.heatwave)) {
+    // Crises off: drop running outbreaks and heatwaves, so turning crises back on does not charge a backlog of weekly losses
+    crisisFields = { heatwave: undefined, outbreaks: undefined };
   }
 
   // Landmark unlocks (S5-T1) follow the PEAK population, so they never lock again
@@ -3697,6 +3836,8 @@ export function simulateTick(
     forecasts = added.forecasts;
     newNotifications = pushNotifications(added.notifications, festNotes);
     if (fest.festival !== state.festival) festivalFields = { festival: fest.festival };
+    // Festival tourism arrives as one sum when the event resolves (S5-T4)
+    if (fest.tourismPayout > 0) newStats.money += fest.tourismPayout;
   }
 
   // Update history quarterly
@@ -3993,7 +4134,8 @@ function applyBuildingFootprint(
   zone: ZoneType,
   level: number,
   services?: ServiceCoverage,
-  writableTile?: WritableTileAccessor
+  writableTile?: WritableTileAccessor,
+  age = 0 // footprint conversions carry the old building's age over, so the target level does not drop
 ): Building {
   const size = getBuildingSize(buildingType);
   const stats = BUILDING_STATS[buildingType] || { maxPop: 0, maxJobs: 0, pollution: 0, landValue: 0 };
@@ -4006,7 +4148,7 @@ function applyBuildingFootprint(
       if (dx === 0 && dy === 0) {
         cell.building = createBuilding(buildingType);
         cell.building.level = level;
-        cell.building.age = 0;
+        cell.building.age = age;
         if (services) {
           cell.building.powered = services.power[originY + dy][originX + dx];
           cell.building.watered = services.water[originY + dy][originX + dx];

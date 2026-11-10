@@ -157,6 +157,21 @@ describe('a monsoon season, day by day (S4-T5)', () => {
     expect(homes).toBeGreaterThan(0);
   });
 
+  it('service buildings are never ruined: flagged while flooded, repaired when the water has gone', () => {
+    const state = cityWithFloodplainHomes();
+    const i = getCityFloodMask({ ...state, riverLevel: 1 })!.findIndex((v, k) => !!v && state.grid[(k / SIZE) | 0][k % SIZE].building.type === 'house_small');
+    const x = i % SIZE;
+    const y = (i / SIZE) | 0;
+    state.grid[y][x] = { ...state.grid[y][x], zone: 'none', building: { ...state.grid[y][x].building, type: 'water_tower' } };
+    const peak = runFloodDay({ ...state, monsoonStrength: 'weak', riverLevel: 1, floodNotifiedLevel: 1 }, 8, 15, absoluteDay(2025, 8, 15), () => 0);
+    expect(peak.damaged).not.toContainEqual({ x, y });
+    expect(peak.flooded).toEqual([{ x, y }]);
+    state.grid[y][x].building.floodedThisSeason = true;
+    const dry = runFloodDay({ ...state, monsoonStrength: 'weak', riverLevel: 1, floodNotifiedLevel: 1 }, 9, 30, absoluteDay(2025, 9, 30), () => 0.99);
+    expect(dry.fields.riverLevel).toBe(0);
+    expect(dry.repairs).toEqual([{ x, y }]);
+  });
+
   it('receding water leaves silt for a few days', () => {
     const state = newVaranasi();
     const fell = runFloodDay({ ...state, monsoonStrength: 'heavy', riverLevel: 3, floodNotifiedLevel: 3 }, 9, 20, 500, () => 0.99);

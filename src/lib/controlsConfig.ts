@@ -30,6 +30,7 @@ export type ControlAction =
   | 'cancel'
   | 'cycleOverlay'
   | 'showHelp'
+  | 'undo'
   | 'perfHud';
 
 export interface KeyBinding {
@@ -74,7 +75,16 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
     action: 'cancel',
     keys: ['Escape'],
     keyLabel: 'Esc',
-    label: msg('Close overlay → close panel → deselect → Select tool'),
+    label: msg('Cancel drag → Select tool → close overlay → close panel → deselect'),
+  },
+  // Ctrl/Cmd+Z: matched in useKeyboardControls before matchKeyBinding (which skips modified keys),
+  // so this row is documentation-only. A plain 'z' does nothing.
+  {
+    action: 'undo',
+    keys: ['z'],
+    keyLabel: 'Ctrl/Cmd + Z',
+    label: msg('Undo the last placement (within 20 s)'),
+    handledElsewhere: true,
   },
   { action: 'cycleOverlay', keys: ['Tab'], keyLabel: 'Tab / Shift+Tab', label: msg('Cycle overlays') },
   { action: 'showHelp', keys: ['?'], keyLabel: '?', label: msg('Show this controls panel') },
@@ -204,10 +214,14 @@ export interface SharedControlsState {
   spaceUsedForPan: boolean;
   /** Registered by the canvas while mounted. */
   camera: CameraControls | null;
+  /** Registered by the canvas: cancels an in-progress zone/line drag; returns true if one was cancelled. */
+  cancelDrag: (() => boolean) | null;
+  /** Registered by the canvas: one-step undo of the last placement stroke (Ctrl/Cmd+Z). */
+  undo: (() => void) | null;
 }
 
 export function createSharedControlsState(): SharedControlsState {
-  return { heldActions: new Set(), spaceHeld: false, spaceUsedForPan: false, camera: null };
+  return { heldActions: new Set(), spaceHeld: false, spaceUsedForPan: false, camera: null, cancelDrag: null, undo: null };
 }
 
 /** Register (or clear, with null) the canvas camera API used by keyboard zoom. */

@@ -19,14 +19,17 @@ function withMoney(state: GameState, money: number): GameState {
   return { ...state, stats: { ...state.stats, money } };
 }
 
-/** Puts `count` occupied small houses on land tiles. */
+/**
+ * Puts `count` occupied medium houses on land tiles. Not starter houses: those hold nobody without power
+ * and water, and an empty city does not count toward the low-happiness months.
+ */
 function addHomes(state: GameState, count: number): GameState {
   let placed = 0;
   for (let y = 0; y < SIZE && placed < count; y++) {
     for (let x = 0; x < SIZE && placed < count; x++) {
       const tile = state.grid[y][x];
       if (tile.building.type !== 'grass') continue;
-      tile.building = { ...tile.building, type: 'house_small', population: 10, constructionProgress: 100, abandoned: false };
+      tile.building = { ...tile.building, type: 'house_medium', population: 10, constructionProgress: 100, abandoned: false };
       tile.zone = 'residential';
       placed++;
     }
@@ -83,7 +86,7 @@ describe('failure states in the simulation (S4-T11)', () => {
 
   it('an exodus abandons 2% of homes each month', () => {
     let state = addHomes(newCity(), 100);
-    state = { ...state, taxRate: 100, effectiveTaxRate: 100 };
+    state = { ...state, taxRate: 20, effectiveTaxRate: 20 };
     state = {
       ...state,
       failure: {
