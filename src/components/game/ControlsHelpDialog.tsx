@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { KEY_BINDINGS, MOUSE_BINDINGS, formatKeyLabel } from '@/lib/controlsConfig';
 import { isDevMode } from '@/lib/devMode';
 import { useMobile } from '@/hooks/useMobile';
-import { PROBLEM_KINDS, type ProblemKind } from '@/lib/problemIcons';
-import { RING } from '@/components/game/problemIconsDraw';
+import { PROBLEM_KINDS } from '@/lib/problemIcons';
+import { STATUS_DEFINITIONS } from '@/lib/tileStatus';
+import { ProblemIconGlyph } from '@/components/game/ProblemIconGlyph';
 
 const LABELS = {
   title: msg('Controls'),
@@ -18,20 +19,9 @@ const LABELS = {
   openButton: msg('Show Controls'),
   openButtonDesc: msg('Keyboard and mouse shortcuts (or press ?)'),
   legend: msg('Map warning icons'),
-  legendDesc: msg('Small round icons over buildings say what is wrong.'),
+  legendDesc: msg('Small round icons over buildings say what is wrong. Select a building to see why and what to do.'),
   legendButton: msg('Map warning icons'),
   legendButtonDesc: msg('What the icons over buildings mean'),
-};
-
-const PROBLEM_LEGEND: Record<ProblemKind, string> = {
-  fire: msg('On fire: build fire stations'),
-  flood: msg('Flooded by the Ganga: build embankments'),
-  disease: msg('Disease outbreak in this block: build a hospital'),
-  no_road: msg('No road access: draw a road beside it'),
-  power_cut: msg('Rolling power cut: power supply is short'),
-  no_power: msg('No power line: connect it to a power plant'),
-  no_water: msg('No water: build a water tower nearby'),
-  abandoned: msg('Abandoned: check demand, power, water and pollution'),
 };
 
 function KeyCap({ children }: { children: React.ReactNode }) {
@@ -64,13 +54,13 @@ export function ControlsHelpDialog({ open, onOpenChange }: ControlsHelpDialogPro
             <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-2">{m(LABELS.legend)}</div>
             <ul className="space-y-1.5">
               {PROBLEM_KINDS.map((kind) => (
-                <li key={kind} className="flex items-center gap-2 text-chrome-muted">
-                  <span
-                    aria-hidden
-                    className="inline-block h-4 w-4 shrink-0 rounded-full border-2 bg-slate-900/85"
-                    style={{ borderColor: RING[kind] }}
-                  />
-                  {m(PROBLEM_LEGEND[kind])}
+                <li key={kind} className="flex items-start gap-2 text-chrome-muted">
+                  <ProblemIconGlyph kind={kind} size={18} className="mt-px" />
+                  <span>
+                    <span className="font-semibold text-chrome-text">{m(STATUS_DEFINITIONS[kind].title)}</span>
+                    {': '}
+                    {m(STATUS_DEFINITIONS[kind].advice)}
+                  </span>
                 </li>
               ))}
             </ul>

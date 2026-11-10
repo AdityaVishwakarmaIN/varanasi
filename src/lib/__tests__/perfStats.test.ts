@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   PERF_STATS_CONFIG,
+  getFrameSeq,
+  getFrameStatsSince,
   getPerfSnapshot,
   recordFrame,
   recordSave,
@@ -60,5 +62,43 @@ describe('perfStats', () => {
     expect(result?.tickMax).toBe(5);
     expect(getPerfSnapshot().frameMax).toBe(16);
     expect(stopPerfCapture()).toBeNull();
+  });
+
+  describe('frame windows (getFrameSeq / getFrameStatsSince)', () => {
+    it('summarises only the frames recorded after the given sequence number', () => {
+      for (let i = 0; i < 50; i++) recordFrame(100); // an old slow patch
+      const seq = getFrameSeq();
+      for (let i = 1; i <= 20; i++) recordFrame(i); // 1..20 ms
+      expect(getFrameStatsSince(seq)).toEqual({ count: 20, p95: 19 });
+      // the rolling snapshot still mixes in the old patch
+      expect(getPerfSnapshot().frameP95).toBe(100);
+    });
+
+    it('consecutive windows do not overlap', () => {
+      const a = getFrameSeq();
+      recordFrame(40);
+      recordFrame(40);
+      const b = getFrameSeq();
+      recordFrame(10);
+      expect(getFrameStatsSince(a)).toEqual({ count: 3, p95: 40 });
+      expect(getFrameStatsSince(b)).toEqual({ count: 1, p95: 10 });
+      expect(getFrameStatsSince(getFrameSeq())).toEqual({ count: 0, p95: 0 });
+    });
+
+    it('a window longer than the ring is summarised by its most recent frames', () => {
+      const seq = getFrameSeq();
+      recordFrame(500);
+      for (let i = 0; i < PERF_STATS_CONFIG.windowSize; i++) recordFrame(10);
+      expect(getFrameStatsSince(seq)).toEqual({ count: PERF_STATS_CONFIG.windowSize, p95: 10 });
+    });
+
+    it('the sequence keeps growing across resets, and a reset leaves an empty window', () => {
+      recordFrame(10);
+      const seq = getFrameSeq();
+      recordFrame(10);
+      resetPerfStats();
+      expect(getFrameSeq()).toBe(seq + 1);
+      expect(getFrameStatsSince(seq)).toEqual({ count: 0, p95: 0 });
+    });
   });
 });

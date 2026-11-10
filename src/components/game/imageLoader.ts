@@ -4,10 +4,11 @@
 // Handles loading and caching of sprite images with optional background filtering
 // and WebP optimization for faster loading on slow connections.
 
-// Background color to filter from sprite sheets
-const BACKGROUND_COLOR = { r: 255, g: 0, b: 0 };
-// Color distance threshold - pixels within this distance will be made transparent
-const COLOR_THRESHOLD = 155; // Adjust this value to be more/less aggressive
+import { SPRITE_KEY_THRESHOLD, keyOutBackground } from '@/lib/spriteKeyColor';
+import type { SpriteFilterRequest, SpriteFilterResponse } from '@/workers/spriteFilterWorker';
+
+// Color distance threshold - pixels within this distance of the red key colour become transparent
+const COLOR_THRESHOLD = SPRITE_KEY_THRESHOLD;
 // Image cache for building sprites
 const imageCache = new Map<string, HTMLImageElement>();
 const bitmapCache = new Map<string, ImageBitmap>();
@@ -89,24 +90,7 @@ function applyBackgroundFilter(
   ctx.drawImage(image, 0, 0);
 
   const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-
-    const distance = Math.sqrt(
-      Math.pow(r - BACKGROUND_COLOR.r, 2) +
-      Math.pow(g - BACKGROUND_COLOR.g, 2) +
-      Math.pow(b - BACKGROUND_COLOR.b, 2)
-    );
-
-    if (distance <= threshold) {
-      data[i + 3] = 0;
-    }
-  }
-
+  keyOutBackground(imageData.data, threshold);
   ctx.putImageData(imageData, 0, 0);
   return surface;
 }
@@ -170,12 +154,37 @@ function loadImageDirect(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      imageCache.set(src, img);
-      notifyImageLoaded();
-      resolve(img);
+      // Decode off the main thread before the image is used, so the first drawImage / GPU upload
+      // does not decode it synchronously in the middle of a frame.
+      decodeLoadedImage(img).then(() => {
+        imageCache.set(src, img);
+        notifyImageLoaded();
+        resolve(img);
+      });
     };
     img.onerror = reject;
     img.src = src;
+  });
+}
+
+/** `img.decode()` where supported; never rejects for an image that already loaded. */
+function decodeLoadedImage(img: HTMLImageElement): Promise<void> {
+  if (typeof img.decode !== 'function') return Promise.resolve();
+  return img.decode().catch(() => undefined);
+}
+
+/** An <img> for an encoded blob, decoded (off the main thread where supported) before it resolves. */
+function imageFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    // The object URL is not revoked: each sheet is loaded once per session and cached for good,
+    // and the browser may need the encoded bytes again if it discards the decoded pixels.
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      decodeLoadedImage(img).then(() => resolve(img));
+    };
+    img.onerror = () => reject(new Error('Failed to decode filtered sprite sheet'));
+    img.src = url;
   });
 }
 
@@ -265,14 +274,14 @@ export function filterBackgroundColor(img: HTMLImageElement, threshold: number =
         return;
       }
 
-      const filteredImg = new Image();
-      filteredImg.onload = () => {
-        resolve(filteredImg);
-      };
-      filteredImg.onerror = (error) => {
-        reject(new Error('Failed to create filtered image'));
-      };
-      filteredImg.src = surface.canvas.toDataURL();
+      // toBlob encodes asynchronously (toDataURL encoded synchronously on the main thread)
+      surface.canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Failed to create filtered image'));
+          return;
+        }
+        imageFromBlob(blob).then(resolve, reject);
+      }, 'image/png');
     } catch (error) {
       reject(error);
     }
@@ -292,28 +301,162 @@ export async function filterBackgroundColorToBitmap(
   return createImageBitmap(surface.canvas);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Off-main-thread sprite-sheet filtering (src/workers/spriteFilterWorker.ts)
+// ---------------------------------------------------------------------------------------------
+
+type FilterJob = { resolve: (blob: Blob) => void; reject: (error: Error) => void };
+/** The worker answered with an HTTP error: the asset itself is missing. */
+class SpriteFetchError extends Error {}
+
+let filterWorkers: Worker[] | null = null;
+let filterWorkersBroken = false;
+let nextFilterWorker = 0;
+let nextFilterJobId = 1;
+const filterJobs = new Map<number, FilterJob>();
+
+function failFilterWorkers(reason: string): void {
+  filterWorkersBroken = true;
+  for (const [id, job] of filterJobs) {
+    filterJobs.delete(id);
+    job.reject(new Error(reason));
+  }
+  filterWorkers?.forEach((w) => w.terminate());
+  filterWorkers = null;
+}
+
+function getFilterWorker(): Worker | null {
+  if (filterWorkersBroken) return null;
+  if (
+    typeof window === 'undefined' ||
+    typeof Worker === 'undefined' ||
+    typeof OffscreenCanvas === 'undefined' ||
+    typeof createImageBitmap === 'undefined'
+  ) {
+    return null;
+  }
+  if (!filterWorkers) {
+    try {
+      // A few workers decode/filter/encode the start-up sheets in parallel; the remaining cores
+      // stay free for the main thread and the GPU process.
+      const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
+      const count = Math.max(1, Math.min(3, cores - 1));
+      filterWorkers = [];
+      for (let i = 0; i < count; i++) {
+        const worker = new Worker(new URL('../../workers/spriteFilterWorker.ts', import.meta.url), { name: `sprite-filter-${i}` });
+        worker.onmessage = (event: MessageEvent<SpriteFilterResponse>) => {
+          const msg = event.data;
+          const job = filterJobs.get(msg.id);
+          if (!job) return;
+          filterJobs.delete(msg.id);
+          if (msg.ok) job.resolve(msg.blob);
+          else job.reject(msg.status ? new SpriteFetchError(msg.error) : new Error(msg.error));
+        };
+        worker.onerror = (event) => {
+          // The worker script itself failed (blocked, unsupported): filter on the main thread instead
+          event.preventDefault();
+          console.warn('[imageLoader] sprite filter worker failed, filtering on the main thread:', event.message);
+          failFilterWorkers(`sprite filter worker failed: ${event.message}`);
+        };
+        filterWorkers.push(worker);
+      }
+    } catch (error) {
+      console.warn('[imageLoader] sprite filter worker unavailable, filtering on the main thread:', error);
+      failFilterWorkers('sprite filter worker unavailable');
+      return null;
+    }
+  }
+  const worker = filterWorkers[nextFilterWorker % filterWorkers.length];
+  nextFilterWorker++;
+  return worker;
+}
+
+function filterInWorker(worker: Worker, path: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const id = nextFilterJobId++;
+    filterJobs.set(id, { resolve, reject });
+    // The worker resolves relative URLs against its own script URL: send an absolute one
+    const url = new URL(path, document.baseURI).href;
+    const request: SpriteFilterRequest = { id, url, threshold: COLOR_THRESHOLD };
+    worker.postMessage(request);
+  });
+}
+
 /**
- * Loads an image and applies background color filtering if it's a sprite sheet
+ * Fetch + decode + key out + encode in a worker (WebP first when supported, then the PNG).
+ * Resolves null when no worker can be used; rejects with SpriteFetchError when the file is missing.
+ */
+async function loadFilteredInWorker(src: string): Promise<HTMLImageElement | null> {
+  const webpPath = getWebPPath(src);
+  const candidates = webpPath && (await checkWebPSupport()) ? [webpPath, src] : [src];
+  let lastError: unknown = null;
+  for (const path of candidates) {
+    const worker = getFilterWorker();
+    if (!worker) return null;
+    try {
+      return await imageFromBlob(await filterInWorker(worker, path));
+    } catch (error) {
+      lastError = error;
+      // Only a missing file moves on to the next candidate; anything else (no OffscreenCanvas 2D,
+      // a codec error, the worker died) is the caller's cue to filter on the main thread.
+      if (!(error instanceof SpriteFetchError)) return null;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new SpriteFetchError(`Failed to load sprite sheet ${src}`);
+}
+
+function loadUncachedImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = src;
+  });
+}
+
+/** Main-thread fallback: load the unfiltered sheet WITHOUT caching or announcing it, then filter it. */
+async function loadFilteredOnMainThread(src: string): Promise<HTMLImageElement> {
+  const webpPath = getWebPPath(src);
+  let raw: HTMLImageElement | null = null;
+  if (webpPath && (await checkWebPSupport())) {
+    raw = await loadUncachedImage(webpPath).catch(() => null);
+  }
+  if (!raw) raw = await loadUncachedImage(src);
+  return filterBackgroundColor(raw);
+}
+
+const pendingSpriteLoads = new Map<string, Promise<HTMLImageElement>>();
+
+/**
+ * Loads an image and applies background color filtering if it's a sprite sheet.
+ * A filtered sheet is cached (under `${src}_filtered`) and announced through `onImageLoaded` only
+ * once it is filtered and decoded; the red-background original is never cached on the way (it
+ * used to be, and was drawn red until the filtered copy replaced it without a notification).
+ * The filtering runs in a worker where possible. Concurrent calls for one sheet share one load.
  * @param src The image source path
  * @param applyFilter Whether to apply background color filtering (default: true for sprite sheets)
  * @returns Promise resolving to the loaded (and optionally filtered) image
  */
 export function loadSpriteImage(src: string, applyFilter: boolean = true): Promise<HTMLImageElement> {
-  // Check if this is already cached (as filtered version)
-  const cacheKey = applyFilter ? `${src}_filtered` : src;
-  if (imageCache.has(cacheKey)) {
-    return Promise.resolve(imageCache.get(cacheKey)!);
-  }
-  
-  return loadImage(src).then((img) => {
-    if (applyFilter) {
-      return filterBackgroundColor(img).then((filteredImg: HTMLImageElement) => {
-        imageCache.set(cacheKey, filteredImg);
-        return filteredImg;
-      });
-    }
-    return img;
-  });
+  if (!applyFilter) return loadImage(src);
+  const cacheKey = `${src}_filtered`;
+  const cached = imageCache.get(cacheKey);
+  if (cached) return Promise.resolve(cached);
+  const pending = pendingSpriteLoads.get(cacheKey);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const filtered = (await loadFilteredInWorker(src)) ?? (await loadFilteredOnMainThread(src));
+    imageCache.set(cacheKey, filtered);
+    notifyImageLoaded();
+    return filtered;
+  })();
+  pendingSpriteLoads.set(cacheKey, load);
+  const forget = () => {
+    pendingSpriteLoads.delete(cacheKey);
+  };
+  load.then(forget, forget);
+  return load;
 }
 
 export async function loadSpriteImageBitmap(src: string, applyFilter: boolean = true): Promise<ImageBitmap> {

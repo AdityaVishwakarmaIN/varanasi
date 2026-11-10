@@ -10,7 +10,7 @@ import type { RendererSetting } from '@/lib/rendererSelection';
 
 const LABELS = {
   quality: msg('Graphics quality'),
-  qualityDesc: msg('Auto lowers detail when the frame rate drops'),
+  qualityDesc: msg('Auto never changes sharpness. If the game stays slow, it reduces traffic, crowds and effects until you pick a level or reload'),
   renderer: msg('Renderer'),
   rendererDesc: msg('GPU is faster on large cities; Canvas works everywhere'),
   auto: msg('Auto'),

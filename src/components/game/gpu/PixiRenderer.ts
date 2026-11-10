@@ -6,6 +6,15 @@
  * translated on the fly into pooled `Graphics` / `Sprite` / `Text` nodes on the active
  * layer container.
  *
+ * BATCHING (PERF): consecutive solid-colour fills/strokes go into ONE pooled `Graphics`
+ * (a "batch") with an identity node transform; each shape's points are transformed by the
+ * current matrix through the GraphicsContext transform and its alpha is folded into the
+ * fill/stroke colour. A batch ends when anything else is placed (sprite, text, clip, a
+ * gradient / blurred / non-similarity-stroke shape, a blend-mode change), so paint order is
+ * exactly the call order. Thousands of shapes per frame used to become thousands of scene
+ * nodes (each with its own context rebuild, transform decompose and render-group
+ * instruction); now a run of shapes is one node.
+ *
  * FRAME TOPOLOGY (mirrors the Canvas2D loops; see layers.ts):
  *  - DYNAMIC layers (cars/wind/air/ambient/airHigh) are cleared & redrawn every frame
  *    by the continuous effects loop: call `beginFrame()` (clears dynamic layers only),
@@ -19,7 +28,8 @@
  * COORDINATE MODEL: the world (pan/zoom/dpr) transform lives on the layer stack root
  * (camera.ts / layers.ts). This renderer tracks only the LOCAL transform built by the
  * draw code's save/translate/rotate/scale calls and bakes it into each node via
- * `setFromMatrix`. Canvas2D transforms post-multiply, so we compose with `Matrix.append`.
+ * `setFromMatrix` (or, for batched shapes, into the points). Canvas2D transforms
+ * post-multiply, so we compose with `Matrix.append` semantics.
  *
  * FIDELITY GAPS (documented, to revisit at local cutover):
  *  - shadowBlur/shadowColor: core Pixi has no per-shape drop shadow (DropShadowFilter
@@ -36,6 +46,7 @@ import {
   BitmapFont,
   BitmapText,
   BlurFilter,
+  Color,
   Container,
   FillGradient,
   Graphics,
@@ -51,9 +62,17 @@ import { worldMatrix, type CameraState } from './camera';
 import { TextureCache } from './textures';
 
 type Paint = string | CanvasGradient | CanvasPattern;
-type PathOp = (g: Graphics) => void;
 
-/** Snapshot of the mutable draw state for save()/restore(). */
+// Path ops are recorded as a flat number list (op code followed by its arguments), in the
+// local coordinates of the calls (the matrix in force at fill/stroke time is applied, as before).
+const OP_MOVE = 0; // x y
+const OP_LINE = 1; // x y
+const OP_ARC = 2; // x y r start end ccw(0|1)
+const OP_ELLIPSE = 3; // x y rx ry
+const OP_QUAD = 4; // cpx cpy x y
+const OP_CLOSE = 5;
+
+/** Snapshot of the mutable draw state for save()/restore() (pooled; see save()). */
 interface StateFrame {
   matrix: Matrix;
   layer: Container;
@@ -89,6 +108,12 @@ interface LayerPool {
   bmCursor: number;
 }
 
+/** A CSS colour string parsed once for the batch path. */
+interface ParsedColor {
+  rgb: number;
+  alpha: number;
+}
+
 const COMPOSITE_TO_BLEND: Partial<Record<GlobalCompositeOperation, string>> = {
   'source-over': 'normal',
   lighter: 'add',
@@ -100,6 +125,28 @@ const COMPOSITE_TO_BLEND: Partial<Record<GlobalCompositeOperation, string>> = {
 
 /** Name of the installed BitmapFont used by the opt-in BitmapText label path (Step 7). */
 const BITMAP_FONT = 'iso-label';
+
+const IDENTITY = new Matrix();
+const TWO_PI = Math.PI * 2;
+
+/** Parsed colour strings (bounded: draw code builds some rgba() strings per frame). */
+const colorCache = new Map<string, ParsedColor | null>();
+const COLOR_CACHE_LIMIT = 4096;
+const scratchColor = new Color();
+
+function parseColor(css: string): ParsedColor | null {
+  let parsed = colorCache.get(css);
+  if (parsed !== undefined) return parsed;
+  try {
+    scratchColor.setValue(normalizePixiColor(css));
+    parsed = { rgb: scratchColor.toNumber(), alpha: scratchColor.alpha };
+  } catch {
+    parsed = null; // let the unbatched path handle (and report) it as before
+  }
+  if (colorCache.size >= COLOR_CACHE_LIMIT) colorCache.clear();
+  colorCache.set(css, parsed);
+  return parsed;
+}
 
 export class PixiRenderer implements IsoRenderer {
   // ---- IsoRenderer paint/line/text state (public, mirror Canvas2D) ----
@@ -126,14 +173,21 @@ export class PixiRenderer implements IsoRenderer {
   private readonly textures = new TextureCache();
 
   // ---- transform + state stack ----
-  private matrix = new Matrix();
-  private stack: StateFrame[] = [];
+  private readonly matrix = new Matrix();
+  /** Pooled save() frames; `stackDepth` of them are live. */
+  private readonly stack: StateFrame[] = [];
+  private stackDepth = 0;
   private activeLayer: Container;
   private activeLayerName: LayerName = 'base';
 
   // ---- current path (replayed onto pooled Graphics at fill/stroke) ----
-  private path: PathOp[] = [];
+  private readonly path: number[] = [];
   private lineDash: number[] = [];
+
+  // ---- current shape batch (see BATCHING above) ----
+  private batch: Graphics | null = null;
+  private batchParent: Container | null = null;
+  private batchBlend = '';
 
   // ---- per-layer display-object pools (keyed by layer name) ----
   private readonly pools = new Map<LayerName, LayerPool>();
@@ -148,7 +202,9 @@ export class PixiRenderer implements IsoRenderer {
   // buildings, then only their matrix changes (no per-frame redraw, no separate layer).
   private swayNodes: { sprite: Sprite; base: Matrix; px: number; py: number }[] = [];
   private readonly swayScratch = new Matrix();
-  private lastImageMatrix = new Matrix();
+  /** Matrix of the last drawImage() sprite (copied by markSway). */
+  private readonly lastImageMatrix = new Matrix();
+  private readonly textMatrix = new Matrix();
 
   // Opt-in: render fillText/strokeText via BitmapText (Step 7). Default off — keeps the
   // dynamic Text path until bitmap-font legibility is verified locally.
@@ -198,6 +254,7 @@ export class PixiRenderer implements IsoRenderer {
     this.setLayer(name);
     if (name === 'buildings') this.swayNodes.length = 0;
     draw();
+    this.endBatch();
   }
 
   /** How many sprites the active layer holds so far (pair with {@link markSway}). */
@@ -214,7 +271,7 @@ export class PixiRenderer implements IsoRenderer {
     if (pool.spriteCursor <= before) return;
     const sprite = pool.sprite[pool.spriteCursor - 1];
     const p = this.matrix.apply({ x: pivotX, y: pivotY });
-    this.swayNodes.push({ sprite, base: this.lastImageMatrix, px: p.x, py: p.y });
+    this.swayNodes.push({ sprite, base: this.lastImageMatrix.clone(), px: p.x, py: p.y });
   }
 
   /** Rotates every marked sprite by `angle` about its pivot (cheap: one matrix per tree per frame). */
@@ -240,8 +297,9 @@ export class PixiRenderer implements IsoRenderer {
 
   private resetState(): void {
     this.matrix.identity();
-    this.stack.length = 0;
+    this.stackDepth = 0;
     this.path.length = 0;
+    this.endBatch();
   }
 
   private resetPool(name: LayerName): void {
@@ -266,34 +324,60 @@ export class PixiRenderer implements IsoRenderer {
   // ============================ transform ============================
 
   save(): void {
-    this.stack.push({
-      matrix: this.matrix.clone(),
-      layer: this.activeLayer,
-      layerName: this.activeLayerName,
-      fillStyle: this.fillStyle,
-      strokeStyle: this.strokeStyle,
-      lineWidth: this.lineWidth,
-      lineCap: this.lineCap,
-      lineJoin: this.lineJoin,
-      lineDashOffset: this.lineDashOffset,
-      globalAlpha: this.globalAlpha,
-      globalCompositeOperation: this.globalCompositeOperation,
-      shadowBlur: this.shadowBlur,
-      shadowColor: this.shadowColor,
-      filter: this.filter,
-      font: this.font,
-      textAlign: this.textAlign,
-      textBaseline: this.textBaseline,
-      imageSmoothingEnabled: this.imageSmoothingEnabled,
-      imageSmoothingQuality: this.imageSmoothingQuality,
-      lineDash: this.lineDash.slice(),
-    });
+    let s = this.stack[this.stackDepth];
+    if (!s) {
+      s = {
+        matrix: new Matrix(),
+        layer: this.activeLayer,
+        layerName: this.activeLayerName,
+        fillStyle: this.fillStyle,
+        strokeStyle: this.strokeStyle,
+        lineWidth: 1,
+        lineCap: 'butt',
+        lineJoin: 'miter',
+        lineDashOffset: 0,
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        shadowBlur: 0,
+        shadowColor: '',
+        filter: 'none',
+        font: '',
+        textAlign: 'start',
+        textBaseline: 'alphabetic',
+        imageSmoothingEnabled: false,
+        imageSmoothingQuality: 'low',
+        lineDash: this.lineDash,
+      };
+      this.stack[this.stackDepth] = s;
+    }
+    this.stackDepth++;
+    s.matrix.copyFrom(this.matrix);
+    s.layer = this.activeLayer;
+    s.layerName = this.activeLayerName;
+    s.fillStyle = this.fillStyle;
+    s.strokeStyle = this.strokeStyle;
+    s.lineWidth = this.lineWidth;
+    s.lineCap = this.lineCap;
+    s.lineJoin = this.lineJoin;
+    s.lineDashOffset = this.lineDashOffset;
+    s.globalAlpha = this.globalAlpha;
+    s.globalCompositeOperation = this.globalCompositeOperation;
+    s.shadowBlur = this.shadowBlur;
+    s.shadowColor = this.shadowColor;
+    s.filter = this.filter;
+    s.font = this.font;
+    s.textAlign = this.textAlign;
+    s.textBaseline = this.textBaseline;
+    s.imageSmoothingEnabled = this.imageSmoothingEnabled;
+    s.imageSmoothingQuality = this.imageSmoothingQuality;
+    // setLineDash() replaces the array (never mutates it), so sharing the reference is safe.
+    s.lineDash = this.lineDash;
   }
 
   restore(): void {
-    const s = this.stack.pop();
-    if (!s) return;
-    this.matrix = s.matrix;
+    if (this.stackDepth === 0) return;
+    const s = this.stack[--this.stackDepth];
+    this.matrix.copyFrom(s.matrix);
     this.activeLayer = s.layer;
     this.activeLayerName = s.layerName;
     this.fillStyle = s.fillStyle;
@@ -315,18 +399,30 @@ export class PixiRenderer implements IsoRenderer {
     this.lineDash = s.lineDash;
   }
 
+  // In-place equivalents of matrix.append(T) / append(S) / append(R) (no allocation).
   translate(x: number, y: number): void {
-    this.matrix.append(new Matrix().set(1, 0, 0, 1, x, y));
+    const m = this.matrix;
+    m.tx += m.a * x + m.c * y;
+    m.ty += m.b * x + m.d * y;
   }
 
   scale(x: number, y: number): void {
-    this.matrix.append(new Matrix().set(x, 0, 0, y, 0, 0));
+    const m = this.matrix;
+    m.a *= x;
+    m.b *= x;
+    m.c *= y;
+    m.d *= y;
   }
 
   rotate(angle: number): void {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    this.matrix.append(new Matrix().set(c, s, -s, c, 0, 0));
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const m = this.matrix;
+    const a = m.a, b = m.b, c = m.c, d = m.d;
+    m.a = a * cos + c * sin;
+    m.b = b * cos + d * sin;
+    m.c = c * cos - a * sin;
+    m.d = d * cos - b * sin;
   }
 
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
@@ -353,15 +449,15 @@ export class PixiRenderer implements IsoRenderer {
   }
 
   moveTo(x: number, y: number): void {
-    this.path.push((g) => g.moveTo(x, y));
+    this.path.push(OP_MOVE, x, y);
   }
 
   lineTo(x: number, y: number): void {
-    this.path.push((g) => g.lineTo(x, y));
+    this.path.push(OP_LINE, x, y);
   }
 
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void {
-    this.path.push((g) => g.arc(x, y, radius, startAngle, endAngle, counterclockwise));
+    this.path.push(OP_ARC, x, y, radius, startAngle, endAngle, counterclockwise ? 1 : 0);
   }
 
   // NOTE: Pixi ellipse is (x,y,rx,ry) only — rotation/start/end/ccw dropped (fidelity gap).
@@ -375,15 +471,15 @@ export class PixiRenderer implements IsoRenderer {
     _endAngle: number,
     _counterclockwise?: boolean,
   ): void {
-    this.path.push((g) => g.ellipse(x, y, radiusX, radiusY));
+    this.path.push(OP_ELLIPSE, x, y, radiusX, radiusY);
   }
 
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
-    this.path.push((g) => g.quadraticCurveTo(cpx, cpy, x, y));
+    this.path.push(OP_QUAD, cpx, cpy, x, y);
   }
 
   closePath(): void {
-    this.path.push((g) => g.closePath());
+    this.path.push(OP_CLOSE);
   }
 
   // ============================== paint ==============================
@@ -391,28 +487,76 @@ export class PixiRenderer implements IsoRenderer {
   fill(fillRule?: CanvasFillRule): void;
   fill(path: Path2D, fillRule?: CanvasFillRule): void;
   fill(_a?: CanvasFillRule | Path2D, _b?: CanvasFillRule): void {
-    const g = this.acquireGraphics();
-    for (const op of this.path) op(g);
-    g.fill(this.fillInput());
-    this.place(g);
+    if (this.path.length === 0) return; // empty path paints nothing
+    const color = this.batchColor(this.fillStyle);
+    if (color) {
+      const alpha = color.alpha * this.globalAlpha;
+      if (alpha <= 0) return;
+      const g = this.batchGraphics();
+      if (!g) return this.fillNode(); // composite mode without a Pixi blend: keep the old path
+      g.context.setTransform(this.matrix);
+      g.beginPath();
+      this.replayPath(g, true);
+      g.fill({ color: color.rgb, alpha });
+      return;
+    }
+    this.fillNode();
   }
 
   stroke(): void;
   stroke(path: Path2D): void;
   stroke(_path?: Path2D): void {
-    const g = this.acquireGraphics();
-    for (const op of this.path) op(g);
-    g.stroke(this.strokeInput());
-    this.place(g);
+    if (this.path.length === 0) return;
+    const color = this.batchColor(this.strokeStyle);
+    const scale = color ? similarityScale(this.matrix) : 0;
+    if (color && scale > 0) {
+      const alpha = color.alpha * this.globalAlpha;
+      if (alpha <= 0) return;
+      const g = this.batchGraphics();
+      if (!g) return this.strokeNode();
+      g.context.setTransform(this.matrix);
+      g.beginPath();
+      this.replayPath(g, true);
+      g.stroke({ width: this.lineWidth * scale, color: color.rgb, alpha, cap: this.lineCap, join: this.lineJoin });
+      return;
+    }
+    this.strokeNode();
   }
 
   fillRect(x: number, y: number, w: number, h: number): void {
+    const color = this.batchColor(this.fillStyle);
+    if (color) {
+      const alpha = color.alpha * this.globalAlpha;
+      if (alpha <= 0) return;
+      const g = this.batchGraphics();
+      if (g) {
+        g.context.setTransform(this.matrix);
+        g.beginPath();
+        g.rect(x, y, w, h).fill({ color: color.rgb, alpha });
+        return;
+      }
+    }
+    this.endBatch();
     const g = this.acquireGraphics();
     g.rect(x, y, w, h).fill(this.fillInput());
     this.place(g);
   }
 
   strokeRect(x: number, y: number, w: number, h: number): void {
+    const color = this.batchColor(this.strokeStyle);
+    const scale = color ? similarityScale(this.matrix) : 0;
+    if (color && scale > 0) {
+      const alpha = color.alpha * this.globalAlpha;
+      if (alpha <= 0) return;
+      const g = this.batchGraphics();
+      if (g) {
+        g.context.setTransform(this.matrix);
+        g.beginPath();
+        g.rect(x, y, w, h).stroke({ width: this.lineWidth * scale, color: color.rgb, alpha, cap: this.lineCap, join: this.lineJoin });
+        return;
+      }
+    }
+    this.endBatch();
     const g = this.acquireGraphics();
     g.rect(x, y, w, h).stroke(this.strokeInput());
     this.place(g);
@@ -427,8 +571,9 @@ export class PixiRenderer implements IsoRenderer {
   clip(fillRule?: CanvasFillRule): void;
   clip(path: Path2D, fillRule?: CanvasFillRule): void;
   clip(_a?: CanvasFillRule | Path2D, _b?: CanvasFillRule): void {
+    this.endBatch();
     const mask = new Graphics();
-    for (const op of this.path) op(mask);
+    this.replayPath(mask, false);
     mask.fill(0xffffff);
     mask.setFromMatrix(this.matrix);
     const scope = new Container();
@@ -481,11 +626,18 @@ export class PixiRenderer implements IsoRenderer {
     }
     const sp = this.acquireSprite();
     sp.texture = texture;
-    const m = this.matrix.clone();
-    m.append(new Matrix().set(1, 0, 0, 1, dx, dy));
-    m.append(new Matrix().set(dw / texture.width, 0, 0, dh / texture.height, 0, 0));
+    // matrix · translate(dx, dy) · scale(dw / tw, dh / th), composed in place
+    const src = this.matrix;
+    const m = this.lastImageMatrix;
+    const kx = dw / texture.width;
+    const ky = dh / texture.height;
+    m.a = src.a * kx;
+    m.b = src.b * kx;
+    m.c = src.c * ky;
+    m.d = src.d * ky;
+    m.tx = src.tx + src.a * dx + src.c * dy;
+    m.ty = src.ty + src.b * dx + src.d * dy;
     sp.setFromMatrix(m);
-    this.lastImageMatrix = m;
     this.place(sp);
   }
 
@@ -537,6 +689,104 @@ export class PixiRenderer implements IsoRenderer {
   }
 
   // ============================== internals ==========================
+
+  /** Parsed solid colour if `paint` can go into a batch under the current state, else null. */
+  private batchColor(paint: Paint): ParsedColor | null {
+    if (typeof paint !== 'string') return null; // gradients/patterns keep their own node
+    if (this.filter !== 'none' && parseBlurPx(this.filter) > 0) return null; // per-node blur
+    return parseColor(paint);
+  }
+
+  /**
+   * The open batch for the active container + blend mode, or a new one appended to it.
+   * Returns null when the composite operation has no Pixi blend mode (unbatched path).
+   */
+  private batchGraphics(): Graphics | null {
+    const blend = COMPOSITE_TO_BLEND[this.globalCompositeOperation];
+    if (!blend) return null;
+    if (this.batch && this.batchParent === this.activeLayer && this.batchBlend === blend) return this.batch;
+    const g = this.acquireGraphics();
+    g.alpha = 1;
+    (g as { blendMode: string }).blendMode = blend;
+    if (g.filters && g.filters.length > 0) g.filters = [];
+    g.setFromMatrix(IDENTITY);
+    this.activeLayer.addChild(g);
+    this.batch = g;
+    this.batchParent = this.activeLayer;
+    this.batchBlend = blend;
+    return g;
+  }
+
+  /** Close the open batch: the next batched shape starts a new node (keeps paint order). */
+  private endBatch(): void {
+    this.batch = null;
+    this.batchParent = null;
+  }
+
+  /** Unbatched fill: one node with the current matrix (gradients, blur, unmapped blends). */
+  private fillNode(): void {
+    this.endBatch();
+    const g = this.acquireGraphics();
+    this.replayPath(g, false);
+    g.fill(this.fillInput());
+    this.place(g);
+  }
+
+  private strokeNode(): void {
+    this.endBatch();
+    const g = this.acquireGraphics();
+    this.replayPath(g, false);
+    g.stroke(this.strokeInput());
+    this.place(g);
+  }
+
+  /**
+   * Replay the recorded path onto `g`. With `transformed`, the GraphicsContext transform (set
+   * by the caller) maps the points, so arcs are expanded here into the same polyline Pixi's
+   * buildArc would produce in local space (the context transform only moves an arc's centre).
+   */
+  private replayPath(g: Graphics, transformed: boolean): void {
+    const p = this.path;
+    let hasPoint = false;
+    for (let i = 0; i < p.length;) {
+      switch (p[i]) {
+        case OP_MOVE:
+          g.moveTo(p[i + 1], p[i + 2]);
+          hasPoint = true;
+          i += 3;
+          break;
+        case OP_LINE:
+          g.lineTo(p[i + 1], p[i + 2]);
+          hasPoint = true;
+          i += 3;
+          break;
+        case OP_ARC:
+          if (transformed) {
+            arcPolyline(g, p[i + 1], p[i + 2], p[i + 3], p[i + 4], p[i + 5], p[i + 6] === 1, hasPoint);
+          } else {
+            g.arc(p[i + 1], p[i + 2], p[i + 3], p[i + 4], p[i + 5], p[i + 6] === 1);
+          }
+          hasPoint = true;
+          i += 7;
+          break;
+        case OP_ELLIPSE:
+          g.ellipse(p[i + 1], p[i + 2], p[i + 3], p[i + 4]);
+          hasPoint = false;
+          i += 5;
+          break;
+        case OP_QUAD:
+          g.quadraticCurveTo(p[i + 1], p[i + 2], p[i + 3], p[i + 4]);
+          hasPoint = true;
+          i += 5;
+          break;
+        default: // OP_CLOSE
+          g.closePath();
+          hasPoint = false;
+          i += 1;
+          break;
+      }
+    }
+  }
 
   private acquireGraphics(): Graphics {
     const pool = this.getPool(this.activeLayerName);
@@ -590,6 +840,7 @@ export class PixiRenderer implements IsoRenderer {
 
   /** Apply alpha + blend mode + optional per-node blur, and attach to the active layer. */
   private place(node: Container): void {
+    this.endBatch();
     node.alpha = this.globalAlpha;
     const blend = COMPOSITE_TO_BLEND[this.globalCompositeOperation];
     if (blend) (node as { blendMode: string }).blendMode = blend;
@@ -597,7 +848,8 @@ export class PixiRenderer implements IsoRenderer {
     if (blurPx > 0) {
       this.blurFilter.strength = blurPx;
       node.filters = [this.blurFilter];
-    } else {
+    } else if (node.filters && node.filters.length > 0) {
+      // Only touch `filters` when a pooled node had one: the setter allocates a FilterEffect.
       node.filters = [];
     }
     if (!(node instanceof Sprite)) node.setFromMatrix(this.matrix);
@@ -620,13 +872,15 @@ export class PixiRenderer implements IsoRenderer {
   }
 
   private drawText(text: string, x: number, y: number): void {
+    this.endBatch();
     const { size, family, weight, italic } = parseFont(this.font);
     const fill = this.fillStyle;
     const fillColor = fill instanceof FillGradient ? fill : typeof fill === 'string' ? fill : '#000000';
     const ax = anchorX(this.textAlign);
     const ay = anchorY(this.textBaseline);
-    const m = this.matrix.clone();
-    m.append(new Matrix().set(1, 0, 0, 1, x, y));
+    const m = this.textMatrix.copyFrom(this.matrix);
+    m.tx += m.a * x + m.c * y;
+    m.ty += m.b * x + m.d * y;
 
     if (this.useBitmapText && this.bitmapFontReady) {
       const t = this.acquireBitmapText();
@@ -686,6 +940,46 @@ export class PixiRenderer implements IsoRenderer {
 }
 
 // --------------------------- helpers ---------------------------
+
+/**
+ * Uniform scale of a rotation/reflection + uniform-scale matrix (stroke widths scale by it when the
+ * points are pre-transformed), or 0 when the matrix shears or scales unevenly (strokes then keep a
+ * node transform so their width transforms exactly as before).
+ */
+function similarityScale(m: Matrix): number {
+  const eps = 1e-6 * (Math.abs(m.a) + Math.abs(m.b) + Math.abs(m.c) + Math.abs(m.d));
+  const rotation = Math.abs(m.a - m.d) <= eps && Math.abs(m.b + m.c) <= eps;
+  const reflection = Math.abs(m.a + m.d) <= eps && Math.abs(m.b - m.c) <= eps;
+  if (!rotation && !reflection) return 0;
+  return Math.sqrt(Math.abs(m.a * m.d - m.b * m.c));
+}
+
+/** Pixi's buildArc tessellation (same step count), emitted through the context transform. */
+function arcPolyline(
+  g: Graphics,
+  x: number,
+  y: number,
+  radius: number,
+  start: number,
+  end: number,
+  ccw: boolean,
+  hasPoint: boolean,
+): void {
+  let dist = Math.abs(start - end);
+  if (!ccw && start > end) dist = TWO_PI - dist;
+  else if (ccw && end > start) dist = TWO_PI - dist;
+  let steps = Math.max(6, Math.floor(6 * Math.pow(radius, 1 / 3) * (dist / Math.PI)));
+  steps = Math.max(steps, 3);
+  const f = (dist / steps) * (ccw ? -1 : 1);
+  let t = start;
+  for (let i = 0; i < steps + 1; i++) {
+    const px = x + Math.cos(t) * radius;
+    const py = y + Math.sin(t) * radius;
+    if (i === 0 && !hasPoint) g.moveTo(px, py);
+    else g.lineTo(px, py);
+    t += f;
+  }
+}
 
 function parseBlurPx(filter: string): number {
   if (!filter || filter === 'none') return 0;

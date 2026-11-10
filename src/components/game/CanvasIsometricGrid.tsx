@@ -76,6 +76,7 @@ import {
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { drawPlaceholderBuilding } from '@/components/game/placeholders';
 import {
+  getProceduralBudgetMisses,
   getProceduralSprite,
   getProceduralSpriteDef,
   getProceduralSpriteDrawRect,
@@ -84,7 +85,10 @@ import {
   pickProceduralVariant,
 } from '@/components/game/procedural/buildingArt';
 import { loadImage, loadSpriteImage, onImageLoaded, getCachedImage } from '@/components/game/imageLoader';
-import { TileInfoPanel } from '@/components/game/panels';
+// Tile info is mounted by Game.tsx in the map overlay layout (MapOverlayLayer), not over the canvas.
+import { createPortal } from 'react-dom';
+import { useOverlaySlot } from '@/components/game/MapOverlayLayer';
+import { startMapPointerSession } from '@/lib/mapPointerSession';
 import {
   findMarinasAndPiers,
   findAdjacentWaterTile,
@@ -177,9 +181,10 @@ import {
 } from '@/lib/touchGestures';
 import { Check, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
-import { getPerfSnapshot, recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
+import { getFrameSeq, getFrameStatsSince, recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
 import { registerCameraController } from '@/components/game/cameraController';
-import { getActivePreset, getGraphicsSnapshot, getRenderDpr, initGraphicsSettings, reportGpuFailure, runAutoQualityCheck } from '@/lib/graphicsSettings';
+import { armAutoQuality, disarmAutoQuality, getActivePreset, getGraphicsSnapshot, getRenderDpr, holdAutoQuality, initGraphicsSettings, reportGpuFailure, runAutoQualityCheck } from '@/lib/graphicsSettings';
+import { StartupVeil } from '@/components/game/StartupVeil';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import { AUTO_QUALITY_CONFIG, QUALITY_PRESETS } from '@/lib/qualityConfig';
 import { getSceneLighting } from '@/components/game/sceneLighting';
@@ -212,6 +217,12 @@ const STATIC_MAX_CSS_SCALE = 1.6;
 /** PERF: a partial redraw handles at most this many changed tiles (and at most this share of the canvas). */
 const STATIC_PARTIAL_MAX_TILES = 256;
 const STATIC_PARTIAL_MAX_AREA = 0.5;
+/**
+ * Start-up veil safety ceiling: reveal the map (with a console warning) if the readiness signals
+ * have not all arrived by then. A safety net for a stuck asset or GPU init, not the normal path:
+ * normally the veil lifts on the first complete frame.
+ */
+const STARTUP_VEIL_MAX_MS = 20000;
 /** Cell size (device px) of the coverage grid a partial redraw region is built on. */
 const PARTIAL_CELL_PX = 32;
 
@@ -664,6 +675,17 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const [imageLoadVersion, setImageLoadVersion] = useState(0);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
   const canvasSizeRef = useRef(canvasSize);
+  // Start-up veil (StartupVeil.tsx): covers the map from mount until the first complete frame with
+  // real art is on screen. Readiness signals, all set by real events (see the readiness effect):
+  // - spritesReadyRef: every sprite sheet of the pack and the water texture loaded (or failed);
+  // - startupRef.staticDrawn: a full static redraw ran after that with no procedural stand-ins;
+  // - GPU mode: that redraw went into the Pixi layers (gpuStaticDrawn) and the effects loop has
+  //   presented at least one frame since (gpuFramesRef > gpuFrameAtStatic).
+  const spritesReadyRef = useRef(false);
+  const startupRef = useRef({ staticDrawn: false, gpuStaticDrawn: false, gpuFrameAtStatic: 0, revealed: false });
+  const gpuFramesRef = useRef(0);
+  const [veilLifting, setVeilLifting] = useState(false);
+  const [veilGone, setVeilGone] = useState(false);
   const [isLightingWorkerEnabled, setIsLightingWorkerEnabled] = useState(false);
   const [dragStartTile, setDragStartTile] = useState<{ x: number; y: number } | null>(null);
   const [dragEndTile, setDragEndTile] = useState<{ x: number; y: number } | null>(null);
@@ -690,6 +712,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const [strokeOutOfMoney, setStrokeOutOfMoney] = useState(false);
   const strokeNoMoneyRef = useRef(false); // synchronous twin of strokeOutOfMoney (many tiles per event)
   const [moneyNotice, setMoneyNotice] = useState<{ reason: string; key: number } | null>(null);
+  // Desktop: the money notice joins the bottom-centre toast stack and the tool hint sits under it
+  // (MapOverlayLayer slots); without a layer they fall back to absolute positions in the map.
+  const toastSlot = useOverlaySlot('toasts');
+  const hintSlot = useOverlaySlot('hint');
   useEffect(() => {
     if (!moneyNotice) return;
     const t = setTimeout(() => setMoneyNotice(null), 2000);
@@ -1306,73 +1332,45 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Subscribe to image load notifications to trigger re-renders as assets become available
   useEffect(() => {
     const unsubscribe = onImageLoaded(() => {
+      // While the start-up veil waits for the sprite sheets, one redraw when they have all settled
+      // (below) replaces a full static redraw per sheet nobody could see.
+      if (!spritesReadyRef.current) return;
       // Trigger re-render when any new image loads
       setImageLoadVersion(v => v + 1);
     });
     return unsubscribe;
   }, []);
-  
-  // Load sprite sheets on mount and when sprite pack changes
-  // This now runs in background - rendering starts immediately with placeholders
-  useEffect(() => {
-    // Load images progressively - each will trigger a re-render when ready
-    // Priority: main sprite sheet first, then water, then secondary sheets
-    
-    // High priority - main sprite sheet
-    loadSpriteImage(currentSpritePack.src, true).catch(console.error);
-    
-    // High priority - water texture
-    loadImage(WATER_ASSET_PATH).catch(console.error);
 
-    // High priority - cloud sprite sheet
-    loadImage(CLOUD_SPRITE_SHEET_SRC).catch(console.error);
-    
-    // Medium priority - load secondary sheets after a small delay
-    // This allows the main content to render first
-    const loadSecondarySheets = () => {
-      if (currentSpritePack.constructionSrc) {
-        loadSpriteImage(currentSpritePack.constructionSrc, true).catch(console.error);
+  // Load sprite sheets on mount and when sprite pack changes. The sheets are fetched, keyed and
+  // decoded off the main thread (imageLoader.ts) in parallel; the start-up veil hides the map
+  // until they have all settled (see spritesReadyRef).
+  useEffect(() => {
+    const pack = currentSpritePack;
+    const sheets = [
+      pack.src, pack.constructionSrc, pack.abandonedSrc, pack.denseSrc, pack.parksSrc, pack.parksConstructionSrc,
+      pack.farmsSrc, pack.shopsSrc, pack.stationsSrc, pack.modernSrc, pack.servicesSrc, pack.infrastructureSrc,
+      pack.mansionsSrc,
+    ].filter((src): src is string => !!src);
+    const essentials = [...sheets.map((src) => loadSpriteImage(src, true)), loadImage(WATER_ASSET_PATH)];
+    const names = [...sheets, WATER_ASSET_PATH];
+    let cancelled = false;
+    void Promise.allSettled(essentials).then((results) => {
+      const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [{ src: names[i], reason: String(r.reason) }] : []));
+      if (failed.length > 0) {
+        // The map still opens; buildings from these sheets are drawn as placeholders
+        console.warn('[startup] sprite sheets failed to load; drawing placeholders for them:', failed);
       }
-      if (currentSpritePack.abandonedSrc) {
-        loadSpriteImage(currentSpritePack.abandonedSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.denseSrc) {
-        loadSpriteImage(currentSpritePack.denseSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.parksSrc) {
-        loadSpriteImage(currentSpritePack.parksSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.parksConstructionSrc) {
-        loadSpriteImage(currentSpritePack.parksConstructionSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.farmsSrc) {
-        loadSpriteImage(currentSpritePack.farmsSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.shopsSrc) {
-        loadSpriteImage(currentSpritePack.shopsSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.stationsSrc) {
-        loadSpriteImage(currentSpritePack.stationsSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.modernSrc) {
-        loadSpriteImage(currentSpritePack.modernSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.servicesSrc) {
-        loadSpriteImage(currentSpritePack.servicesSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.infrastructureSrc) {
-        loadSpriteImage(currentSpritePack.infrastructureSrc, true).catch(console.error);
-      }
-      if (currentSpritePack.mansionsSrc) {
-        loadSpriteImage(currentSpritePack.mansionsSrc, true).catch(console.error);
-      }
-      // Load airplane sprite sheet (always loaded, not dependent on sprite pack)
+      tempRecordEvent('startup:spritesSettled', { count: names.length, failed }); // TEMP-RECORDER
+      if (cancelled) return;
+      spritesReadyRef.current = true;
+      setImageLoadVersion(v => v + 1);
+      // Art that is not part of the first frame (aircraft, clouds) loads after the essentials
+      loadImage(CLOUD_SPRITE_SHEET_SRC).catch(console.error);
       loadSpriteImage(AIRPLANE_SPRITE_SRC, false).catch(console.error);
+    });
+    return () => {
+      cancelled = true;
     };
-    
-    // Load secondary sheets after 50ms to prioritize first paint
-    const timer = setTimeout(loadSecondarySheets, 50);
-    return () => clearTimeout(timer);
   }, [currentSpritePack]);
   
   // Building helper functions moved to buildingHelpers.ts
@@ -1413,18 +1411,27 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           lightingCanvasRef.current.style.height = `${rect.height}px`;
         }
         
-        // Set actual size in memory (scaled for DPI)
-        setCanvasSize({
-          width: Math.round(rect.width * dpr),
-          height: Math.round(rect.height * dpr),
-        });
+        // Set actual size in memory (scaled for DPI). Same size: keep the state object, so nothing
+        // downstream (static redraw, GPU resize) runs for a no-op.
+        const width = Math.round(rect.width * dpr);
+        const height = Math.round(rect.height * dpr);
+        setCanvasSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
       }
     };
     updateSize();
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-    // S1-T7: re-run when the quality preset changes the device-pixel-ratio cap
-  }, [qualityPreset.dprCap, staticOverscanCss]);
+    // The container can change size without a window resize (layout, panels); without this the
+    // canvases kept their old pixel size and were stretched (soft) until the next window resize.
+    const container = containerRef.current;
+    const resizeObserver = typeof ResizeObserver !== 'undefined' && container ? new ResizeObserver(updateSize) : null;
+    if (resizeObserver && container) resizeObserver.observe(container);
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver?.disconnect();
+    };
+    // S1-T7: re-run when the player's setting changes the DPR cap. Not keyed on the auto level:
+    // auto never changes resolution (getRenderDpr), so a level change no longer resizes every canvas.
+  }, [graphics.renderDprCap, staticOverscanCss]);
 
   useEffect(() => {
     if (lightingCanvasTransferredRef.current) return;
@@ -1663,6 +1670,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         return; // Skip this render, next tick will trigger a new one
       }
       lastMainRenderTimeRef.current = now;
+      const startupMissesBefore = getProceduralBudgetMisses(); // start-up veil: stand-ins drawn this frame?
 
       // Static layers are drawn shifted by the overscan margin (the GPU path below keeps `offset`)
       const drawOffset = { x: offset.x + margin, y: offset.y + margin };
@@ -3251,6 +3259,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
     ctx.restore();
     ctx.restore(); // partial-region clip
+
+      // Start-up veil readiness: the first full redraw after every sprite sheet settled, with no
+      // procedural stand-ins (paint budget), is the first complete frame. If the budget ran out,
+      // draw again next frame (only while the veil is up) until the art is complete.
+      const startup = startupRef.current;
+      if (!startup.revealed && spritesReadyRef.current && !partial) {
+        if (getProceduralBudgetMisses() !== startupMissesBefore) {
+          requestAnimationFrame(() => staticRedrawRef.current?.(true));
+        } else {
+          startup.staticDrawn = true;
+          if (gpuMain) {
+            startup.gpuStaticDrawn = true;
+            startup.gpuFrameAtStatic = gpuFramesRef.current;
+          }
+        }
+      }
     }; // End renderFrame
     staticRedrawRef.current = renderFrame;
     renderPendingRef.current = requestAnimationFrame(() => renderFrame(false));
@@ -3553,6 +3577,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         // The size may have changed while Pixi was starting
         created.renderer.resize(canvasSizeRef.current.width, canvasSizeRef.current.height);
+        // PERF: the effects loop calls render() itself every frame; Pixi's own ticker would render
+        // the whole scene a second time per frame.
+        created.stop();
         created.stage.addChild(layers.root);
         app = created;
         pixiAppRef.current = created;
@@ -3575,24 +3602,91 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     };
   }, [gpuEnabled]);
 
-  // Canvas size changes (window resize, auto-quality DPR cap) resize the running renderer in place.
+  // Canvas size changes (container resize, the player's quality setting) resize the running renderer in place.
   useEffect(() => {
     canvasSizeRef.current = { width: canvasSize.width, height: canvasSize.height };
     tempRecordEvent('canvas:resize', { width: canvasSize.width, height: canvasSize.height, gpu: !!pixiAppRef.current }); // TEMP-RECORDER
     pixiAppRef.current?.renderer.resize(canvasSize.width, canvasSize.height);
   }, [canvasSize.width, canvasSize.height]);
 
-  // S1-T7: auto-quality. Every 2 s feed the frame p95 into the hysteresis state machine
-  // (qualityConfig.ts); it never changes the level while the player is panning or zooming.
+  // S1-T7: auto-quality (policy and why: qualityConfig.ts). Every check looks only at the frames
+  // since the previous check (non-overlapping windows). Nothing counts before the start-up veil
+  // lifts (armAutoQuality) plus a warm-up, nor just after the tab becomes visible again; the level
+  // only ever drops, never while panning/zooming, and never changes resolution.
   useEffect(() => {
     if (graphics.qualitySetting !== 'auto') return;
+    let seq = getFrameSeq();
+    let windowStart = performance.now();
+    const onVisibilityChange = () => {
+      if (!document.hidden) holdAutoQuality(performance.now() + AUTO_QUALITY_CONFIG.visibleGraceMs);
+    };
     const id = setInterval(() => {
+      const now = performance.now();
+      const stats = getFrameStatsSince(seq);
+      const start = windowStart;
+      seq = getFrameSeq();
+      windowStart = now;
       if (document.hidden) return;
       const interacting = isPanningRef.current || isPinchZoomingRef.current || isWheelZoomingRef.current;
-      runAutoQualityCheck(getPerfSnapshot().frameP95, interacting);
+      runAutoQualityCheck({ frameP95: stats.p95, frameCount: stats.count, windowStart: start, interacting });
     }, AUTO_QUALITY_CONFIG.checkIntervalMs);
-    return () => clearInterval(id);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [graphics.qualitySetting]);
+
+  // Start-up veil: shown from mount; lifted on the first complete frame (signals: see spritesReadyRef).
+  // A rAF check (a few comparisons per frame, only while the veil is up) waits for the signals, then
+  // one more frame so that frame has been presented, then starts the fade. A safety ceiling reveals
+  // the map anyway (with a warning naming the missing signal) so a stuck asset or GPU init can never
+  // leave the veil up for good.
+  useEffect(() => {
+    const startup = startupRef.current;
+    if (startup.revealed) return;
+    disarmAutoQuality();
+    tempRecordEvent('startup:veilShown', { gpu: gpuEnabledRef.current }); // TEMP-RECORDER
+    const mountedAt = performance.now();
+    let frameId = 0;
+    let readyFrames = 0;
+    const reveal = (reason: 'ready' | 'timeout') => {
+      if (startup.revealed) return;
+      startup.revealed = true;
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(safetyTimer);
+      const signals = {
+        spritesReady: spritesReadyRef.current,
+        staticDrawn: startup.staticDrawn,
+        gpu: gpuEnabledRef.current,
+        gpuStaticDrawn: startup.gpuStaticDrawn,
+        gpuFrames: gpuFramesRef.current,
+      };
+      if (reason === 'timeout') {
+        console.warn(`[startup] map not ready after ${STARTUP_VEIL_MAX_MS / 1000} s; revealing it anyway. Signals:`, signals);
+      }
+      tempRecordEvent('startup:veilHidden', { reason, ms: Math.round(performance.now() - mountedAt), ...signals }); // TEMP-RECORDER
+      armAutoQuality(performance.now());
+      setVeilLifting(true);
+    };
+    const check = () => {
+      frameId = requestAnimationFrame(check);
+      const gpuReady = !gpuEnabledRef.current ||
+        (startup.gpuStaticDrawn && pixiAppRef.current !== null && gpuFramesRef.current > startup.gpuFrameAtStatic);
+      if (startup.staticDrawn && gpuReady) {
+        // The complete frame was drawn during an earlier frame; wait one more so it is on screen
+        if (++readyFrames >= 2) reveal('ready');
+      } else {
+        readyFrames = 0;
+      }
+    };
+    frameId = requestAnimationFrame(check);
+    const safetyTimer = window.setTimeout(() => reveal('timeout'), STARTUP_VEIL_MAX_MS);
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(safetyTimer);
+    };
+  }, []);
 
   // Perf HUD (S1-T2): frame time = time between consecutive animation frames, so it includes
   // React re-renders, the main tile render and GC (what the player actually sees). Runs in its
@@ -3899,10 +3993,16 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         drawFireworks(pixi);
         if (profileFrame) profileAfterGpuDraw = performance.now();
         pixiApp.render();
+        gpuFramesRef.current++; // start-up veil: a GPU frame was presented
         if (profileFrame) profileAfterPixiRender = performance.now();
-      } else if (profileFrame) {
-        profileAfterGpuDraw = performance.now();
-        profileAfterPixiRender = profileAfterGpuDraw;
+      } else {
+        // Animated entities are skipped (mobile pan/pinch), but retained layers redrawn for the new
+        // view still have to be presented: Pixi's own ticker is stopped (see createPixiApp above).
+        if (pixi && pixiApp) pixiApp.render();
+        if (profileFrame) {
+          profileAfterGpuDraw = performance.now();
+          profileAfterPixiRender = profileAfterGpuDraw;
+        }
       }
 
       if (profileFrame) {
@@ -4215,8 +4315,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
-      const mouseX = (e.clientX - rect.left) / zoom;
-      const mouseY = (e.clientY - rect.top) / zoom;
+      // During a press the window forwards moves from anywhere (sidebar, top bar); off the map the
+      // drag tracks the nearest map edge instead of tiles hidden under the chrome.
+      const clientX = Math.min(Math.max(e.clientX, rect.left), rect.right - 1);
+      const clientY = Math.min(Math.max(e.clientY, rect.top), rect.bottom - 1);
+      const mouseX = (clientX - rect.left) / zoom;
+      const mouseY = (clientY - rect.top) / zoom;
       const { gridX, gridY } = screenToGrid(mouseX, mouseY, offset.x / zoom, offset.y / zoom);
 
       // A held single placement follows the pointer; it is placed where the button is released
@@ -4420,24 +4524,100 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
   }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, placeBatch, startStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
 
-  // Mouse leaving the map: cancel an in-progress zone/line drag without committing it
-  // (no rectangle fill, no bridges), drop a held single placement, and clear the hover ghost.
-  const handleMouseLeave = useCallback(() => {
+  // Abandon a press without committing it (no rectangle fill, no bridges, no held building):
+  // the window lost focus mid-drag (Alt+Tab, a system dialog).
+  const cancelMapPress = useCallback(() => {
     releasePlaceRef.current = null;
-    if (isDragging) {
-      setIsDragging(false);
-      setDragStartTile(null);
-      setDragEndTile(null);
-      setRoadDrawDirection(null);
-      placedRoadTilesRef.current.clear();
-      panCandidateRef.current = null;
-      rightClickRef.current = null;
-      setIsPanning(false);
-    } else {
-      handleMouseUp();
-    }
+    panCandidateRef.current = null;
+    rightClickRef.current = null;
+    panVelocityRef.current.reset();
+    setIsDragging(false);
+    setDragStartTile(null);
+    setDragEndTile(null);
+    setRoadDrawDirection(null);
+    placedRoadTilesRef.current.clear();
+    setIsPanning(false);
+  }, []);
+
+  // A mouse press on the map (zone rectangle, road stroke, pan, held building) is followed on the
+  // window until its button is released (mapPointerSession), so it survives the pointer crossing a
+  // floating panel, the sidebar, the top bar or the window edge. It used to be cancelled by the map's
+  // mouseleave, which also fires whenever the pointer enters an overlay sitting above the map.
+  // For the press the overlays are made click-through via `data-map-gesture` on the map root.
+  const mouseSessionRef = useRef<{ stop: () => void; root: Element | null } | null>(null);
+  const pointerInsideRef = useRef(false);
+  const suppressContextMenuUntilRef = useRef(0);
+  const mouseHandlersRef = useRef({ move: handleMouseMove, up: handleMouseUp, cancel: cancelMapPress });
+  React.useLayoutEffect(() => {
+    mouseHandlersRef.current = { move: handleMouseMove, up: handleMouseUp, cancel: cancelMapPress };
+  });
+
+  const handleMapMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    pointerInsideRef.current = true;
+    handleMouseDown(e);
+    if (mouseSessionRef.current) return; // a second button during a press: the first one owns the session
+    const button = e.button;
+    const root = containerRef.current?.closest('[data-map-root]') ?? null;
+    root?.setAttribute('data-map-gesture', '');
+    const finish = () => {
+      mouseSessionRef.current = null;
+      root?.removeAttribute('data-map-gesture');
+      // A right-drag pan released off the map must not open the browser menu where it ends
+      if (button === 2) suppressContextMenuUntilRef.current = performance.now() + 500;
+    };
+    const stop = startMapPointerSession(window, button, {
+      onMove: (p) => mouseHandlersRef.current.move(p),
+      onEnd: () => {
+        finish();
+        // Released off the map (sidebar, top bar, outside the window): a held building is not placed
+        if (!pointerInsideRef.current) releasePlaceRef.current = null;
+        mouseHandlersRef.current.up();
+        if (!pointerInsideRef.current) {
+          setHoveredTile(null);
+          setHoveredIncident(null);
+        }
+      },
+      onCancel: () => {
+        finish();
+        mouseHandlersRef.current.cancel();
+      },
+    });
+    mouseSessionRef.current = { stop, root };
+  }, [handleMouseDown]);
+
+  // Hover only: during a press the session forwards moves from the window instead
+  const handleHoverMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (mouseSessionRef.current) return;
+    handleMouseMove(e);
+  }, [handleMouseMove]);
+
+  const handleMouseEnter = useCallback(() => {
+    pointerInsideRef.current = true;
+  }, []);
+
+  // Leaving the map (also: entering a panel above it) only clears the hover ghost; a press in
+  // progress keeps going and is ended by its release.
+  const handleMouseLeave = useCallback(() => {
+    pointerInsideRef.current = false;
+    if (mouseSessionRef.current) return;
     setHoveredTile(null);
-  }, [isDragging, handleMouseUp]);
+    setHoveredIncident(null);
+  }, []);
+
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      if (mouseSessionRef.current || performance.now() < suppressContextMenuUntilRef.current) e.preventDefault();
+    };
+    window.addEventListener('contextmenu', onContextMenu, true);
+    return () => {
+      window.removeEventListener('contextmenu', onContextMenu, true);
+      // Unmounted mid-press: drop the window listeners and make the overlays clickable again
+      const session = mouseSessionRef.current;
+      mouseSessionRef.current = null;
+      session?.stop();
+      session?.root?.removeAttribute('data-map-gesture');
+    };
+  }, []);
   
   const handleWheel = useCallback((e: WheelEvent) => {
     // Scrollable panels laid over the canvas (tile info) take the wheel themselves
@@ -4762,9 +4942,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         cursor: isPanning ? 'grabbing' : isDragging ? 'crosshair' : 'default',
         WebkitTouchCallout: 'none', // no iOS callout on long-press (long-press inspects the tile)
       }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      onMouseDown={handleMapMouseDown}
+      onMouseMove={handleHoverMove}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -4815,15 +4995,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       {gpuEnabled && (
         <div ref={gpuHostRef} className="absolute inset-0 pointer-events-none" />
       )}
-      
-      {selectedTile && selectedTool === 'select' && !isMobile && (
-        <TileInfoPanel
-          tile={grid[selectedTile.y][selectedTile.x]}
-          services={state.services}
-          onClose={() => setSelectedTile(null)}
-        />
-      )}
-      
+      {/* Start-up veil: morning fog over the map until the first complete frame (readiness effect) */}
+      {!veilGone && <StartupVeil lifting={veilLifting} onGone={() => setVeilGone(true)} />}
+
+      {/* Desktop tile info is mounted by Game.tsx in the map overlay's top-right column */}
+
       {/* S1-T11: confirm an expensive tap placement (✓ places, ✗ or a tap elsewhere cancels) */}
       {activePendingPlacement && (() => {
         const { x, y, tool, cost } = activePendingPlacement;
@@ -4931,19 +5107,26 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       })()}
       
       {/* C1/C2: brief "Out of money" / "Not enough money" notice for a desktop placement refused for lack of funds */}
-      {moneyNotice && !isMobile && (
-        <div
-          key={moneyNotice.key}
-          data-testid="money-notice"
-          role="status"
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none rounded-none border border-red-800 bg-chrome-panel px-3 py-1.5 text-sm font-medium text-red-800"
-        >
-          {m(moneyNotice.reason)}
-        </div>
-      )}
+      {moneyNotice && !isMobile && (() => {
+        const notice = (
+          <div
+            key={moneyNotice.key}
+            data-testid="money-notice"
+            role="status"
+            className={`pointer-events-none rounded-none border border-red-800 bg-chrome-panel px-3 py-1.5 text-sm font-medium text-red-800 ${
+              toastSlot ? 'w-fit max-w-full animate-rise-in' : 'absolute bottom-16 left-1/2 -translate-x-1/2 z-30'
+            }`}
+          >
+            {m(moneyNotice.reason)}
+          </div>
+        );
+        return toastSlot ? createPortal(notice, toastSlot) : notice;
+      })()}
 
-      {/* On phones the toolbar's tool strip names the tool and cost; this pill would sit on top of the floating column. */}
-      {!isMobile && hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
+      {/* On phones the toolbar's tool strip names the tool and cost; this pill would sit on top of the floating column.
+          Desktop: a slim line at the bottom of the overlay's bottom-centre stack, shown for as long as a
+          build tool is selected (off the map it names the tool and cost; the tile verdict needs a hovered tile). */}
+      {!isMobile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
         // S1-T10 / C1: placement preview label (real cost, and the reason when the tile is red)
         const toolCost = TOOL_INFO[selectedTool].cost;
         const area = dragAreaCheck && dragStartTile && dragEndTile ? dragAreaCheck : null;
@@ -4952,12 +5135,16 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           ? !area.affordable
           : lineDrag
             ? strokeOutOfMoney
-            : !!placementPreview && !placementPreview.ok;
+            : !!hoveredTile && !!placementPreview && !placementPreview.ok;
 
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
-        return (
-          <div data-testid="placement-label" className={`pointer-events-none absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 text-center px-4 py-2 rounded-none text-sm z-10 ${
+        const label = (
+          <div data-testid="placement-label" className={`pointer-events-none text-center rounded-none text-sm ${
+            hintSlot
+              ? 'w-fit max-w-full px-3 py-1'
+              : 'absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 px-4 py-2 z-10'
+          } ${
             isPlacementInvalid
               ? 'border border-red-800 bg-chrome-panel text-red-800 font-medium'
               : 'hud-panel text-chrome-text'
@@ -4989,7 +5176,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               <>
                 {toolName}
                 {toolCost > 0 && ` - ${formatINR(toolCost)}`}
-                {placementPreview?.warning && (
+                {hoveredTile && placementPreview?.warning && (
                   <span className="text-amber-800">{' - '}{m(placementPreview.warning)}</span>
                 )}
                 {showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to zone' : ' - Drag to zone area')}
@@ -4998,6 +5185,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             )}
           </div>
         );
+        return hintSlot ? createPortal(label, hintSlot) : label;
       })()}
       
       {/* Incident Tooltip - shows when hovering over fire or crime */}

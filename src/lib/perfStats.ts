@@ -59,6 +59,17 @@ class RingBuffer {
     return this.size;
   }
 
+  /** Copies the most recent `n` values (oldest first) into `out` and returns how many were copied. */
+  copyRecentTo(out: Float64Array, n: number): number {
+    const count = Math.max(0, Math.min(n, this.size));
+    const cap = this.values.length;
+    const start = (this.next - count + cap) % cap;
+    for (let i = 0; i < count; i++) {
+      out[i] = this.values[(start + i) % cap];
+    }
+    return count;
+  }
+
   /** Mean of the most recent `n` values (0 when empty). */
   recentMean(n: number): number {
     const count = Math.min(n, this.size);
@@ -105,10 +116,35 @@ function round(value: number, digits = 2): number {
   return Math.round(value * f) / f;
 }
 
+/** Frames recorded since the module loaded; only ever grows (also across `resetPerfStats`). */
+let frameSeq = 0;
+
 /** Record how long one frame took, in ms (time between consecutive animation frames). */
 export function recordFrame(ms: number): void {
   frames.push(ms);
+  frameSeq++;
   capture?.frames.push(ms);
+}
+
+/** Sequence number of the latest recorded frame (pass it to `getFrameStatsSince` later). */
+export function getFrameSeq(): number {
+  return frameSeq;
+}
+
+export type FrameWindowStats = { count: number; p95: number };
+
+/**
+ * p95 of the frames recorded after sequence number `seq` (non-overlapping windows for auto-quality).
+ * Only frames still in the ring buffer count: a window longer than `windowSize` frames is
+ * summarised by its most recent `windowSize` frames.
+ */
+export function getFrameStatsSince(seq: number): FrameWindowStats {
+  const wanted = frameSeq - seq;
+  if (!(wanted > 0)) return { count: 0, p95: 0 };
+  const count = frames.copyRecentTo(scratch, wanted);
+  if (count === 0) return { count: 0, p95: 0 };
+  const sorted = scratch.subarray(0, count).sort();
+  return { count, p95: round(percentileOfSorted(sorted, count, 95)) };
 }
 
 /** Record how long one simulation tick took, in ms. */

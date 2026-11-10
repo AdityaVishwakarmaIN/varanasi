@@ -24,6 +24,8 @@ import type { OverlayMode } from '@/components/game/types';
 import { FogChip, SeasonDateLabel } from '@/components/game/SeasonCalendar';
 import { FestivalChip } from '@/components/game/FestivalPanel';
 import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
+import { getTileStatusesForState } from '@/lib/tileStatus';
+import { ProblemIconGlyph } from '@/components/game/ProblemIconGlyph';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -139,6 +141,10 @@ export function MobileTopBar({
     ? getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, selectedTile.x, selectedTile.y)
     : null;
   const gangaEffectLines = gangaEffectInfo ? describeGangaTileEffect(gangaEffectInfo, formatPopulation) : null;
+  // The selected tile's most important status: same explanation as the desktop tile panel (tileStatus.ts)
+  const topStatus = selectedTile && selectedTile.building.type !== 'water'
+    ? getTileStatusesForState(state, selectedTile.x, selectedTile.y)[0] ?? null
+    : null;
 
   return (
     <>
@@ -292,6 +298,20 @@ export function MobileTopBar({
             >
               <CloseIcon size={12} />
             </button>
+          </div>
+        )}
+
+        {/* What is wrong with the selected tile and what to do (one line pair; the map icon's glyph) */}
+        {selectedTile && topStatus && (
+          <div className="border-t border-chrome-border bg-chrome-well px-3 py-1 flex items-start gap-1.5 text-[11px] min-w-0" data-testid="mobile-tile-status">
+            {topStatus.icon && <ProblemIconGlyph kind={topStatus.icon} size={16} />}
+            <span className="min-w-0 line-clamp-2">
+              <span className={`font-semibold ${topStatus.severity === 'critical' ? 'text-red-800' : topStatus.severity === 'warning' ? 'text-amber-800' : 'text-chrome-text'}`}>
+                {m(topStatus.title)}
+              </span>
+              {' '}
+              <span className="text-chrome-text">{m(topStatus.fix || topStatus.cause)}</span>
+            </span>
           </div>
         )}
 

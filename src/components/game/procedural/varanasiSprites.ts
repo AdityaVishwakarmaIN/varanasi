@@ -2170,6 +2170,17 @@ export interface ProceduralSpriteOptions {
 export const PROCEDURAL_PAINT_BUDGET_MS = 8;
 let budgetWindowStart = 0;
 let budgetSpent = 0;
+/** Budgeted requests that could not be painted (a stand-in or another resolution was used). */
+let budgetMisses = 0;
+
+/**
+ * Running count of budgeted sprite requests that were not painted in time. A frame whose count
+ * did not change drew every procedural sprite at its intended resolution (the start-up veil
+ * waits for such a frame).
+ */
+export function getProceduralBudgetMisses(): number {
+  return budgetMisses;
+}
 
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2220,11 +2231,17 @@ export function getProceduralSprite(
       budgetSpent = 0;
     }
     if (budgetSpent >= PROCEDURAL_PAINT_BUDGET_MS) {
-      // Over budget: reuse the same art at another resolution if one is cached (e.g. mid-zoom)
+      budgetMisses++;
+      // Over budget: reuse the same art at another resolution if one is cached (e.g. mid-zoom).
+      // Prefer the sharpest one: the first match in LRU order was often a lower tier, drawn
+      // upscaled (blurry) until a later redraw happened to paint the right tier.
+      let best: ProceduralSprite | null = null;
       for (const s of spriteCache.values()) {
-        if (s.type === type && s.variant === v && s.flipped === flipped && !!s.abandoned === !!opts.abandoned) return s;
+        if (s.type === type && s.variant === v && s.flipped === flipped && !!s.abandoned === !!opts.abandoned) {
+          if (!best || s.tilePx > best.tilePx) best = s;
+        }
       }
-      return null;
+      return best;
     }
   }
   const size = getProceduralSpriteSize(type, tilePx);

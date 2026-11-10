@@ -37,7 +37,8 @@ import { ControlsHelpDialog } from '@/components/game/ControlsHelpDialog';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { createSharedControlsState, SharedControlsState } from '@/lib/controlsConfig';
 import { OverlayModeToggle } from '@/components/game/OverlayModeToggle';
-import { BOTTOM_TOAST_SLOT_ID } from '@/components/game/BottomToastPortal';
+import { MapOverlayLayer, OverlaySlot } from '@/components/game/MapOverlayLayer';
+import { TileInfoPanel } from '@/components/game/panels';
 import { Sidebar } from '@/components/game/Sidebar';
 import {
   BudgetPanel,
@@ -438,7 +439,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
           )}
           
           {/* Main canvas area - fills remaining space, with padding for top/bottom bars */}
-          <div className="flex-1 relative overflow-hidden" style={{ paddingTop: 'calc(72px + env(safe-area-inset-top))', paddingBottom: 'calc(76px + env(safe-area-inset-bottom))' }}>
+          <div data-map-root className="flex-1 relative overflow-hidden" style={{ paddingTop: 'calc(72px + env(safe-area-inset-top))', paddingBottom: 'calc(76px + env(safe-area-inset-bottom))' }}>
             <CanvasIsometricGrid 
               overlayMode={overlayMode} 
               selectedTile={selectedTile} 
@@ -528,6 +529,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onDrawModeChange={setTouchDrawMode}
             bannerSlot={
               <>
+                {/* Undo / save-error toasts (BottomToastPortal), right above the banners and toolbar */}
+                <OverlaySlot name="toasts" className="w-full flex flex-col-reverse gap-2" />
                 <FailureOverlays bannerClassName="w-full empty:hidden" onExit={onExit} />
                 <FestivalEventBanner state={state} onOpen={setEventPanel} />
               </>
@@ -550,6 +553,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   }
 
   // Desktop layout
+  // Tile info (select tool) heads the right-hand HUD column
+  const tileInfoOpen = !!selectedTile && state.selectedTool === 'select';
   return (
     <TooltipProvider>
       <div className="w-full h-full min-h-[560px] overflow-hidden bg-background flex">
@@ -569,10 +574,11 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onCalendarEventClick={openCalendarEvent}
             onPanelOpenChange={setTopPanelOpen}
           />
-          <div className="flex-1 relative overflow-visible">
-            <CanvasIsometricGrid 
-              overlayMode={overlayMode} 
-              selectedTile={selectedTile} 
+          {/* data-map-root: the canvas marks it with data-map-gesture while a map press is held */}
+          <div data-map-root className="flex-1 relative overflow-visible">
+            <CanvasIsometricGrid
+              overlayMode={overlayMode}
+              selectedTile={selectedTile}
               setSelectedTile={setSelectedTile}
               navigationTarget={navigationTarget}
               onNavigationComplete={clearNavigationTarget}
@@ -580,83 +586,108 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
             />
-            {/* Top-left column: notification log + live crisis / festival chips, then the toasts */}
-            <div className="absolute top-3 left-4 min-[1440px]:left-1/2 min-[1440px]:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))] flex flex-col gap-2 pointer-events-none">
-              <div className="flex items-start gap-2">
-                <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
-                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 min-w-0 pt-1.5" />
-              </div>
-              <NotificationToasts notifications={state.notifications} onLocate={locateNotification} />
-            </div>
-            {/* Bottom-centre stack: one column above the overlay bar (bottom-left) and clear of the
-                minimap (bottom-right). It grows upward, so paused bar, debt banners, festival banner
-                and the undo / save-error toasts (portalled into the slot) never overlap. */}
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(26rem,calc(100%-2rem))] flex flex-col-reverse items-center gap-2 pointer-events-none">
-              <PausedIndicator className="pointer-events-auto max-w-full" />
-              <FailureOverlays bannerClassName="w-full empty:hidden" onExit={onExit} />
-              <div id={BOTTOM_TOAST_SLOT_ID} className="w-full flex flex-col-reverse gap-2 empty:hidden" />
-              <FestivalEventBanner state={state} onOpen={setEventPanel} className="pointer-events-auto" />
-            </div>
-            <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
-            <CitizenFeed
-              compact
-              onLocate={locateTile}
-              className={`absolute left-4 z-20 w-72 ${showOverlayPanel ? 'bottom-24' : 'bottom-4'}`}
-            />
-            {showOverlayPanel && (
-              <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
-            )}
-            {showMinimap && (
-              <MiniMap onNavigate={navigateFromMiniMap} onViewportSubscribe={subscribeMiniMapViewport} />
-            )}
-            
-            {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
-            {/* The tile info card (w-72, right-4) is opened on purpose, so the column steps left of it. */}
-            <div className={`absolute top-3 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none ${selectedTile && state.selectedTool === 'select' ? 'right-[19.75rem]' : 'right-4'}`}>
-            <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} />
-            {isMultiplayer && (
-              <div className="pointer-events-auto">
-                <div className="hud-glass rounded-none px-3 py-2 shadow-lg min-w-[120px]">
-                  <div className="flex items-center gap-2 text-sm text-chrome-text">
-                    {roomCode && (
-                      <>
-                        <span className="font-mono font-medium tracking-wider">{roomCode}</span>
-                        <button
-                          onClick={handleCopyRoomLink}
-                          className="p-1 hover:bg-chrome-well rounded-none transition-colors"
-                          title="Copy invite link"
-                        >
-                          {copiedRoomLink ? (
-                            <Check className="w-3.5 h-3.5 text-green-700" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-chrome-muted hover:text-chrome-text" />
-                          )}
-                        </button>
-                      </>
-                    )}
+            {/* Everything that floats over the map, in named regions (see MapOverlayLayer) */}
+            <MapOverlayLayer
+              topLeft={
+                <>
+                  <div className="flex w-full items-start gap-2">
+                    <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
+                    <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 min-w-0 pt-1.5" />
                   </div>
-                  {players.length > 0 && (
-                    <div className="mt-1.5 space-y-0.5">
-                      {players.map((player) => (
-                        <div key={player.id} className="flex items-center gap-1.5 text-xs text-chrome-muted">
-                          <span className="w-2 h-2 rounded-full bg-green-500" />
-                          {player.name}
+                  <CitizenFeed compact onLocate={locateTile} />
+                  {/* Toasts are the part that gives way (scrolls) when the map is short */}
+                  <div className="w-full min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:thin]">
+                    <NotificationToasts notifications={state.notifications} onLocate={locateNotification} />
+                  </div>
+                </>
+              }
+              topRight={
+                <>
+                  {isMultiplayer && (
+                    <div className="pointer-events-auto shrink-0">
+                      <div className="hud-glass rounded-none px-3 py-2 shadow-lg min-w-[120px]">
+                        <div className="flex items-center gap-2 text-sm text-chrome-text">
+                          {roomCode && (
+                            <>
+                              <span className="font-mono font-medium tracking-wider">{roomCode}</span>
+                              <button
+                                onClick={handleCopyRoomLink}
+                                className="p-1 hover:bg-chrome-well rounded-none transition-colors"
+                                title="Copy invite link"
+                              >
+                                {copiedRoomLink ? (
+                                  <Check className="w-3.5 h-3.5 text-green-700" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5 text-chrome-muted hover:text-chrome-text" />
+                                )}
+                              </button>
+                            </>
+                          )}
                         </div>
-                      ))}
+                        {players.length > 0 && (
+                          <div className="mt-1.5 space-y-0.5">
+                            {players.map((player) => (
+                              <div key={player.id} className="flex items-center gap-1.5 text-xs text-chrome-muted">
+                                <span className="w-2 h-2 rounded-full bg-green-500" />
+                                {player.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-              <TipToast
-                message={currentTip || ''}
-                isVisible={isTipVisible && state.activePanel === 'none' && !topPanelOpen}
-                onContinue={onTipContinue}
-                onSkipAll={onTipSkipAll}
-                className="w-full"
-              />
-              <GettingStartedChecklist key={state.id} cityId={state.id} className="w-64" />
-            </div>
+                  {/* Tile info is opened on purpose: it takes the column (and shrinks, scrolling inside,
+                      when the map is short). The panel positions itself absolutely; here it is in flow. */}
+                  {tileInfoOpen && selectedTile && (
+                    <div className="pointer-events-auto flex min-h-0 flex-col [&>*]:!static [&>*]:!max-h-none">
+                      <TileInfoPanel
+                        tile={state.grid[selectedTile.y][selectedTile.x]}
+                        services={state.services}
+                        onClose={() => setSelectedTile(null)}
+                      />
+                    </div>
+                  )}
+                  {/* The tip and checklist step aside while a tile is inspected (as the tip does for panels) */}
+                  <TipToast
+                    message={currentTip || ''}
+                    isVisible={isTipVisible && state.activePanel === 'none' && !topPanelOpen && !tileInfoOpen}
+                    onContinue={onTipContinue}
+                    onSkipAll={onTipSkipAll}
+                    className="w-full shrink-0"
+                  />
+                  <GettingStartedChecklist key={state.id} cityId={state.id} className={`w-64 shrink-0 ${tileInfoOpen ? 'hidden' : ''}`} />
+                </>
+              }
+              bottomLeft={
+                <>
+                  <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} className="max-w-[28rem]" />
+                  {showOverlayPanel && (
+                    <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
+                  )}
+                </>
+              }
+              bottomCenter={
+                <>
+                  {/* Status first, transient messages under it, the tool hint as the bottom line */}
+                  <FestivalEventBanner state={state} onOpen={setEventPanel} className="pointer-events-auto max-w-full" />
+                  <FailureOverlays bannerClassName="w-full empty:hidden" onExit={onExit} />
+                  <PausedIndicator className="pointer-events-auto max-w-full" />
+                  {/* Undo / save-error toasts (BottomToastPortal) and placement errors (canvas) */}
+                  <OverlaySlot name="toasts" className="w-full flex flex-col-reverse items-center gap-2" />
+                  {/* Selected tool, cost and placement verdict (canvas) */}
+                  <OverlaySlot name="hint" className="flex max-w-full justify-center" />
+                </>
+              }
+              bottomRight={
+                showMinimap && (
+                  <div className="pointer-events-auto">
+                    <MiniMap inline onNavigate={navigateFromMiniMap} onViewportSubscribe={subscribeMiniMapViewport} />
+                  </div>
+                )
+              }
+            />
+            <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
           </div>
         </div>
         

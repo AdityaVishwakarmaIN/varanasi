@@ -63,6 +63,7 @@ const VIEW_OVERLAY_LABEL = msg('View Overlay');
  * Overlay mode toggle component.
  * Allows users to switch between different visualization overlays
  * (power grid, water system, service coverage, etc.)
+ * Renders in flow; the parent places it (desktop: MapOverlayLayer bottom-left).
  */
 export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   overlayMode,
@@ -73,7 +74,8 @@ export const OverlayModeToggle = React.memo(function OverlayModeToggle({
   
   return (
     <div
-      className="hud-glass fixed bottom-4 left-[240px] z-[42] flex items-center gap-2 rounded-none py-1.5 pl-3 pr-1.5"
+      // Placed by the map overlay layout (MapOverlayLayer, bottom-left region)
+      className="hud-glass pointer-events-auto flex items-center gap-2 rounded-none py-1.5 pl-3 pr-1.5"
       role="toolbar"
       aria-label={String(m(VIEW_OVERLAY_LABEL))}
     >

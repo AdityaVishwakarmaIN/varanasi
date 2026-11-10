@@ -60,7 +60,10 @@ export class LayerStack {
   constructor(root?: Container) {
     this.root = root ?? new Container();
     for (const name of LAYER_ORDER) {
-      const layer = new Container();
+      // PERF: each layer is its own render group, so clearing/refilling a dynamic layer every
+      // frame only rebuilds that layer's instruction list; retained layers (base/buildings/
+      // lighting/hover) keep their built instructions until they are redrawn.
+      const layer = new Container({ isRenderGroup: true });
       layer.label = name;
       this.layers.set(name, layer);
       this.root.addChild(layer);

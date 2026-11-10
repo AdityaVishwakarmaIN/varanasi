@@ -101,6 +101,39 @@ export function computeRoadAccessMask(grid: Tile[][], size: number, maxDistance:
   return mask;
 }
 
+/**
+ * Road access for one tile, by the same rule as the simulation's `hasRoadAccess` (a road or bridge reached within
+ * `maxDistance` steps through tiles of the same zone). Matches `computeRoadAccessMask` for that tile; cheaper when
+ * only one tile is needed (the tile info panel).
+ */
+export function hasTileRoadAccess(grid: Tile[][], size: number, x: number, y: number, maxDistance: number = PROBLEM_ICON_CONFIG.roadAccessDistance): boolean {
+  const zone = grid[y]?.[x]?.zone;
+  if (!zone || zone === 'none') return false;
+  // The mask never walks onto water, so a water tile only counts when a road is right beside it
+  if (grid[y][x].building.type === 'water') maxDistance = Math.min(1, maxDistance);
+  const seen = new Set<number>([y * size + x]);
+  let frontier: number[] = [y * size + x];
+  for (let dist = 0; dist < maxDistance && frontier.length > 0; dist++) {
+    const next: number[] = [];
+    for (const i of frontier) {
+      const cx = i % size;
+      const cy = (i / size) | 0;
+      const around: [number, number][] = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+      for (const [nx, ny] of around) {
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        const j = ny * size + nx;
+        if (seen.has(j)) continue;
+        seen.add(j);
+        const t = grid[ny][nx];
+        if (t.building.type === 'road' || t.building.type === 'bridge') return true;
+        if (t.zone === zone && t.building.type !== 'water') next.push(j);
+      }
+    }
+    frontier = next;
+  }
+  return false;
+}
+
 export interface ProblemTileInput {
   tile: Tile;
   flooded: boolean;
@@ -127,6 +160,28 @@ export function pickTileProblem(input: ProblemTileInput): ProblemKind | null {
   }
   if (b.abandoned) return 'abandoned';
   return null;
+}
+
+/**
+ * Every icon problem that applies to a tile, in priority order. The first entry is always what
+ * `pickTileProblem` returns (and so what the map draws); tileStatus.ts turns the whole list into the
+ * tile panel's explanations. Kept separate from `pickTileProblem` so the per-frame icon scan never allocates.
+ */
+export function listTileProblems(input: ProblemTileInput): ProblemKind[] {
+  const { tile, flooded, infected, hasRoadAccess, powerCut } = input;
+  const b = tile.building;
+  const out: ProblemKind[] = [];
+  const building = isProblemBuilding(tile);
+  if (b.onFire) out.push('fire');
+  if (flooded && building) out.push('flood');
+  if (infected && building && (b.population > 0 || b.jobs > 0)) out.push('disease');
+  if (tile.zone !== 'none' && b.type !== 'empty' && !hasRoadAccess) out.push('no_road');
+  if (isDevelopedZone(tile) && !b.abandoned) {
+    if (!b.powered) out.push(powerCut ? 'power_cut' : 'no_power');
+    if (!b.watered) out.push('no_water');
+  }
+  if (b.abandoned) out.push('abandoned');
+  return out;
 }
 
 export interface DistrictProblem {

@@ -1,32 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTO_DPR_CAP,
   AUTO_QUALITY_CONFIG,
   QUALITY_LEVELS,
   QUALITY_PRESETS,
+  armAutoQualityState,
+  autoRenderDpr,
   createAutoQualityState,
   higherLevel,
+  holdAutoQualityState,
   lowerLevel,
   scaledEntityLimit,
   stepAutoQuality,
+  type AutoQualitySample,
   type AutoQualityState,
 } from '@/lib/qualityConfig';
 
-const BUDGET = AUTO_QUALITY_CONFIG.budgetMs.desktop; // 16.7
-const OVER = 25;
-const UNDER = 8; // < 60% of 16.7
-const BETWEEN = 12; // between 60% and 100%
+const DROP_ABOVE = AUTO_QUALITY_CONFIG.dropAboveMs.desktop; // ~33.4
+const STEP = AUTO_QUALITY_CONFIG.checkIntervalMs;
+const N = AUTO_QUALITY_CONFIG.dropAfterChecks;
+const COOLDOWN = AUTO_QUALITY_CONFIG.cooldownChecks;
+const SLOW = 45; // clearly janky
+const VSYNC = 17.4; // a healthy 60 Hz session: p95 just over one vsync interval
+const FINE = 12;
 
-/** Feeds p95 samples one check at a time (the fake clock is the check index). */
-function run(state: AutoQualityState, samples: Array<number | [number, boolean]>): AutoQualityState[] {
+type Check = number | { p95?: number; frames?: number; interacting?: boolean };
+
+/**
+ * Feeds one check per entry on a fake clock: check i happens at `t0 + (i + 1) * STEP` and its
+ * window started at the previous check (`t0 + i * STEP`). Returns the state after every check.
+ */
+function run(state: AutoQualityState, checks: Check[], t0 = 0): AutoQualityState[] {
   const out: AutoQualityState[] = [];
   let s = state;
-  for (const sample of samples) {
-    const [p95, interacting] = Array.isArray(sample) ? sample : [sample, false];
-    s = stepAutoQuality(s, { frameP95: p95, interacting }, BUDGET);
+  checks.forEach((c, i) => {
+    const o = typeof c === 'number' ? { p95: c } : c;
+    const sample: AutoQualitySample = {
+      frameP95: o.p95 ?? FINE,
+      frameCount: o.frames ?? 120,
+      windowStart: t0 + i * STEP,
+      interacting: o.interacting ?? false,
+    };
+    s = stepAutoQuality(s, sample, DROP_ABOVE);
     out.push(s);
-  }
+  });
   return out;
 }
+
+const levels = (states: AutoQualityState[]) => states.map((s) => s.level);
+/** An auto state that is armed and past its warm-up at t = 0. */
+const armed = (level: AutoQualityState['level']) => createAutoQualityState(level, 0);
 
 describe('QUALITY_PRESETS', () => {
   it('matches the S1-T7 table', () => {
@@ -55,6 +78,21 @@ describe('QUALITY_PRESETS', () => {
   });
 });
 
+describe('autoRenderDpr (resolution under auto)', () => {
+  it('is the device ratio capped per device, whatever the auto level', () => {
+    expect(autoRenderDpr(1, false)).toBe(1);
+    expect(autoRenderDpr(1.25, false)).toBe(1.25);
+    expect(autoRenderDpr(3, false)).toBe(AUTO_DPR_CAP.desktop);
+    expect(autoRenderDpr(3, true)).toBe(AUTO_DPR_CAP.mobile);
+  });
+
+  it('falls back to 1 for a missing or invalid ratio', () => {
+    expect(autoRenderDpr(0, false)).toBe(1);
+    expect(autoRenderDpr(Number.NaN, true)).toBe(1);
+    expect(autoRenderDpr(-2, false)).toBe(1);
+  });
+});
+
 describe('scaledEntityLimit', () => {
   it('scales the target and clamps to the cap', () => {
     expect(scaledEntityLimit(1000, 1, 800)).toBe(800);
@@ -80,56 +118,105 @@ describe('level order', () => {
   });
 });
 
-describe('stepAutoQuality (hysteresis)', () => {
-  it('drops one level after 3 over-budget checks in a row, not before', () => {
-    const states = run(createAutoQualityState('high'), [OVER, OVER, OVER]);
-    expect(states.map((s) => s.level)).toEqual(['high', 'high', 'medium']);
+describe('stepAutoQuality (sticky, evidence-gated drops)', () => {
+  it(`drops one level after ${N} slow windows in a row, not before`, () => {
+    const states = run(armed('high'), Array(N).fill(SLOW));
+    expect(levels(states)).toEqual([...Array(N - 1).fill('high'), 'medium']);
   });
 
-  it('a good check in between resets the over-budget streak', () => {
-    const states = run(createAutoQualityState('high'), [OVER, OVER, BETWEEN, OVER, OVER]);
+  it('never drops on a healthy 60 Hz session (p95 just over one vsync)', () => {
+    expect(run(armed('high'), Array(200).fill(VSYNC)).at(-1)!.level).toBe('high');
+  });
+
+  it('a healthy window resets the slow streak', () => {
+    const states = run(armed('high'), [...Array(N - 1).fill(SLOW), FINE, ...Array(N - 1).fill(SLOW)]);
     expect(states.at(-1)!.level).toBe('high');
   });
 
-  it('raises one level only after 10 checks under 60% of the budget', () => {
-    const nine = run(createAutoQualityState('low'), Array(9).fill(UNDER));
-    expect(nine.at(-1)!.level).toBe('low');
-    const ten = run(createAutoQualityState('low'), Array(10).fill(UNDER));
-    expect(ten.at(-1)!.level).toBe('medium');
+  it('never raises, however fast the frames are (no oscillation)', () => {
+    const states = run(armed('high'), [...Array(N).fill(SLOW), ...Array(500).fill(1)]);
+    expect(new Set(levels(states).slice(N - 1))).toEqual(new Set(['medium']));
+    expect(run(armed('low'), Array(500).fill(1)).at(-1)!.level).toBe('low');
   });
 
-  it('does not raise when frames are fine but not well under budget (the hysteresis gap)', () => {
-    const states = run(createAutoQualityState('medium'), Array(30).fill(BETWEEN));
+  it('alternating slow and fast phases change the level at most once per drop, only downwards', () => {
+    const phase = [...Array(N).fill(SLOW), ...Array(20).fill(FINE)];
+    const states = run(armed('high'), [...phase, ...phase, ...phase, ...phase]);
+    let changes = 0;
+    for (let i = 1; i < states.length; i++) {
+      if (states[i].level !== states[i - 1].level) {
+        changes++;
+        expect(QUALITY_LEVELS.indexOf(states[i].level)).toBe(QUALITY_LEVELS.indexOf(states[i - 1].level) - 1);
+      }
+    }
+    expect(changes).toBe(2); // high -> medium -> low, then stays
+    expect(states.at(-1)!.level).toBe('low');
+  });
+
+  it('ignores the checks right after a drop (cooldown), then needs a fresh streak', () => {
+    const states = run(armed('high'), Array(N + COOLDOWN + N - 1).fill(SLOW));
+    expect(states.at(-1)!.level).toBe('medium');
+    expect(run(states.at(-1)!, [SLOW], (N + COOLDOWN + N - 1) * STEP)[0].level).toBe('low');
+  });
+
+  it('never goes below low', () => {
+    expect(run(armed('low'), Array(50).fill(SLOW)).at(-1)!.level).toBe('low');
+  });
+
+  it('waits while the player is panning or zooming, then drops at the first quiet slow check', () => {
+    const states = run(armed('high'), [...Array(N + 2).fill({ p95: SLOW, interacting: true }), SLOW]);
+    expect(levels(states.slice(0, N + 2))).toEqual(Array(N + 2).fill('high'));
+    expect(states[N + 1].pending).toBe(true);
     expect(states.at(-1)!.level).toBe('medium');
   });
 
-  it('ignores the checks right after a change', () => {
-    const states = run(createAutoQualityState('high'), [OVER, OVER, OVER, OVER, OVER, OVER, OVER]);
-    // drop at #3; #4-#5 settle; #6-#8 would be needed for the next drop
-    expect(states.map((s) => s.level)).toEqual(['high', 'high', 'medium', 'medium', 'medium', 'medium', 'medium']);
-    const more = run(states.at(-1)!, [OVER]);
-    expect(more[0].level).toBe('low');
+  it('a healthy window cancels a pending drop', () => {
+    const states = run(armed('high'), [...Array(N).fill({ p95: SLOW, interacting: true }), FINE]);
+    expect(states.at(-1)!.pending).toBe(false);
+    expect(states.at(-1)!.level).toBe('high');
   });
 
-  it('never goes below low or above high', () => {
-    expect(run(createAutoQualityState('low'), Array(20).fill(OVER)).at(-1)!.level).toBe('low');
-    expect(run(createAutoQualityState('high'), Array(40).fill(UNDER)).at(-1)!.level).toBe('high');
+  it('ignores windows with too few frames or no data (throttled tab, one long hang)', () => {
+    const few = run(armed('high'), Array(20).fill({ p95: SLOW, frames: AUTO_QUALITY_CONFIG.minFrames - 1 }));
+    expect(few.at(-1)).toEqual(armed('high'));
+    const empty = run(armed('high'), Array(20).fill({ p95: 0, frames: 0 }));
+    expect(empty.at(-1)).toEqual(armed('high'));
+    // ...and they do not break a streak either
+    const mixed = run(armed('high'), [...Array(N - 1).fill(SLOW), { p95: SLOW, frames: 2 }, SLOW]);
+    expect(mixed.at(-1)!.level).toBe('medium');
   });
+});
 
-  it('waits while the player is panning or zooming, then applies the change', () => {
-    const states = run(createAutoQualityState('high'), [[OVER, true], [OVER, true], [OVER, true], [OVER, true], [BETWEEN, false]]);
-    expect(states.slice(0, 4).map((s) => s.level)).toEqual(['high', 'high', 'high', 'high']);
-    expect(states[3].pending).toBe('drop');
-    expect(states[4].level).toBe('medium');
-  });
-
-  it('cancels a pending raise when frames become slow', () => {
-    const raised = run(createAutoQualityState('low'), [...Array(10).fill([UNDER, true]), [OVER, true], [BETWEEN, false]]);
-    expect(raised.at(-1)!.level).toBe('low');
-  });
-
-  it('ignores empty samples', () => {
-    const states = run(createAutoQualityState('high'), [0, 0, 0, 0]);
+describe('auto-quality hold (start-up, warm-up, tab visibility)', () => {
+  it('takes no evidence until armed (start-up / loading)', () => {
+    const states = run(createAutoQualityState('high'), Array(100).fill(SLOW));
     expect(states.at(-1)).toEqual(createAutoQualityState('high'));
+  });
+
+  it('after arming, ignores windows that start before the warm-up ends', () => {
+    const warmup = AUTO_QUALITY_CONFIG.warmupMs;
+    const s = armAutoQualityState(createAutoQualityState('high'), warmup);
+    const ignored = Math.ceil(warmup / STEP); // windows starting at 0, 2000, ... < warmup
+    const states = run(s, Array(ignored + N).fill(SLOW));
+    expect(levels(states).slice(0, ignored + N - 1)).toEqual(Array(ignored + N - 1).fill('high'));
+    expect(states.at(-1)!.level).toBe('medium');
+  });
+
+  it('a visibility hold resets the streak and ignores windows that straddle it', () => {
+    const t0 = 0;
+    const before = run(armed('high'), Array(N - 1).fill(SLOW), t0);
+    const resumeAt = (N - 1) * STEP + 500; // tab became visible mid-window
+    const held = holdAutoQualityState(before.at(-1)!, resumeAt + AUTO_QUALITY_CONFIG.visibleGraceMs);
+    expect(held.overCount).toBe(0);
+    const after = run(held, Array(N + 3).fill(SLOW), (N - 1) * STEP);
+    // the windows starting before resumeAt + grace are ignored, then a full new streak is needed
+    expect(after.slice(0, N).every((s) => s.level === 'high')).toBe(true);
+    expect(after.at(-1)!.level).toBe('medium');
+  });
+
+  it('a hold never shortens a longer one (an unarmed state stays unarmed)', () => {
+    const s = holdAutoQualityState(createAutoQualityState('high'), 5000);
+    expect(s.holdUntil).toBe(Number.POSITIVE_INFINITY);
+    expect(holdAutoQualityState(createAutoQualityState('high', 9000), 5000).holdUntil).toBe(9000);
   });
 });

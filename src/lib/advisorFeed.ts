@@ -10,7 +10,8 @@ import {
   type AdvisorNote,
   type AdvisorPriority,
 } from '@/lib/advisors';
-import type { ProblemIconSet } from '@/lib/problemIcons';
+import { PROBLEM_ICON_CONFIG, type ProblemIconSet } from '@/lib/problemIcons';
+import { SIM_RULES } from '@/lib/tileStatus';
 import { getFeederBounds } from '@/lib/feederZones';
 import { formatINR } from '@/lib/format';
 import { FAILURE_CONFIG } from '@/lib/failure';
@@ -43,7 +44,7 @@ export const ADVISOR_FEED_CONFIG = {
 export type AdvisorFeedState = Pick<
   GameState,
   | 'grid' | 'gridSize' | 'mapId' | 'stats' | 'taxRate' | 'year' | 'month' | 'day' | 'hour'
-  | 'riverLevel' | 'forecasts' | 'heatwave' | 'outbreaks' | 'notifications' | 'disastersEnabled'
+  | 'riverLevel' | 'forecasts' | 'heatwave' | 'outbreaks' | 'notifications' | 'disastersEnabled' | 'failure'
 >;
 
 /** "a" or "an" before a name. */
@@ -166,7 +167,7 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
   if (c && c.no_road > 0) {
     notes.push(createAdvisorNote('roads', 'no_road', priorityByCount(c.no_road, 20),
       `${c.no_road} zoned lot${c.no_road === 1 ? ' has' : 's have'} no road access and cannot grow.`,
-      'Draw a road next to these lots.', { ...first.no_road }));
+      `Draw a road within ${PROBLEM_ICON_CONFIG.roadAccessDistance} tiles of them (through the same zone).`, { ...first.no_road }));
   }
   const avgTraffic = scan.roadTiles > 0 ? scan.roadTraffic / scan.roadTiles : 0;
   if (avgTraffic > ADVISOR_FEED_CONFIG.trafficHigh && scan.busiestRoad) {
@@ -177,7 +178,11 @@ export function deriveAdvisorNotes(state: AdvisorFeedState, problems: ProblemIco
   if (c && c.abandoned > 0) {
     notes.push(createAdvisorNote('zoning', 'abandoned', c.abandoned > 10 ? 'high' : c.abandoned > 5 ? 'medium' : 'low',
       `${c.abandoned} building${c.abandoned === 1 ? ' is' : 's are'} abandoned.`,
-      'Check demand: zone less of what is oversupplied, and fix power, water and pollution nearby.', { ...first.abandoned }));
+      // Same rules as the tile panel's explanation (tileStatus.ts)
+      state.failure?.exodusActive
+        ? `People are leaving the city, so empty homes are not rebuilt: raise happiness above ${FAILURE_CONFIG.criticalHappiness}.`
+        : `Usually too little demand for their zone (below ${SIM_RULES.abandonBelowDemand}) or over ${SIM_RULES.unservedAbandonDays} days without power or water. They are rebuilt once demand is above +${SIM_RULES.clearAboveDemand}; select one to see why.`,
+      { ...first.abandoned }));
   }
   if (scan.informal > 0 && scan.informalAt) {
     const where = varanasi

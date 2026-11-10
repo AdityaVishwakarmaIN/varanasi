@@ -18,6 +18,8 @@ import {
   type ProblemKind,
 } from '@/lib/problemIcons';
 import { getFeederBounds } from '@/lib/feederZones';
+import { getBuildingSize } from '@/lib/simulation';
+import type { BuildingType } from '@/types/game';
 
 export const RING: Record<ProblemKind, string> = {
   fire: '#ef4444',
@@ -31,6 +33,20 @@ export const RING: Record<ProblemKind, string> = {
 };
 const BADGE_FILL = 'rgba(15, 23, 42, 0.85)';
 
+/**
+ * World point of a building's badge: the middle of its footprint, lifted a quarter tile. The point stays inside the
+ * footprint on the ground plane, so clicking the badge selects this building (the select tool picks the tile under
+ * the cursor on the ground and resolves footprint tiles to the building's origin).
+ */
+export function getProblemIconAnchor(x: number, y: number, width = 1, height = 1): { wx: number; wy: number } {
+  const gx = x + width / 2;
+  const gy = y + height / 2;
+  return {
+    wx: (gx - gy) * (TILE_WIDTH / 2) + TILE_WIDTH / 2,
+    wy: (gx + gy) * (TILE_HEIGHT / 2) - TILE_HEIGHT * 0.25,
+  };
+}
+
 export interface ProblemIconView {
   offset: { x: number; y: number };
   zoom: number;
@@ -40,7 +56,7 @@ export interface ProblemIconView {
 }
 
 /** Draws one glyph centred on (0, 0) in a unit where the badge radius is 10. */
-function drawGlyph(ctx: IsoRenderer, kind: ProblemKind, t: number): void {
+export function drawProblemGlyph(ctx: IsoRenderer, kind: ProblemKind, t: number): void {
   switch (kind) {
     case 'fire':
       ctx.fillStyle = '#f97316';
@@ -156,8 +172,11 @@ function drawGlyph(ctx: IsoRenderer, kind: ProblemKind, t: number): void {
   }
 }
 
-/** Badge plus glyph at world point (wx, wy), `radius` in screen pixels. */
-function drawBadge(ctx: IsoRenderer, wx: number, wy: number, kind: ProblemKind, radius: number, zoom: number, t: number, count?: number): void {
+/**
+ * Badge plus glyph at world point (wx, wy), `radius` in screen pixels. Also used on plain 2D canvases (the tile
+ * panel and the help legend draw the same badge with zoom 1).
+ */
+export function drawProblemBadge(ctx: IsoRenderer, wx: number, wy: number, kind: ProblemKind, radius: number, zoom: number, t: number, count?: number): void {
   const s = radius / 10 / zoom;
   ctx.save();
   ctx.translate(wx, wy);
@@ -169,7 +188,7 @@ function drawBadge(ctx: IsoRenderer, wx: number, wy: number, kind: ProblemKind, 
   ctx.strokeStyle = RING[kind];
   ctx.lineWidth = 2;
   ctx.stroke();
-  drawGlyph(ctx, kind, t);
+  drawProblemGlyph(ctx, kind, t);
   if (count !== undefined && count > 1) {
     ctx.fillStyle = RING[kind];
     ctx.beginPath();
@@ -197,6 +216,8 @@ export class ProblemIconLayer {
   private roadAccess: Uint8Array | null = null;
   private roadKey = '';
   private time = 0;
+  /** Footprint width and height per icon in `set.tiles` (multi-tile buildings get their badge in the middle). */
+  private footprints: Uint8Array = new Uint8Array(0);
 
   /** The current icon set (for tests and the perf HUD). */
   get current(): ProblemIconSet | null {
@@ -215,6 +236,14 @@ export class ProblemIconLayer {
       this.roadKey = roadKey;
     }
     this.set = computeProblemIconsForState(state, this.roadAccess);
+    const tiles = this.set.tiles;
+    this.footprints = new Uint8Array(tiles.length * 2);
+    for (let k = 0; k < tiles.length; k++) {
+      const i = tiles[k];
+      const fp = getBuildingSize(state.grid[(i / state.gridSize) | 0][i % state.gridSize].building.type as BuildingType);
+      this.footprints[k * 2] = fp.width;
+      this.footprints[k * 2 + 1] = fp.height;
+    }
     this.lastGrid = state.grid;
     this.lastKey = key;
     this.lastOutbreaks = state.outbreaks;
@@ -240,35 +269,32 @@ export class ProblemIconLayer {
     const right = view.width / (dpr * zoom) - offset.x / zoom + TILE_WIDTH;
     const bottom = view.height / (dpr * zoom) - offset.y / zoom + TILE_HEIGHT * 3;
     const visible = (wx: number, wy: number) => wx >= left && wx <= right && wy >= top && wy <= bottom;
-    const toWorld = (x: number, y: number) => ({
-      wx: (x - y) * (TILE_WIDTH / 2) + TILE_WIDTH / 2,
-      wy: (x + y) * (TILE_HEIGHT / 2),
-    });
 
     if (isBuildingLevelZoom(zoom)) {
       const fire = kindIndex('fire');
       const disease = kindIndex('disease');
-      const lift = TILE_HEIGHT * 0.9;
+      const fps = this.footprints;
       for (let k = 0; k < set.tiles.length; k++) {
         const kind = set.kinds[k];
         // Fire already has the pulsing incident marker; disease is one badge per block (below).
         if (kind === fire || kind === disease) continue;
         const i = set.tiles[k];
-        const { wx, wy } = toWorld(i % size, (i / size) | 0);
+        const { wx, wy } = getProblemIconAnchor(i % size, (i / size) | 0, fps[k * 2] || 1, fps[k * 2 + 1] || 1);
         if (!visible(wx, wy)) continue;
-        drawBadge(ctx, wx, wy - lift, PROBLEM_KINDS[kind], PROBLEM_ICON_CONFIG.screenRadius, zoom, this.time);
+        drawProblemBadge(ctx, wx, wy, PROBLEM_KINDS[kind], PROBLEM_ICON_CONFIG.screenRadius, zoom, this.time);
       }
       for (const f of set.infectedBlocks) {
         const b = getFeederBounds(f, size);
-        const { wx, wy } = toWorld(b.centerX, b.centerY);
+        // Inside the block, so clicking the badge selects a tile of the infected block
+        const { wx, wy } = getProblemIconAnchor(b.centerX, b.centerY);
         if (!visible(wx, wy)) continue;
-        drawBadge(ctx, wx, wy - TILE_HEIGHT * 2, 'disease', PROBLEM_ICON_CONFIG.districtScreenRadius, zoom, this.time);
+        drawProblemBadge(ctx, wx, wy, 'disease', PROBLEM_ICON_CONFIG.districtScreenRadius, zoom, this.time);
       }
     } else {
       for (const d of set.districts) {
-        const { wx, wy } = toWorld(d.x, d.y);
+        const { wx, wy } = getProblemIconAnchor(d.x, d.y);
         if (!visible(wx, wy)) continue;
-        drawBadge(ctx, wx, wy, d.kind, PROBLEM_ICON_CONFIG.districtScreenRadius, zoom, this.time, d.count);
+        drawProblemBadge(ctx, wx, wy, d.kind, PROBLEM_ICON_CONFIG.districtScreenRadius, zoom, this.time, d.count);
       }
     }
     ctx.restore();

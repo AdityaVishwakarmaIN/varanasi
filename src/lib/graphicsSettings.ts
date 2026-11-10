@@ -8,11 +8,15 @@
  * The two choices are small UI preferences and live in localStorage (read synchronously at start).
  */
 import {
+  AUTO_DPR_CAP,
   AUTO_QUALITY_CONFIG,
   AUTO_QUALITY_START,
   QUALITY_PRESETS,
+  armAutoQualityState,
+  autoRenderDpr,
   createAutoQualityState,
   deviceValue,
+  holdAutoQualityState,
   isQualitySetting,
   stepAutoQuality,
   type AutoQualityState,
@@ -44,6 +48,12 @@ export interface GraphicsSnapshot {
   /** Renderer in use after override, WebGL2 check and failure fallback. */
   renderer: RendererKind;
   gpuFailed: boolean;
+  /**
+   * Cap on the render DPR that is in force. Changes only when the player changes the setting (an
+   * explicit level's `dprCap`, or `AUTO_DPR_CAP` for `auto`), never when `auto` changes level, so
+   * it is the right dependency for canvas-size effects.
+   */
+  renderDprCap: number;
 }
 
 function readStored<T>(key: string, guard: (v: unknown) => v is T, fallback: T): T {
@@ -77,21 +87,36 @@ let rendererSetting: RendererSetting = 'auto';
 let gpuFailed = false;
 let gpuFailureWarned = false;
 let auto: AutoQualityState = createAutoQualityState(AUTO_QUALITY_START.desktop);
+/** True once the start-up veil lifted (auto-quality may take evidence after its warm-up). */
+let autoArmed = false;
+/** Render DPR for `auto`, chosen once per session from the device (see `getRenderDpr`). */
+let sessionAutoDpr = 0;
+
+function dprCapFor(setting: QualitySetting): number {
+  return setting === 'auto' ? deviceValue(AUTO_DPR_CAP, isMobileDevice) : QUALITY_PRESETS[setting].dprCap;
+}
+
 let snapshot: GraphicsSnapshot = {
   qualitySetting,
   qualityLevel: auto.level,
   rendererSetting,
   renderer: 'canvas',
   gpuFailed,
+  renderDprCap: dprCapFor(qualitySetting),
 };
 let activePreset: QualityPreset = QUALITY_PRESETS[snapshot.qualityLevel];
 const listeners = new Set<() => void>();
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : 0;
+}
 
 function recompute(force = false): void {
   const qualityLevel = qualitySetting === 'auto' ? auto.level : qualitySetting;
   const renderer = typeof window === 'undefined'
     ? 'canvas'
     : chooseRenderer({ setting: rendererSetting, override: readOverride(), webgl2: supportsWebGL2(), gpuFailed });
+  const renderDprCap = dprCapFor(qualitySetting);
   const prev = snapshot;
   if (
     !force &&
@@ -99,18 +124,19 @@ function recompute(force = false): void {
     prev.qualityLevel === qualityLevel &&
     prev.rendererSetting === rendererSetting &&
     prev.renderer === renderer &&
-    prev.gpuFailed === gpuFailed
+    prev.gpuFailed === gpuFailed &&
+    prev.renderDprCap === renderDprCap
   ) {
     return;
   }
-  snapshot = { qualitySetting, qualityLevel, rendererSetting, renderer, gpuFailed };
+  snapshot = { qualitySetting, qualityLevel, rendererSetting, renderer, gpuFailed, renderDprCap };
   // TEMP-RECORDER: renderer / quality changes (prime suspects for the hang)
   if (process.env.NODE_ENV === 'development') {
     tempRecord('graphics:change', {
       force,
       prev: { renderer: prev.renderer, qualityLevel: prev.qualityLevel, qualitySetting: prev.qualitySetting, rendererSetting: prev.rendererSetting, gpuFailed: prev.gpuFailed },
       next: { renderer, qualityLevel, qualitySetting, rendererSetting, gpuFailed },
-      dprCap: QUALITY_PRESETS[qualityLevel].dprCap,
+      dprCap: renderDprCap,
     });
   }
   activePreset = QUALITY_PRESETS[qualityLevel];
@@ -127,7 +153,8 @@ export function initGraphicsSettings(isMobile: boolean): void {
     qualitySetting = readStored(GRAPHICS_STORAGE_KEYS.quality, isQualitySetting, 'auto');
     rendererSetting = readStored(GRAPHICS_STORAGE_KEYS.renderer, isRendererSetting, 'auto');
   }
-  auto = createAutoQualityState(AUTO_QUALITY_START[isMobile ? 'mobile' : 'desktop']);
+  auto = createAutoQualityState(AUTO_QUALITY_START[isMobile ? 'mobile' : 'desktop'], auto.holdUntil);
+  sessionAutoDpr = 0; // the per-device cap changed: choose again
   recompute(true);
 }
 
@@ -135,7 +162,13 @@ export function setQualitySetting(setting: QualitySetting): void {
   if (process.env.NODE_ENV === 'development') tempRecord('graphics:setQualitySetting', { setting }); // TEMP-RECORDER
   qualitySetting = setting;
   writeStored(GRAPHICS_STORAGE_KEYS.quality, setting);
-  if (setting === 'auto') auto = createAutoQualityState(snapshot.qualityLevel);
+  if (setting === 'auto') {
+    // Start from the level in use; if the game is already running, take evidence only after a warm-up.
+    auto = createAutoQualityState(
+      snapshot.qualityLevel,
+      autoArmed ? nowMs() + AUTO_QUALITY_CONFIG.warmupMs : Number.POSITIVE_INFINITY,
+    );
+  }
   recompute();
 }
 
@@ -160,10 +193,48 @@ export function reportGpuFailure(reason: unknown): void {
   recompute();
 }
 
-/** One auto-quality check (the map component calls this every AUTO_QUALITY_CONFIG.checkIntervalMs). */
-export function runAutoQualityCheck(frameP95: number, interacting: boolean): void {
+/**
+ * The start-up veil lifted at `atMs` (performance.now()): auto-quality may take evidence after
+ * `AUTO_QUALITY_CONFIG.warmupMs`. Until this is called, nothing is sampled.
+ */
+export function armAutoQuality(atMs: number): void {
+  autoArmed = true;
+  auto = armAutoQualityState(auto, atMs + AUTO_QUALITY_CONFIG.warmupMs);
+  if (process.env.NODE_ENV === 'development') tempRecord('graphics:autoQuality', { decision: 'arm', holdUntil: auto.holdUntil }); // TEMP-RECORDER
+}
+
+/** The map is (re)starting: take no evidence until `armAutoQuality` is called again. */
+export function disarmAutoQuality(): void {
+  autoArmed = false;
+  auto = armAutoQualityState(auto, Number.POSITIVE_INFINITY);
+}
+
+/** Take no evidence from frames before `untilMs` (e.g. just after the tab becomes visible again). */
+export function holdAutoQuality(untilMs: number): void {
+  auto = holdAutoQualityState(auto, untilMs);
+}
+
+/**
+ * One auto-quality check over the frames since the previous check (the map component calls this
+ * every `AUTO_QUALITY_CONFIG.checkIntervalMs`; `windowStart` is the time of that previous check).
+ */
+export function runAutoQualityCheck(sample: { frameP95: number; frameCount: number; windowStart: number; interacting: boolean }): void {
   if (qualitySetting !== 'auto') return;
-  auto = stepAutoQuality(auto, { frameP95, interacting }, deviceValue(AUTO_QUALITY_CONFIG.budgetMs, isMobileDevice));
+  const prev = auto;
+  auto = stepAutoQuality(auto, sample, deviceValue(AUTO_QUALITY_CONFIG.dropAboveMs, isMobileDevice));
+  // TEMP-RECORDER: auto-quality decisions (streak changes, pending drop, drop)
+  if (
+    process.env.NODE_ENV === 'development' &&
+    (prev.level !== auto.level || prev.pending !== auto.pending || prev.overCount !== auto.overCount)
+  ) {
+    tempRecord('graphics:autoQuality', {
+      decision: prev.level !== auto.level ? 'drop' : auto.pending ? 'pending' : 'streak',
+      from: prev.level,
+      to: auto.level,
+      overCount: auto.overCount,
+      sample,
+    });
+  }
   recompute();
 }
 
@@ -178,13 +249,24 @@ export function getGraphicsSnapshot(): GraphicsSnapshot {
 
 let tempLastRenderDpr = 0; // TEMP-RECORDER
 
-/** Device pixel ratio capped by the active preset (use instead of `window.devicePixelRatio`). */
+/**
+ * Render device pixel ratio (use instead of `window.devicePixelRatio`).
+ * - `auto`: chosen once per session from the device (`autoRenderDpr`), whatever level auto picks,
+ *   so resolution never changes while playing.
+ * - explicit Low / Medium / High: the device ratio capped by that level's `dprCap`.
+ */
 export function getRenderDpr(): number {
   const raw = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-  const dpr = Math.min(raw, activePreset.dprCap);
+  let dpr: number;
+  if (qualitySetting === 'auto') {
+    if (sessionAutoDpr === 0 && typeof window !== 'undefined') sessionAutoDpr = autoRenderDpr(raw, isMobileDevice);
+    dpr = sessionAutoDpr || autoRenderDpr(raw, isMobileDevice);
+  } else {
+    dpr = Math.min(raw, activePreset.dprCap);
+  }
   // TEMP-RECORDER: render DPR changes (one number compare per call)
   if (process.env.NODE_ENV === 'development' && dpr !== tempLastRenderDpr) {
-    tempRecord('graphics:renderDpr', { from: tempLastRenderDpr, to: dpr, raw, dprCap: activePreset.dprCap });
+    tempRecord('graphics:renderDpr', { from: tempLastRenderDpr, to: dpr, raw, dprCap: snapshot.renderDprCap, setting: qualitySetting });
     tempLastRenderDpr = dpr;
   }
   return dpr;
@@ -204,4 +286,5 @@ export const SERVER_GRAPHICS_SNAPSHOT: GraphicsSnapshot = {
   rendererSetting: 'auto',
   renderer: 'canvas',
   gpuFailed: false,
+  renderDprCap: AUTO_DPR_CAP.desktop,
 };
