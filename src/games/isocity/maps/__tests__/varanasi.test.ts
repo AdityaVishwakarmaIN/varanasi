@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '@/lib/rng';
+import { createInitialGameState } from '@/lib/simulation';
 import type { BuildingType } from '@/games/isocity/types/buildings';
 import type { Tile } from '@/games/isocity/types/game';
 import { generateVaranasiTerrain } from '@/games/isocity/maps/generateVaranasi';
@@ -76,5 +77,29 @@ describe.each([60, 120, 160])('Varanasi map at size %i', (size) => {
     expect(getRiverZone(0, 0, size, 'random')).toBe('none');
     expect(getDistanceToGanga(0, 0, size, undefined)).toBe(Infinity);
     expect(getGangaCatchment(size, 8).length).toBeGreaterThan(0);
+  });
+});
+
+describe('a new Varanasi game keeps trees out of the river', () => {
+  it.each([7, 11])('seed %i: river tiles are plain water and no tree touches the water', (seed) => {
+    const size = 160;
+    const state = createInitialGameState(size, 'Varanasi', createRng(seed), 'varanasi');
+    const isWater = (x: number, y: number) =>
+      x >= 0 && y >= 0 && x < size && y < size && state.grid[y][x].building.type === 'water';
+    const misplaced: string[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const type = state.grid[y][x].building.type;
+        // The renderer draws water exactly on 'water' tiles, so every river-zone tile must be one
+        if (getRiverZone(x, y, size, 'varanasi') === 'river' && type !== 'water') misplaced.push(`${type}@${x},${y}`);
+        if (type !== 'tree') continue;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (isWater(x + dx, y + dy)) misplaced.push(`tree@${x},${y}`);
+          }
+        }
+      }
+    }
+    expect(misplaced).toEqual([]);
   });
 });

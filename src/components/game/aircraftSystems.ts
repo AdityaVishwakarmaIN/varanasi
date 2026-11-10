@@ -15,7 +15,7 @@ import {
 } from './constants';
 import { gridToScreen } from './utils';
 import { isFogActive, type SimWeather } from '@/lib/seasons';
-import { findAirports, findHeliports } from './gridFinders';
+import { findAirportsCached, findHeliportsCached } from './gridScanCache';
 
 export interface AircraftSystemRefs {
   airplanesRef: React.MutableRefObject<Airplane[]>;
@@ -52,16 +52,16 @@ export function createAircraftSystems(
   const { worldStateRef, structureVersionRef, cachedPopulationRef, isMobile, weather, visualHour = 12 } = systemState;
   const fogGrounded = isFogActive(weather, visualHour);
 
-  // Find airports callback
-  const findAirportsCallback = (): { x: number; y: number }[] => {
+  // Find airports callback (called every frame: cached per map structure, see gridScanCache)
+  const findAirportsCallback = (): readonly { x: number; y: number }[] => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findAirports(currentGrid, currentGridSize);
+    return findAirportsCached(currentGrid, currentGridSize);
   };
 
-  // Find heliports callback
+  // Find heliports callback (called every frame: cached per map structure)
   const findHeliportsCallback = () => {
     const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findHeliports(currentGrid, currentGridSize);
+    return findHeliportsCached(currentGrid, currentGridSize);
   };
 
   // Update airplanes - spawn, move, and manage lifecycle

@@ -94,6 +94,7 @@ import {
 import { drawAirplanes as drawAirplanesUtil, drawHelicopters as drawHelicoptersUtil, drawSeaplanes as drawSeaplanesUtil } from '@/components/game/drawAircraft';
 import { createVehicleSystems, invalidateVehicleSystemCaches, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
 import { useBuildingHelpers } from '@/components/game/buildingHelpers';
+import { countRailTilesCached } from '@/components/game/gridScanCache';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
 import { createBoatSystem, BoatSystemRefs, BoatSystemState } from '@/components/game/boatSystem';
@@ -127,7 +128,6 @@ import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import {
   drawRailTrack,
   drawRailTracksOnly,
-  countRailTiles,
   findRailroadCrossings,
   drawRailroadCrossing,
   getCrossingStateForTile,
@@ -152,6 +152,7 @@ import { useLightingSystem } from '@/components/game/lightingSystem';
 import { RenderWorkerManager } from '@/workers/renderWorkerManager';
 // P4: GPU (PixiJS v8) backend — opt-in, flag-gated. See src/components/game/gpu/.
 import { createPixiApp, LayerStack, PixiRenderer, FixedTimestepClock } from '@/components/game/gpu';
+import { markPhase as tempMarkPhase, endPhase as tempEndPhase, recordEvent as tempRecordEvent } from '@/lib/debug/tempRecorder'; // TEMP-RECORDER
 import type { Application } from 'pixi.js';
 import { getCityFloodMask, getCityFloodRisk, getCitySiltMask } from '@/lib/floodSim';
 import { drawFloodMask } from '@/components/game/floodDraw';
@@ -444,7 +445,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const m = useMessages();
   const gt = useGT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gpuCanvasRef = useRef<HTMLCanvasElement>(null); // P4: opt-in GPU (PixiJS) backend canvas
+  const gpuHostRef = useRef<HTMLDivElement>(null); // P4: opt-in GPU (PixiJS) backend: holds the canvas the GPU effect creates
   const pixiAppRef = useRef<Application | null>(null);
   const pixiRendererRef = useRef<PixiRenderer | null>(null);
   // Step 4/6: fixed-timestep clock decoupled from React; drives GPU render interpolation.
@@ -662,6 +663,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Counter to trigger re-renders when new images become available
   const [imageLoadVersion, setImageLoadVersion] = useState(0);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
+  const canvasSizeRef = useRef(canvasSize);
   const [isLightingWorkerEnabled, setIsLightingWorkerEnabled] = useState(false);
   const [dragStartTile, setDragStartTile] = useState<{ x: number; y: number } | null>(null);
   const [dragEndTile, setDragEndTile] = useState<{ x: number; y: number } | null>(null);
@@ -722,8 +724,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Use extracted building helpers (with pre-computed tile metadata for O(1) lookups)
   const { isPartOfMultiTileBuilding, findBuildingOrigin, isPartOfParkBuilding, getTileMetadata } = useBuildingHelpers(
     grid,
-    gridSize,
-    structureVersion
+    gridSize
   );
 
   // Use extracted vehicle systems
@@ -1246,8 +1247,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return;
     }
 
-    // Count rail tiles
-    const railTileCount = countRailTiles(currentGrid, currentGridSize);
+    // Count rail tiles (every frame: cached per map structure, see gridScanCache)
+    const railTileCount = countRailTilesCached(currentGrid, currentGridSize);
     
     // No trains if not enough rail
     if (railTileCount < MIN_RAIL_TILES_FOR_TRAINS) {
@@ -3516,10 +3517,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // P4 / S1-T7: bootstrap the GPU (PixiJS) backend when the runtime renderer choice is 'gpu'.
   // If it fails to start or loses its WebGL context, report it: graphicsSettings switches the
   // renderer to Canvas2D for the rest of the session (warning logged once).
+  // One Pixi app per mount of the GPU backend, on a canvas created here. It must NOT be re-created when
+  // the canvas size changes (auto-quality changes the DPR cap mid-game): destroying a Pixi app loses its
+  // WebGL context for good, and starting Pixi again on that canvas never returns (its shader probe,
+  // checkMaxIfStatementsInShader, loops forever on a lost context) and the page hangs. A size change
+  // only resizes the renderer (effect below); a fresh canvas per app covers every other re-run.
   useEffect(() => {
     if (!gpuEnabled) return;
-    const canvas = gpuCanvasRef.current;
-    if (!canvas) return;
+    const host = gpuHostRef.current;
+    if (!host) return;
+    const canvas = document.createElement('canvas');
+    // Backing store is in device pixels (Pixi autoDensity is off): show it at CSS size like the
+    // other layers, or everything on it is magnified by the DPR from the top-left corner.
+    canvas.className = 'absolute top-0 left-0 w-full h-full pointer-events-none';
+    canvas.width = canvasSizeRef.current.width;
+    canvas.height = canvasSizeRef.current.height;
+    host.appendChild(canvas);
     let disposed = false;
     let app: Application | null = null;
     const layers = new LayerStack();
@@ -3530,12 +3543,16 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       reportGpuFailure('WebGL context lost');
     };
     canvas.addEventListener('webglcontextlost', onContextLost);
-    createPixiApp({ canvas, width: canvasSize.width, height: canvasSize.height })
+    tempMarkPhase('gpu:createPixiApp', { ...canvasSizeRef.current }); // TEMP-RECORDER
+    createPixiApp({ canvas, width: canvasSizeRef.current.width, height: canvasSizeRef.current.height })
       .then((created) => {
+        tempEndPhase('gpu:createPixiApp'); // TEMP-RECORDER
         if (disposed) {
           created.destroy(true);
           return;
         }
+        // The size may have changed while Pixi was starting
+        created.renderer.resize(canvasSizeRef.current.width, canvasSizeRef.current.height);
         created.stage.addChild(layers.root);
         app = created;
         pixiAppRef.current = created;
@@ -3544,6 +3561,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         setImageLoadVersion(v => v + 1);
       })
       .catch((error: unknown) => {
+        tempEndPhase('gpu:createPixiApp'); // TEMP-RECORDER
         if (!disposed) reportGpuFailure(error);
       });
     return () => {
@@ -3551,9 +3569,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       canvas.removeEventListener('webglcontextlost', onContextLost);
       pixiAppRef.current = null;
       pixiRendererRef.current = null;
+      tempRecordEvent('gpu:destroyPixiApp', { hadApp: !!app }); // TEMP-RECORDER
       if (app) app.destroy(true);
+      canvas.remove();
     };
-  }, [gpuEnabled, canvasSize.width, canvasSize.height]);
+  }, [gpuEnabled]);
+
+  // Canvas size changes (window resize, auto-quality DPR cap) resize the running renderer in place.
+  useEffect(() => {
+    canvasSizeRef.current = { width: canvasSize.width, height: canvasSize.height };
+    tempRecordEvent('canvas:resize', { width: canvasSize.width, height: canvasSize.height, gpu: !!pixiAppRef.current }); // TEMP-RECORDER
+    pixiAppRef.current?.renderer.resize(canvasSize.width, canvasSize.height);
+  }, [canvasSize.width, canvasSize.height]);
 
   // S1-T7: auto-quality. Every 2 s feed the frame p95 into the hysteresis state machine
   // (qualityConfig.ts); it never changes the level while the player is panning or zooming.
@@ -4786,14 +4813,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       />
       {/* S1-T7: GPU (PixiJS) backend canvas — only mounted when the runtime renderer is 'gpu' */}
       {gpuEnabled && (
-        <canvas
-          ref={gpuCanvasRef}
-          width={canvasSize.width}
-          height={canvasSize.height}
-          // Backing store is in device pixels (Pixi autoDensity is off): show it at CSS size like the
-          // other layers, or everything on it is magnified by the DPR from the top-left corner.
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
-        />
+        <div ref={gpuHostRef} className="absolute inset-0 pointer-events-none" />
       )}
       
       {selectedTile && selectedTool === 'select' && !isMobile && (

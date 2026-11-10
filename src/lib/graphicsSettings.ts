@@ -29,6 +29,7 @@ import {
   type RendererKind,
   type RendererSetting,
 } from '@/lib/rendererSelection';
+import { recordEvent as tempRecord } from '@/lib/debug/tempRecorder'; // TEMP-RECORDER
 
 export const GRAPHICS_STORAGE_KEYS = {
   quality: 'varanasi-graphics-quality',
@@ -103,6 +104,15 @@ function recompute(force = false): void {
     return;
   }
   snapshot = { qualitySetting, qualityLevel, rendererSetting, renderer, gpuFailed };
+  // TEMP-RECORDER: renderer / quality changes (prime suspects for the hang)
+  if (process.env.NODE_ENV === 'development') {
+    tempRecord('graphics:change', {
+      force,
+      prev: { renderer: prev.renderer, qualityLevel: prev.qualityLevel, qualitySetting: prev.qualitySetting, rendererSetting: prev.rendererSetting, gpuFailed: prev.gpuFailed },
+      next: { renderer, qualityLevel, qualitySetting, rendererSetting, gpuFailed },
+      dprCap: QUALITY_PRESETS[qualityLevel].dprCap,
+    });
+  }
   activePreset = QUALITY_PRESETS[qualityLevel];
   listeners.forEach((l) => l());
 }
@@ -122,6 +132,7 @@ export function initGraphicsSettings(isMobile: boolean): void {
 }
 
 export function setQualitySetting(setting: QualitySetting): void {
+  if (process.env.NODE_ENV === 'development') tempRecord('graphics:setQualitySetting', { setting }); // TEMP-RECORDER
   qualitySetting = setting;
   writeStored(GRAPHICS_STORAGE_KEYS.quality, setting);
   if (setting === 'auto') auto = createAutoQualityState(snapshot.qualityLevel);
@@ -129,6 +140,7 @@ export function setQualitySetting(setting: QualitySetting): void {
 }
 
 export function setRendererSetting(setting: RendererSetting): void {
+  if (process.env.NODE_ENV === 'development') tempRecord('graphics:setRendererSetting', { setting }); // TEMP-RECORDER
   rendererSetting = setting;
   writeStored(GRAPHICS_STORAGE_KEYS.renderer, setting);
   recompute();
@@ -136,6 +148,10 @@ export function setRendererSetting(setting: RendererSetting): void {
 
 /** The GPU renderer failed (init error or lost context): use Canvas2D for the rest of the session. */
 export function reportGpuFailure(reason: unknown): void {
+  // TEMP-RECORDER: every call, with the reason (Error -> name/message/stack, capped)
+  if (process.env.NODE_ENV === 'development') {
+    tempRecord('graphics:reportGpuFailure', { reason, alreadyFailed: gpuFailed, renderer: snapshot.renderer });
+  }
   if (!gpuFailureWarned) {
     gpuFailureWarned = true;
     console.warn('[renderer] GPU renderer unavailable, falling back to Canvas2D:', reason);
@@ -160,10 +176,18 @@ export function getGraphicsSnapshot(): GraphicsSnapshot {
   return snapshot;
 }
 
+let tempLastRenderDpr = 0; // TEMP-RECORDER
+
 /** Device pixel ratio capped by the active preset (use instead of `window.devicePixelRatio`). */
 export function getRenderDpr(): number {
   const raw = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-  return Math.min(raw, activePreset.dprCap);
+  const dpr = Math.min(raw, activePreset.dprCap);
+  // TEMP-RECORDER: render DPR changes (one number compare per call)
+  if (process.env.NODE_ENV === 'development' && dpr !== tempLastRenderDpr) {
+    tempRecord('graphics:renderDpr', { from: tempLastRenderDpr, to: dpr, raw, dprCap: activePreset.dprCap });
+    tempLastRenderDpr = dpr;
+  }
+  return dpr;
 }
 
 export function subscribeGraphics(listener: () => void): () => void {
