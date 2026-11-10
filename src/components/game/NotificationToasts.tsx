@@ -2,11 +2,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { msg, useMessages } from 'gt-next';
-import { MapPin, X } from 'lucide-react';
+import { AlertTriangle, Flame, Home, Info, Landmark, MapPin, Route, Thermometer, Trophy, Waves, X, type LucideIcon } from 'lucide-react';
 import type { Notification } from '@/types/game';
 import { NOTIFICATION_CONFIG } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
-import { canLocateNotification, isHandledElsewhere, NotificationIcon } from '@/components/game/notificationUi';
+import { canLocateNotification } from '@/components/game/notificationUi';
 
 const LABELS = {
   locate: msg('Show on map'),
@@ -19,8 +19,33 @@ function keepToasts(list: readonly Notification[]): Notification[] {
   return list.filter((n) => n.severity === 'crisis' || ++others <= NOTIFICATION_CONFIG.maxToasts);
 }
 
+/** Notification `icon` names used by the simulation and context. Anything else (an emoji) is shown as text. */
+const ICONS: Record<string, LucideIcon> = {
+  alert: AlertTriangle,
+  home: Home,
+  road: Route,
+  trophy: Trophy,
+  fire: Flame,
+  flood: Waves,
+  heat: Thermometer,
+  info: Info,
+  landmark: Landmark,
+};
+
+/** Save failures have their own toast (SaveErrorToast). */
+const HANDLED_ELSEWHERE = /^save-failed-/;
+// Text plus timestamp: a reused id (e.g. 'fire-incident') with the same words is still a new incident
+const toastSig = (n: Notification) => `${n.title}\n${n.description}\n${n.timestamp}`;
+
+function NotificationIcon({ icon, className }: { icon: string; className?: string }) {
+  const Icon = ICONS[icon];
+  if (Icon) return <Icon className={cn('w-4 h-4', className)} aria-hidden />;
+  if (/^[a-z_-]+$/.test(icon)) return <Info className={cn('w-4 h-4', className)} aria-hidden />;
+  return <span className="text-base leading-none" aria-hidden>{icon}</span>;
+}
+
 const SEVERITY_STYLES: Record<NonNullable<Notification['severity']>, string> = {
-  info: 'border-gold/20',
+  info: 'border-chrome-border',
   warning: '!border-amber-400/60',
   crisis: '!border-red-400/70 ring-1 ring-red-400/30',
 };
@@ -40,19 +65,24 @@ export function NotificationToasts({
   className?: string;
 }) {
   const m = useMessages();
-  const seenRef = useRef<Set<string> | null>(null);
+  // id -> last signature shown. A notification whose id is already known but whose text changed (a merged incident
+  // such as 'fire-incident') updates its toast in place instead of stacking a second one.
+  const seenRef = useRef<Map<string, string> | null>(null);
   const [toasts, setToasts] = useState<Notification[]>([]);
 
   useEffect(() => {
     if (seenRef.current === null) {
-      seenRef.current = new Set(notifications.map((n) => n.id));
+      seenRef.current = new Map(notifications.map((n) => [n.id, toastSig(n)]));
       return;
     }
     const seen = seenRef.current;
-    const fresh = notifications.filter((n) => !seen.has(n.id) && !isHandledElsewhere(n));
+    const fresh = notifications.filter((n) => seen.get(n.id) !== toastSig(n) && !HANDLED_ELSEWHERE.test(n.id));
     if (fresh.length === 0) return;
-    for (const n of fresh) seen.add(n.id);
-    setToasts((prev) => keepToasts([...fresh, ...prev]));
+    for (const n of fresh) seen.set(n.id, toastSig(n));
+    setToasts((prev) => {
+      const freshIds = new Set(fresh.map((n) => n.id));
+      return keepToasts([...fresh, ...prev.filter((t) => !freshIds.has(t.id))]);
+    });
   }, [notifications]);
 
   const dismiss = useCallback((id: string) => {
@@ -101,7 +131,7 @@ function NotificationToast({
     if (isCrisis) return;
     const timer = setTimeout(() => onDismiss(n.id), NOTIFICATION_CONFIG.toastMs);
     return () => clearTimeout(timer);
-  }, [n.id, isCrisis, onDismiss]);
+  }, [n.id, n.description, isCrisis, onDismiss]);
 
   const locate = () => {
     onLocate(n);
@@ -112,14 +142,14 @@ function NotificationToast({
     <div
       role={isCrisis ? 'alert' : 'status'}
       className={cn(
-        'hud-panel pointer-events-auto flex items-start gap-2.5 rounded-xl p-2.5 text-sm',
+        'hud-panel pointer-events-auto flex items-start gap-2.5 rounded-none p-2.5 max-md:p-2 short:p-2 text-sm',
         'animate-in fade-in slide-in-from-top-2 duration-200',
         SEVERITY_STYLES[n.severity ?? 'info'],
-        isCelebration && '!border-marigold/70 ring-1 ring-marigold/40 shadow-[0_0_24px_-6px_hsl(var(--marigold)/0.6)]'
+        isCelebration && '!border-marigold/70'
       )}
     >
-      <span className={cn('shrink-0 h-8 w-8 rounded-lg ring-1 flex items-center justify-center', isCrisis ? 'bg-red-500/15 ring-red-400/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-sandstone/[0.06] ring-gold/15')}>
-        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-400' : isCelebration ? 'text-marigold' : 'text-sandstone/80'} />
+      <span className={cn('shrink-0 h-8 w-8 max-md:h-6 max-md:w-6 short:h-6 short:w-6 rounded-none ring-1 flex items-center justify-center', isCrisis ? 'bg-red-800/10 ring-red-800/40' : isCelebration ? 'bg-marigold/15 ring-marigold/40' : 'bg-chrome-well ring-chrome-border')}>
+        <NotificationIcon icon={n.icon} className={isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-muted'} />
       </span>
       <button
         type="button"
@@ -127,10 +157,10 @@ function NotificationToast({
         disabled={!canLocate}
         className="flex-1 min-w-0 text-left disabled:cursor-default"
       >
-        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-300' : isCelebration ? 'text-marigold' : 'text-foreground')}>{n.title}</p>
-        <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+        <p className={cn('font-semibold truncate', isCrisis ? 'text-red-800' : isCelebration ? 'text-chrome-accent' : 'text-chrome-text')}>{n.title}</p>
+        <p className="text-xs text-chrome-muted line-clamp-2 max-md:line-clamp-1 short:line-clamp-1">{n.description}</p>
         {canLocate && (
-          <span className="mt-1 inline-flex items-center gap-1 text-xs text-marigold">
+          <span className="mt-1 inline-flex items-center gap-1 text-xs text-chrome-accent max-md:hidden short:hidden">
             <MapPin className="w-3 h-3" />
             {locateLabel}
           </span>
@@ -139,7 +169,7 @@ function NotificationToast({
       <button
         type="button"
         onClick={() => onDismiss(n.id)}
-        className="text-muted-foreground hover:text-foreground -m-1.5 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
+        className="text-chrome-muted hover:text-chrome-accent -m-1.5 max-md:-m-2 short:-m-2 min-w-11 min-h-11 lg:min-w-8 lg:min-h-8 short:!min-w-11 short:!min-h-11 rounded-none flex items-center justify-center"
         aria-label={dismissLabel}
       >
         <X className="w-4 h-4" />

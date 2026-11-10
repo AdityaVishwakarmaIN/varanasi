@@ -6,22 +6,20 @@
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/context/GameContext';
-import { Tool } from '@/types/game';
+import { Tool, TOOL_INFO } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
 import { MobileToolbar } from '@/components/mobile/MobileToolbar';
 import { MobileTopBar } from '@/components/mobile/MobileTopBar';
 import { MobileMiniMapToggle, TouchGestureHint } from '@/components/mobile/MobileMapExtras';
-import { TileInfoPanel } from '@/components/game/panels/TileInfoPanel';
 import { isDrawModeTool } from '@/lib/touchGestures';
 import { msg, useMessages, useGT } from 'gt-next';
 import { loadIsocityUiPreferences, saveIsocityUiPreferences } from '@/lib/isocityStorage';
-import { formatINR } from '@/lib/format';
 
 // Import shadcn components
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useCheatCodes } from '@/hooks/useCheatCodes';
 import { VinnieDialog } from '@/components/VinnieDialog';
-import { CommandMenu } from '@/components/ui/CommandMenu';
+import { CommandMenu, type CommandAction } from '@/components/ui/CommandMenu';
 import { TipToast } from '@/components/ui/TipToast';
 import { useTipSystem } from '@/hooks/useTipSystem';
 import { useGameAudio } from '@/hooks/useGameAudio';
@@ -34,11 +32,12 @@ import { Copy, Check } from 'lucide-react';
 
 // Import game components
 import { OverlayMode } from '@/components/game/types';
-import { getOverlayForTool, getOverlayModesForMap } from '@/components/game/overlays';
+import { getOverlayForTool, getOverlayModesForMap, OVERLAY_CONFIG } from '@/components/game/overlays';
 import { ControlsHelpDialog } from '@/components/game/ControlsHelpDialog';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { createSharedControlsState, SharedControlsState } from '@/lib/controlsConfig';
 import { OverlayModeToggle } from '@/components/game/OverlayModeToggle';
+import { BOTTOM_TOAST_SLOT_ID } from '@/components/game/BottomToastPortal';
 import { Sidebar } from '@/components/game/Sidebar';
 import {
   BudgetPanel,
@@ -47,16 +46,19 @@ import {
   AdvisorsPanel,
 } from '@/components/game/panels';
 import { MiniMap } from '@/components/game/MiniMap';
-import { TopBar, StatsPanel } from '@/components/game/TopBar';
+import { TopBar } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
+import { PausedIndicator } from '@/components/game/PausedIndicator';
 import { NotificationLog } from '@/components/game/NotificationLog';
-import { CityStatusChips, CrisisPauseBanner } from '@/components/game/CityStatusChips';
+import { CityStatusChips } from '@/components/game/CityStatusChips';
 import { GettingStartedChecklist } from '@/components/game/GettingStartedChecklist';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
+import { formatINR } from '@/lib/format';
 import { CitizenFeed } from '@/components/game/CitizenFeed';
+import { OverlayLegendChip } from '@/components/game/OverlayLegendChip';
 import type { AdvisorNote } from '@/lib/advisors';
 import { LandmarkBulldozeDialog } from '@/components/game/LandmarkBulldozeDialog';
 import type { Notification } from '@/types/game';
@@ -75,10 +77,11 @@ type MiniMapViewportListener = (viewport: ViewportState | null) => void;
 export default function Game({ onExit }: { onExit?: () => void }) {
   const gt = useGT();
   const m = useMessages();
-  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed } = useGame();
+  const { state, latestStateRef, setTool, setActivePanel, addMoney, addNotification, setSpeed, lastRunSpeed, saveCity, undoLast } = useGame();
   // S5-T9: music, sound effects and ambient
   useGameAudio(state, latestStateRef);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [topPanelOpen, setTopPanelOpen] = useState(false);
   // S2-T8: the top-bar Ganga Health chip toggles the Ganga overlay.
   const toggleGangaOverlay = useCallback(() => {
     setOverlayMode(mode => (mode === 'ganga' ? 'none' : 'ganga'));
@@ -126,7 +129,6 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     const festival = festivalFromEventId(n.id);
     if (festival) setEventPanel(festival);
   }, []);
-  const resumeAfterCrisis = useCallback(() => setSpeed(1), [setSpeed]);
   // Advisor "Show me" (S5-T6) and citizen feed (S5-T7): same jump as notifications
   const showAdvisorNote = useCallback((note: AdvisorNote) => {
     if (note.x !== undefined && note.y !== undefined) setNavigationTarget({ x: note.x, y: note.y });
@@ -136,8 +138,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const minimapViewportRef = useRef<ViewportState | null>(null);
   const minimapViewportListenersRef = useRef<Set<MiniMapViewportListener>>(new Set());
   const isInitialMount = useRef(true);
-  const { isMobileDevice, isSmallScreen } = useMobile();
-  const isMobile = isMobileDevice || isSmallScreen;
+  const { isMobileDevice, isSmallScreen, isCompactScreen } = useMobile();
+  const isMobile = isMobileDevice || isSmallScreen || isCompactScreen;
   const [showShareModal, setShowShareModal] = useState(false);
   const skipInitialUiPrefsSave = useRef(true);
   const multiplayer = useMultiplayerOptional();
@@ -146,13 +148,15 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const [showControlsHelp, setShowControlsHelp] = useState(false);
   const openControlsHelp = useCallback(() => setShowControlsHelp(true), []);
   // S1-T11 (touch): Draw mode makes a one-finger drag draw roads/rail/zones instead of panning.
-  const [touchDrawMode, setTouchDrawMode] = useState(false);
+  const [touchDrawMode, setTouchDrawMode] = useState(() => isDrawModeTool(state.selectedTool));
   // Picking a road / rail / zone tool turns Draw on (so a drag draws, not pans); Select turns it off.
-  // The player can still flip the Draw button by hand afterwards.
-  useEffect(() => {
+  // The player can still flip the Draw button by hand afterwards. (Adjusted during render, not in an effect.)
+  const [drawModeTool, setDrawModeTool] = useState<Tool>(state.selectedTool);
+  if (drawModeTool !== state.selectedTool) {
+    setDrawModeTool(state.selectedTool);
     if (isDrawModeTool(state.selectedTool)) setTouchDrawMode(true);
     else if (state.selectedTool === 'select') setTouchDrawMode(false);
-  }, [state.selectedTool]);
+  }
   // S1-T11 (touch): a long-press inspects a tile with any tool. Remember the tool it was inspected
   // with, so the tile info stays open for that tool and closes when the player switches tools.
   const [selectedTileTool, setSelectedTileTool] = useState<Tool>('select');
@@ -292,8 +296,38 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     }, 0);
   }, [state.selectedTool]);
   
-  // All keyboard shortcuts (bindings in src/lib/controlsConfig.ts KEY_BINDINGS)
+  // Ctrl/Cmd+S: save the city and say so
+  const saveWithToast = useCallback(() => {
+    saveCity();
+    addNotification(gt('Saved'), gt('"{name}" is saved. Load it any time from Settings.', { name: state.cityName }), 'info');
+  }, [saveCity, addNotification, gt, state.cityName]);
+
+  // Overlays this map has, in toolbar order (Tab cycling and the Ctrl+K menu)
   const overlayOrder = useMemo(() => getOverlayModesForMap(state.mapId), [state.mapId]);
+
+  // Commands for the Ctrl+K menu: Save, Pause/Resume and the overlays
+  const resumeSpeed = lastRunSpeed;
+  const isPaused = state.speed === 0;
+  const commandActions = useMemo<CommandAction[]>(() => [
+    { id: 'save', name: gt('Save city'), description: gt('Save "{name}" now (Ctrl+S)', { name: state.cityName }), keywords: ['save', 'store'], run: saveWithToast },
+    {
+      id: 'pause',
+      name: isPaused ? gt('Resume game') : gt('Pause game'),
+      description: isPaused ? gt('Continue at the speed you had before (Space)') : gt('Stop the clock (Space)'),
+      keywords: ['pause', 'resume', 'play', 'stop', 'continue', 'speed'],
+      run: () => setSpeed(isPaused ? resumeSpeed : 0),
+    },
+    ...overlayOrder.filter((mode) => mode !== 'none').map((mode) => ({
+      id: `overlay-${mode}`,
+      name: gt('Overlay: {name}', { name: OVERLAY_CONFIG[mode].label }),
+      description: gt('Show the {title} overlay (Tab cycles overlays)', { title: OVERLAY_CONFIG[mode].title }),
+      keywords: ['overlay', 'map', 'view', mode],
+      run: () => setOverlayMode(mode),
+    })),
+    { id: 'overlay-off', name: gt('Overlay: off'), description: gt('Hide the map overlay'), keywords: ['overlay', 'hide', 'none', 'off', 'clear'], run: () => setOverlayMode('none') },
+  ], [gt, isPaused, overlayOrder, resumeSpeed, saveWithToast, setSpeed, state.cityName]);
+
+  // All keyboard shortcuts (bindings in src/lib/controlsConfig.ts KEY_BINDINGS)
   useKeyboardControls({
     controlsRef,
     overlayMode,
@@ -308,7 +342,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     setTool,
     speed: state.speed,
     setSpeed,
+    resumeSpeed: lastRunSpeed,
     onShowHelp: openControlsHelp,
+    onUndo: undoLast,
+    onSave: saveWithToast,
   });
 
   // Handle cheat code triggers
@@ -372,14 +409,16 @@ export default function Game({ onExit }: { onExit?: () => void }) {
 
   // Mobile layout
   if (isMobile) {
-    const mobileSelectedTile = selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool)
-      ? state.grid[selectedTile.y]?.[selectedTile.x] ?? null
-      : null;
+    // The tile-info strip grows the top bar.
+    const tileStripOpen = !!selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool);
     return (
       <TooltipProvider>
         <div className="w-full h-full overflow-hidden bg-background flex flex-col">
           {/* Mobile Top Bar */}
           <MobileTopBar
+            selectedTile={selectedTile && tileStripOpen ? state.grid[selectedTile.y][selectedTile.x] : null}
+            services={state.services}
+            onCloseTile={() => setSelectedTile(null)}
             gangaOverlayActive={overlayMode === 'ganga'}
             onToggleGangaOverlay={toggleGangaOverlay}
             overlayMode={overlayMode}
@@ -419,13 +458,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               className="absolute right-3 bottom-[calc(140px+env(safe-area-inset-bottom))] z-20"
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
-            <div className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none">
-              {/* Notification log, crisis status and the crisis pause line (A2/A3) */}
+            <div className={`absolute ${tileStripOpen ? 'top-[calc(124px+env(safe-area-inset-top))]' : 'top-[calc(80px+env(safe-area-inset-top))]'} left-3 right-3 short:right-auto short:w-[26rem] z-30 flex flex-col gap-2 pointer-events-none`}>
+              {/* Notification log and live crisis / festival chips */}
               <div className="flex items-start gap-2">
                 <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
-                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 pt-1" />
+                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 min-w-0 pt-1" />
               </div>
-              <CrisisPauseBanner speed={state.speed} notifications={state.notifications} onResume={resumeAfterCrisis} />
+              <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} className="self-start" />
+              <PausedIndicator className="self-start" />
               <TouchGestureHint selectedTool={state.selectedTool} />
               <TipToast
                 message={currentTip || ''}
@@ -440,32 +480,25 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               />
               <GettingStartedChecklist key={state.id} cityId={state.id} compact className="self-start w-[min(16rem,100%)]" />
             </div>
-            <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" onExit={onExit} />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
-            <CitizenFeed
-              compact
-              onLocate={locateTile}
-              className="absolute bottom-[84px] left-3 z-20 w-[min(18rem,calc(100%-1.5rem))]"
-            />
             
             {/* Multiplayer Players Indicator - Mobile */}
             {isMultiplayer && (
               <div className="absolute top-2 right-2 z-20">
-                <div className="hud-glass rounded-xl px-2 py-1.5 shadow-lg">
-                  <div className="flex items-center gap-1.5 text-xs text-white">
+                <div className="hud-glass rounded-none px-2 py-1.5 shadow-lg">
+                  <div className="flex items-center gap-1.5 text-xs text-chrome-text">
                     {roomCode && (
                       <>
                         <span className="font-mono tracking-wider">{roomCode}</span>
                         <button
                           onClick={handleCopyRoomLink}
-                          className="p-0.5 hover:bg-white/10 rounded transition-colors"
+                          className="p-0.5 hover:bg-chrome-well rounded-none transition-colors"
                           title="Copy invite link"
                         >
                           {copiedRoomLink ? (
-                            <Check className="w-3 h-3 text-green-400" />
+                            <Check className="w-3 h-3 text-green-700" />
                           ) : (
-                            <Copy className="w-3 h-3 text-slate-400" />
+                            <Copy className="w-3 h-3 text-chrome-muted" />
                           )}
                         </button>
                       </>
@@ -474,7 +507,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                   {players.length > 0 && (
                     <div className="mt-1 space-y-0.5">
                       {players.map((player) => (
-                        <div key={player.id} className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <div key={player.id} className="flex items-center gap-1 text-[10px] text-chrome-muted">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                           {player.name}
                         </div>
@@ -486,16 +519,6 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
           </div>
           
-          {/* Tile info: the shared TileInfoPanel as a bottom sheet (Select tool, or a long-press with any tool) */}
-          {mobileSelectedTile && (
-            <TileInfoPanel
-              isMobile
-              tile={mobileSelectedTile}
-              services={state.services}
-              onClose={() => setSelectedTile(null)}
-            />
-          )}
-
           {/* Mobile Bottom Toolbar */}
           <MobileToolbar
             onOpenPanel={(panel) => setActivePanel(panel)}
@@ -503,6 +526,13 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             setOverlayMode={setOverlayMode}
             drawMode={touchDrawMode}
             onDrawModeChange={setTouchDrawMode}
+            bannerSlot={
+              <>
+                <FailureOverlays bannerClassName="w-full empty:hidden" onExit={onExit} />
+                <FestivalEventBanner state={state} onOpen={setEventPanel} />
+              </>
+            }
+            feedSlot={<CitizenFeed compact onLocate={locateTile} />}
           />
           
           {/* Panels - render as fullscreen modals on mobile */}
@@ -522,10 +552,10 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   // Desktop layout
   return (
     <TooltipProvider>
-      <div className="w-full h-full min-h-[720px] overflow-hidden bg-background flex">
+      <div className="w-full h-full min-h-[560px] overflow-hidden bg-background flex">
         <Sidebar onExit={onExit} />
         
-        <div className="flex-1 flex flex-col ml-56">
+        <div className="flex-1 min-w-0 flex flex-col ml-56">
           <TopBar
             showOverlayPanel={showOverlayPanel}
             showMinimap={showMinimap}
@@ -537,8 +567,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             onTogglePowerOverlay={togglePowerOverlay}
             onToggleWaterOverlay={toggleWaterOverlay}
             onCalendarEventClick={openCalendarEvent}
+            onPanelOpenChange={setTopPanelOpen}
           />
-          <StatsPanel />
           <div className="flex-1 relative overflow-visible">
             <CanvasIsometricGrid 
               overlayMode={overlayMode} 
@@ -550,20 +580,26 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
             />
-            {/* Top-left HUD column: notification log + crisis status, the crisis pause line, then toasts (A2/A3) */}
-            <div className="absolute top-3 left-4 z-30 w-[min(24rem,calc(100%-26rem))] flex flex-col gap-2 pointer-events-none">
+            {/* Top-left column: notification log + live crisis / festival chips, then the toasts */}
+            <div className="absolute top-3 left-4 min-[1440px]:left-1/2 min-[1440px]:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))] flex flex-col gap-2 pointer-events-none">
               <div className="flex items-start gap-2">
                 <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
-                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 pt-1.5" />
+                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 min-w-0 pt-1.5" />
               </div>
-              <CrisisPauseBanner speed={state.speed} notifications={state.notifications} onResume={resumeAfterCrisis} />
               <NotificationToasts notifications={state.notifications} onLocate={locateNotification} />
             </div>
-            {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
-            <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" onExit={onExit} />
-            <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
+            {/* Bottom-centre stack: one column above the overlay bar (bottom-left) and clear of the
+                minimap (bottom-right). It grows upward, so paused bar, debt banners, festival banner
+                and the undo / save-error toasts (portalled into the slot) never overlap. */}
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(26rem,calc(100%-2rem))] flex flex-col-reverse items-center gap-2 pointer-events-none">
+              <PausedIndicator className="pointer-events-auto max-w-full" />
+              <FailureOverlays bannerClassName="w-full empty:hidden" onExit={onExit} />
+              <div id={BOTTOM_TOAST_SLOT_ID} className="w-full flex flex-col-reverse gap-2 empty:hidden" />
+              <FestivalEventBanner state={state} onOpen={setEventPanel} className="pointer-events-auto" />
+            </div>
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed
+              compact
               onLocate={locateTile}
               className={`absolute left-4 z-20 w-72 ${showOverlayPanel ? 'bottom-24' : 'bottom-4'}`}
             />
@@ -575,23 +611,25 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
             
             {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
-            <div className="absolute top-3 right-4 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none">
+            {/* The tile info card (w-72, right-4) is opened on purpose, so the column steps left of it. */}
+            <div className={`absolute top-3 z-30 w-[22rem] flex flex-col items-end gap-2 pointer-events-none ${selectedTile && state.selectedTool === 'select' ? 'right-[19.75rem]' : 'right-4'}`}>
+            <OverlayLegendChip overlayMode={overlayMode} onClear={() => setOverlayMode('none')} />
             {isMultiplayer && (
               <div className="pointer-events-auto">
-                <div className="hud-glass rounded-xl px-3 py-2 shadow-lg min-w-[120px]">
-                  <div className="flex items-center gap-2 text-sm text-white">
+                <div className="hud-glass rounded-none px-3 py-2 shadow-lg min-w-[120px]">
+                  <div className="flex items-center gap-2 text-sm text-chrome-text">
                     {roomCode && (
                       <>
                         <span className="font-mono font-medium tracking-wider">{roomCode}</span>
                         <button
                           onClick={handleCopyRoomLink}
-                          className="p-1 hover:bg-white/10 rounded transition-colors"
+                          className="p-1 hover:bg-chrome-well rounded-none transition-colors"
                           title="Copy invite link"
                         >
                           {copiedRoomLink ? (
-                            <Check className="w-3.5 h-3.5 text-green-400" />
+                            <Check className="w-3.5 h-3.5 text-green-700" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+                            <Copy className="w-3.5 h-3.5 text-chrome-muted hover:text-chrome-text" />
                           )}
                         </button>
                       </>
@@ -600,7 +638,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                   {players.length > 0 && (
                     <div className="mt-1.5 space-y-0.5">
                       {players.map((player) => (
-                        <div key={player.id} className="flex items-center gap-1.5 text-xs text-slate-400">
+                        <div key={player.id} className="flex items-center gap-1.5 text-xs text-chrome-muted">
                           <span className="w-2 h-2 rounded-full bg-green-500" />
                           {player.name}
                         </div>
@@ -612,7 +650,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
               <TipToast
                 message={currentTip || ''}
-                isVisible={isTipVisible}
+                isVisible={isTipVisible && state.activePanel === 'none' && !topPanelOpen}
                 onContinue={onTipContinue}
                 onSkipAll={onTipSkipAll}
                 className="w-full"
@@ -630,7 +668,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <ControlsHelpDialog open={showControlsHelp} onOpenChange={setShowControlsHelp} />
         
         <VinnieDialog open={showVinnieDialog} onOpenChange={setShowVinnieDialog} />
-        <CommandMenu />
+        <CommandMenu actions={commandActions} />
         
       </div>
     </TooltipProvider>

@@ -6,34 +6,34 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 /** Tints for the round icon badge of a HUD stat. */
 export const HUD_TINTS = {
-  saffron: 'bg-saffron/15 text-saffron ring-saffron/30',
-  marigold: 'bg-marigold/15 text-marigold ring-marigold/30',
-  ganga: 'bg-ganga/15 text-ganga ring-ganga/30',
-  sandstone: 'bg-sandstone/10 text-sandstone ring-sandstone/25',
-  power: 'bg-yellow-400/15 text-yellow-300 ring-yellow-400/30',
-  water: 'bg-sky-400/15 text-sky-300 ring-sky-400/30',
-  good: 'bg-emerald-400/15 text-emerald-300 ring-emerald-400/30',
-  bad: 'bg-red-400/15 text-red-300 ring-red-400/30',
+  saffron: 'bg-chrome-panel border border-chrome-border text-chrome-text',
+  marigold: 'bg-chrome-panel border border-chrome-border text-amber-800',
+  ganga: 'bg-chrome-panel border border-chrome-border text-cyan-800',
+  sandstone: 'bg-chrome-panel border border-chrome-border text-chrome-text',
+  power: 'bg-chrome-panel border border-chrome-border text-amber-800',
+  water: 'bg-chrome-panel border border-chrome-border text-blue-800',
+  good: 'bg-chrome-panel border border-chrome-border text-green-800',
+  bad: 'bg-chrome-panel border border-chrome-border text-red-800',
 } as const;
 
 export type HudTint = keyof typeof HUD_TINTS;
 
-/** Value colours with enough contrast on the indigo HUD. */
+/** Value colours with enough contrast on the beige HUD. */
 export const HUD_VALUE_TONE = {
-  default: 'text-foreground',
-  success: 'text-emerald-300',
-  warning: 'text-amber-300',
-  destructive: 'text-red-400',
+  default: 'text-chrome-text',
+  success: 'text-green-800',
+  warning: 'text-amber-800',
+  destructive: 'text-red-800',
 } as const;
 
 /** Shared chip frame for desktop HUD stats and the clickable Ganga / utility chips. */
-export const HUD_CHIP_CLASS = 'hud-well flex items-center gap-2 rounded-xl h-11 pl-1.5 pr-3 max-[1535px]:pl-3';
+export const HUD_CHIP_CLASS = 'hud-well flex min-w-0 shrink items-center gap-2 rounded-none h-11 pl-1.5 pr-3 max-[1535px]:pl-3 max-[1439px]:gap-1.5 max-[1439px]:px-2';
 
 export function HudIconBadge({ tint, children, size = 'md' }: { tint: HudTint; children: React.ReactNode; size?: 'sm' | 'md' }) {
   return (
     <span
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full ring-1',
+        'flex shrink-0 items-center justify-center rounded-full',
         size === 'md' ? 'h-8 w-8 max-[1535px]:hidden' : 'h-5 w-5',
         HUD_TINTS[tint]
       )}
@@ -60,9 +60,9 @@ export function HudStat({ icon, tint, label, value, tone = 'default', className,
   const chip = (
     <div className={cn(HUD_CHIP_CLASS, className)} tabIndex={tooltip ? 0 : undefined}>
       <HudIconBadge tint={tint}>{icon}</HudIconBadge>
-      <div className="flex flex-col leading-none">
+      <div className="flex min-w-0 flex-col leading-none">
         <span className={cn('whitespace-nowrap text-[15px] font-semibold font-mono', HUD_VALUE_TONE[tone])}>{value}</span>
-        <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+        <span className="mt-1 truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-chrome-muted max-[1439px]:tracking-[0.06em]">{label}</span>
       </div>
     </div>
   );

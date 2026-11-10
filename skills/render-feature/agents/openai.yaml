@@ -1,0 +1,4 @@
+interface:
+  display_name: "Render Feature"
+  short_description: "Draw or animate something on the map on both renderers."
+  default_prompt: "Use $render-feature to add this drawn or animated map feature so it works on Canvas2D and GPU within the frame budget."

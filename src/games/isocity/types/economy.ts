@@ -14,6 +14,16 @@ export interface UtilitySupplyStats {
   cut: number[];
 }
 
+/** The parts of the Ganga's pollution load that the player can act on. Same units as `calculateGangaTargetHealth`. */
+export interface GangaLoadStats {
+  /** Load from pollution on land that drains into the river (factories, power plants, roads). */
+  industrial: number;
+  /** Load from sewage that no Sewage Treatment Plant treats. */
+  sewage: number;
+  /** Residents and workers whose sewage is untreated (simulation units, not display units). */
+  untreatedPopulation: number;
+}
+
 export interface Stats {
   population: number;
   jobs: number;
@@ -33,6 +43,8 @@ export interface Stats {
   /** Varanasi map only (S2-T7): river health 0-100 (a slow stock) and where it is heading. */
   gangaHealth?: number;
   gangaHealthTarget?: number;
+  /** Varanasi map only: what is loading the river now (for the "why is the Ganga sick" tooltip). */
+  gangaLoad?: GangaLoadStats;
   /** Varanasi map only (S2-T9): monthly tourism income, included in `income`. */
   tourismIncome?: number;
   /** Monthly tax income (the rest of `income`). */

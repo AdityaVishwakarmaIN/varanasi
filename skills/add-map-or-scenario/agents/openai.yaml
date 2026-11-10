@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Map Or Scenario"
+  short_description: "Add a start option, map size or river geometry change."
+  default_prompt: "Use $add-map-or-scenario to add or change this map, start option or new-game flow without breaking other maps."

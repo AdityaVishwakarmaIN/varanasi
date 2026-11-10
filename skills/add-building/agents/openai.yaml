@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Building"
+  short_description: "Add or change a building type end to end."
+  default_prompt: "Use $add-building to add this building type with stats, placement rules, art, UI and save-safe ids."

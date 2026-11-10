@@ -9,9 +9,12 @@ import {
   FIRE_RESPONSE_CONFIG,
   findNearestFireStation,
   getFireIncidentKey,
+  getFireFundingFactor,
 } from '@/lib/fireConfig';
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
 import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
+import { canRollThroughRed } from './junctionYield';
+import { followSpeedFactor, FOLLOW_BAND } from './followEasing';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
 import { CrimeType, getRandomCrimeType, getCrimeDuration } from './incidentData';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
@@ -32,10 +35,13 @@ import {
 } from './pedestrianSystem';
 import { PILGRIM_CONFIG, getGhatCrowdTarget, shouldBecomePilgrim } from '@/lib/pilgrims';
 import { FESTIVAL_CROWD_CONFIG } from '@/lib/festivals';
-import { TRAFFIC_CONFIG, VEHICLE_MIX, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
+import { TRAFFIC_CONFIG, VEHICLE_MIX, getFollowGap, getVehicleSpeedMultiplier, pickVehicleKind, stepOvertake } from '@/lib/trafficConfig';
 import { getSeason, getVehicleSpeedMultiplier as getSeasonVehicleSpeed, type SimWeather } from '@/lib/seasons';
 import { drawVehicleBody } from './drawVehicleKinds';
+import { setVehicleTransform } from './vehicleTransform';
+import { CongestionMap } from './trafficModel';
 import { COW_CONFIG, getMaxCows } from '@/lib/trafficConfig';
+import { FIRE_CROWD_CONFIG, getWatchSeconds, type FirePoint } from '@/lib/fireCrowd';
 import { drawCow, getCowSlowdown, getStandingCowTiles, spawnCow, stepCow, type Cow } from './cowSystem';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { getActivePreset, getRenderDpr } from '@/lib/graphicsSettings';
@@ -51,6 +57,14 @@ export interface TrainForCrossing {
   progress: number;
   carriages: { tileX: number; tileY: number }[];
 }
+
+/** Dispatch checks each fire has waited for a crew (module level: the systems object is rebuilt every render). */
+const fireSeenChecks = new Map<string, number>();
+// createVehicleSystems runs on every render of the grid, so state that must build up over seconds lives here
+const congestion = new CongestionMap();
+let congestionCounts = new Uint16Array(0);
+let onlookerFireTimer = 0;
+let onlookerFires: FirePoint[] = [];
 
 export interface VehicleSystemRefs {
   carsRef: React.MutableRefObject<Car[]>;
@@ -100,6 +114,8 @@ export interface VehicleSystemState {
     floodMask?: Uint8Array | null;
     /** Festivals (S5-T3/T4): pilgrim crowd and car spawn multipliers, always within the quality caps. */
     festivalCrowd?: { pedestrians: number; cars: number };
+    /** Fire department budget funding (0-100): sets how many trucks roll and how fast fires are put out. */
+    fireFunding?: number;
   };
   /** Hour of day as rendered (0–23): pilgrim crowds peak at dawn and dusk. */
   visualHour: number;
@@ -123,6 +139,24 @@ type FinderCache = {
 };
 let finderCache: FinderCache = { key: '' };
 let roadPrefixCache: { key: string; prefix: Int32Array | null } = { key: '', prefix: null };
+
+/**
+ * Centre-to-centre distance (tile fractions) from a follower to a leader driving the same way on the same
+ * or the next tile, or Infinity if the leader is not just ahead. Cars and buses share this for following.
+ */
+function aheadGap(tx: number, ty: number, progress: number, nextX: number, nextY: number, o: { tileX: number; tileY: number; progress: number }): number {
+  if (o.tileX === tx && o.tileY === ty) return o.progress > progress ? o.progress - progress : Infinity;
+  if (o.tileX === nextX && o.tileY === nextY) return 1 - progress + o.progress;
+  return Infinity;
+}
+/** A bus is 24 px long (a car 11 px): centre gap that keeps a car and a bus bumper to bumper, with a 2 px margin. */
+const BUS_FOLLOW_GAP = 0.52;
+/** Cars currently pulled toward the kerb for a siren; module scope because createVehicleSystems reruns every render. */
+const kerbCarIds = new Set<number>();
+/** Cars pulling over ahead of a siren (filled by updateEmergencyVehicles, read by updateCars). */
+const yieldingCarIds = new Set<number>();
+/** Burning tiles of the last grid scanned for incident indicators. */
+const burningTilesCache: { grid: unknown; size: number; tiles: number[] } = { grid: null, size: 0, tiles: [] };
 
 export function invalidateVehicleSystemCaches(): void {
   finderCache = { key: '' };
@@ -837,10 +871,22 @@ export function createVehicleSystems(
     
     const fires = findFiresCallback();
     const fireStations = findStationsCallback('fire_station');
+    // Forget fires that are out
+    if (fireSeenChecks.size > 0) {
+      for (const key of fireSeenChecks.keys()) {
+        let still = false;
+        for (const f of fires) if (getFireIncidentKey(f.x, f.y) === key) { still = true; break; }
+        if (!still) fireSeenChecks.delete(key);
+      }
+    }
     
     for (const fire of fires) {
       const fireKey = getFireIncidentKey(fire.x, fire.y);
       if (activeFiresRef.current.has(fireKey)) continue;
+      // Turnout: an under-funded brigade takes longer to get a crew out (one check per 1.5 s of game time)
+      const seen = (fireSeenChecks.get(fireKey) ?? 0) + 1;
+      fireSeenChecks.set(fireKey, seen);
+      if (seen <= getTurnoutChecks(state.fireFunding)) continue;
 
       const nearestStation = findNearestFireStation(fire, fireStations);
       if (nearestStation) {
@@ -850,7 +896,9 @@ export function createVehicleSystems(
                v.stationX === nearestStation.x &&
                v.stationY === nearestStation.y
         ).length;
-        if (trucksFromStation >= FIRE_RESPONSE_CONFIG.maxTrucksPerStation) continue;
+        // Funding sets the crews on duty: 100% = full cap, an under-funded brigade keeps fewer trucks rolling
+        const truckCap = Math.max(1, Math.round(FIRE_RESPONSE_CONFIG.maxTrucksPerStation * getFireFundingFactor(state.fireFunding)));
+        if (trucksFromStation >= truckCap) continue;
 
         // Radius cap: match the visual overlay exactly
         // Effective range = base range scaled by station level (same formula as simulation coverage)
@@ -899,6 +947,35 @@ export function createVehicleSystems(
     }
   };
 
+  const getTurnoutChecks = (funding: number | undefined): number => Math.round(((1 - getFireFundingFactor(funding)) * 6) / 1.5);
+
+  /** Cars within this many tiles of a running emergency vehicle pull over. */
+  const EMERGENCY_YIELD_RADIUS = 3;
+  /** Cars this close (or closer) ease toward the kerb so the siren vehicle passes beside them, not through them. */
+  const EMERGENCY_KERB_RADIUS = 4;
+  /** Extra sideways distance (px) a car sits at when fully pulled over. */
+  const KERB_SHIFT_PX = 4;
+
+  /** Crew readiness: an under-funded brigade drives out slower (100% funding = 1). */
+  const getCrewSpeedFactor = (type: EmergencyVehicleType): number =>
+    type === 'fire_truck' ? 0.75 + 0.25 * getFireFundingFactor(state.fireFunding) : 1;
+
+  /**
+   * Speed factor from the traffic around an emergency vehicle: moving cars on its tile and the four
+   * neighbours slow it (queues, junction crossing); the vehicle reaches full speed again when the road ahead is clear.
+   * Allocation-free; only runs for vehicles on the road.
+   */
+  const getTrafficSlowdown = (tx: number, ty: number): number => {
+    const cars = carsRef.current;
+    let blocking = 0;
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i];
+      if (Math.abs(car.tileX - tx) + Math.abs(car.tileY - ty) > 1) continue;
+      blocking++;
+    }
+    return Math.max(0.5, 1 - 0.12 * blocking);
+  };
+
   const updateEmergencyVehicles = (delta: number) => {
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed } = worldStateRef.current;
     if (!currentGrid || currentGridSize <= 0) {
@@ -915,7 +992,26 @@ export function createVehicleSystems(
     }
 
     const updatedVehicles: EmergencyVehicle[] = [];
-    
+
+    // Sirens clear the way: cars close ahead of a running emergency vehicle pull over (see yieldingCarIds)
+    // and the vehicle still crawls through whatever traffic is left (see getTrafficSlowdown).
+    yieldingCarIds.clear();
+    kerbCarIds.clear();
+    const cars = carsRef.current;
+    if (cars.length > 0) {
+      for (const ev of emergencyVehiclesRef.current) {
+        if (ev.state === 'responding') continue;
+        for (let i = 0; i < cars.length; i++) {
+          const car = cars[i];
+          const adx = Math.abs(car.tileX - ev.tileX);
+          const ady = Math.abs(car.tileY - ev.tileY);
+          const reach = adx + ady;
+          // Cars right next to the vehicle are the bottleneck (see getTrafficSlowdown); the ones further out clear the road
+          if (reach >= 2 && reach <= EMERGENCY_YIELD_RADIUS) yieldingCarIds.add(car.id);
+          if (reach <= EMERGENCY_KERB_RADIUS) kerbCarIds.add(car.id);
+        }
+      }
+    }
     
     for (const vehicle of [...emergencyVehiclesRef.current]) {
       vehicle.flashTimer += delta * 8;
@@ -933,8 +1029,10 @@ export function createVehicleSystems(
         }
         
         vehicle.respondTime += delta * speedMultiplier;
+        // Putting a fire out takes longer the further it has burned and the less the brigade is funded
+        const targetFire = vehicle.type === 'fire_truck' ? currentGrid[vehicle.targetY]?.[vehicle.targetX]?.building : undefined;
         const respondDuration = vehicle.type === 'fire_truck'
-          ? 2
+          ? (2 + (targetFire?.onFire ? targetFire.fireProgress / 25 : 0)) / getFireFundingFactor(state.fireFunding)
           : 5;
         
         if (vehicle.respondTime >= respondDuration) {
@@ -1009,7 +1107,7 @@ export function createVehicleSystems(
         continue;
       }
       
-      vehicle.progress += vehicle.speed * delta * speedMultiplier;
+      vehicle.progress += vehicle.speed * getTrafficSlowdown(vehicle.tileX, vehicle.tileY) * getCrewSpeedFactor(vehicle.type) * delta * speedMultiplier;
       
       let shouldRemove = false;
       
@@ -1130,6 +1228,11 @@ export function createVehicleSystems(
   };
 
   const updateCars = (delta: number) => {
+    // The siren sets are module-scoped; with no emergency vehicle they must not carry ids over (e.g. after a load)
+    if (emergencyVehiclesRef.current.length === 0 && (yieldingCarIds.size > 0 || kerbCarIds.size > 0)) {
+      yieldingCarIds.clear();
+      kerbCarIds.clear();
+    }
     const { grid: currentGrid, gridSize: currentGridSize, speed: currentSpeed, zoom: currentZoom } = worldStateRef.current;
     
     // Clear cars if zoomed out too far (use mobile threshold on mobile for better perf)
@@ -1200,6 +1303,12 @@ export function createVehicleSystems(
       if (!carsByTile.has(key)) carsByTile.set(key, []);
       carsByTile.get(key)!.push(car);
     }
+    // Per-tile jam level (smoothed) so wandering cars prefer free exits over jammed ones.
+    const tileCount = currentGridSize * currentGridSize;
+    if (congestionCounts.length !== tileCount) congestionCounts = new Uint16Array(tileCount);
+    else congestionCounts.fill(0);
+    for (const [key, list] of carsByTile) congestionCounts[key] = list.length;
+    congestion.update(congestionCounts, delta * speedMultiplier);
     
     const updatedCars: Car[] = [];
     for (const car of [...carsRef.current]) {
@@ -1241,6 +1350,15 @@ export function createVehicleSystems(
         continue;
       }
       
+      // Ease toward the kerb while a siren is near, and back afterwards (render adds yieldShift * KERB_SHIFT_PX)
+      if (car.yieldShift || kerbCarIds.size > 0) {
+        const want = kerbCarIds.has(car.id) ? 1 : 0;
+        const cur = car.yieldShift ?? 0;
+        const step = 3 * delta;
+        car.yieldShift = cur < want ? Math.min(want, cur + step) : Math.max(want, cur - step);
+        if (car.yieldShift === 0) car.yieldShift = undefined;
+      }
+
       // Check if approaching an intersection with red light
       // Only stop BEFORE entering the intersection, never while inside it
       let shouldStop = false;
@@ -1254,7 +1372,7 @@ export function createVehicleSystems(
       // If we're NOT in an intersection and the next tile IS an intersection
       if (!currentIsIntersection && nextIsIntersection) {
         // Check immediately and stop well before the intersection
-        if (!canProceedThroughIntersection(car.direction, lightState)) {
+        if (!canProceedThroughIntersection(car.direction, lightState) && !canRollThroughRed(carsByTile, currentGridSize, nextX, nextY, car.direction)) {
           shouldStop = true;
         }
       }
@@ -1284,10 +1402,16 @@ export function createVehicleSystems(
         }
       }
       
+      // A siren close behind: pull over and wait, but never inside a junction (that would block everyone)
+      if (!shouldStop && yieldingCarIds.size > 0 && !currentIsIntersection && yieldingCarIds.has(car.id)) {
+        shouldStop = true;
+      }
+      
       // Check for car ahead - efficient spatial lookup
       // Only check cars going the SAME direction (same lane).
       // S3-T4: an overtaking motorbike rides the middle of the road, so it is not held up by its lane.
       let blockedByVehicle = false;
+      let followFactor = 1;
       if (!shouldStop && !car.overtaking) {
         // Check same tile for car ahead in same lane
         // PERF: Use numeric key lookup
@@ -1297,29 +1421,54 @@ export function createVehicleSystems(
           // Same direction (same lane) and ahead of us
           if (other.direction === car.direction && other.progress > car.progress) {
             const gap = other.progress - car.progress;
-            if (gap < 0.25 && !other.overtaking) {
-              shouldStop = true;
-              blockedByVehicle = true;
-              break;
+            // Kind-aware hold distance (bikes tuck closer than buses), eased up to free flow
+            const stopGap = getFollowGap(car.kind, other.kind);
+            if (gap < stopGap + FOLLOW_BAND && !other.overtaking) {
+              const f = followSpeedFactor(gap, stopGap);
+              if (f === 0) {
+                shouldStop = true;
+                blockedByVehicle = true;
+                break;
+              }
+              if (f < followFactor) followFactor = f;
             }
           }
         }
         
         // Check next tile for car in same lane we might hit
-        if (!shouldStop && car.progress > 0.7) {
+        if (!shouldStop && car.progress > 0.45) {
           // PERF: Use numeric key lookup
           const nextTileCars = carsByTile.get(nextY * currentGridSize + nextX) || [];
           for (const other of nextTileCars) {
-            // Only stop for cars going same direction (same lane)
-            if (other.direction === car.direction && other.progress < 0.3 && !other.overtaking) {
-              shouldStop = true;
-              blockedByVehicle = true;
-              break;
+            // Only react to cars going same direction (same lane); gap is measured across the tile edge
+            if (other.direction === car.direction && !other.overtaking) {
+              const gap = 1 - car.progress + other.progress;
+              const stopGap = getFollowGap(car.kind, other.kind);
+              if (gap >= stopGap + FOLLOW_BAND) continue;
+              const f = followSpeedFactor(gap, stopGap);
+              if (f === 0) {
+                shouldStop = true;
+                blockedByVehicle = true;
+                break;
+              }
+              if (f < followFactor) followFactor = f;
             }
           }
         }
       }
       
+      // Buses are long and drive in the car lane: a car behind one holds back instead of driving through it
+      if (!shouldStop && !car.overtaking && busesRef.current.length > 0) {
+        for (const bus of busesRef.current) {
+          if (bus.direction !== car.direction) continue;
+          const gap = aheadGap(car.tileX, car.tileY, car.progress, nextX, nextY, bus);
+          if (gap >= BUS_FOLLOW_GAP + FOLLOW_BAND) continue;
+          const f = followSpeedFactor(gap, BUS_FOLLOW_GAP);
+          if (f === 0) { shouldStop = true; blockedByVehicle = true; break; }
+          if (f < followFactor) followFactor = f;
+        }
+      }
+
       // S3-T4: slow kinds hold up whoever is behind them; motorbikes squeeze past after a short wait
       if (stepOvertake(car, blockedByVehicle, delta * speedMultiplier)) {
         car.laneOffset = Math.sign(car.laneOffset || 1) * TRAFFIC_CONFIG.overtakeLaneOffset;
@@ -1329,7 +1478,7 @@ export function createVehicleSystems(
       if (!shouldStop) {
         // S3-T5: drive around a standing cow at reduced speed (never a full stop, so no deadlock)
         const cowSlowdown = standingCowTiles.size > 0 ? getCowSlowdown(standingCowTiles, car.tileY * currentGridSize + car.tileX) : 1;
-        car.progress += car.speed * delta * speedMultiplier * cowSlowdown;
+        car.progress += car.speed * delta * speedMultiplier * cowSlowdown * followFactor;
       }
       // When stopped, just don't move - no position changes
       
@@ -1373,7 +1522,7 @@ export function createVehicleSystems(
         }
         
         // Pick next direction
-        const nextDirection = pickNextDirection(car.direction, currentGrid, currentGridSize, car.tileX, car.tileY);
+        const nextDirection = pickNextDirection(car.direction, currentGrid, currentGridSize, car.tileX, car.tileY, congestion.level);
         if (nextDirection) {
           if (nextDirection !== car.direction) {
             const baseLaneOffset = 4 + Math.random() * 2;
@@ -1497,8 +1646,20 @@ export function createVehicleSystems(
         }
       }
 
+      // A bus holds back behind the car ahead of it in its lane
+      let busFollow = 1;
       if (!shouldStop) {
-        bus.progress += bus.speed * delta * speedMultiplier;
+        for (const car of carsRef.current) {
+          if (car.direction !== bus.direction) continue;
+          const gap = aheadGap(bus.tileX, bus.tileY, bus.progress, nextX, nextY, car);
+          if (gap >= BUS_FOLLOW_GAP + FOLLOW_BAND) continue;
+          const f = followSpeedFactor(gap, BUS_FOLLOW_GAP);
+          if (f < busFollow) busFollow = f;
+        }
+      }
+
+      if (!shouldStop) {
+        bus.progress += bus.speed * delta * speedMultiplier * busFollow;
       }
 
       while (bus.progress >= 1 && bus.pathIndex < bus.path.length - 1) {
@@ -1631,9 +1792,28 @@ export function createVehicleSystems(
     const trafficTime = trafficLightTimerRef.current;
     const lightState = getTrafficLightState(trafficTime);
     
+    // Onlookers (arena CHAOS): a cached list of fires, refreshed every few seconds
+    onlookerFireTimer -= delta;
+    if (onlookerFireTimer <= 0) {
+      onlookerFireTimer = FIRE_CROWD_CONFIG.refreshSeconds;
+      onlookerFires = findFiresCallback();
+    }
+    const watching = onlookerFires.length > 0 && currentSpeed > 0;
+
     for (let i = 0; i < allPedestrians.length; i++) {
       const ped = allPedestrians[i];
-      
+
+      // Roll once per quarter-second bucket (on entering it), not on every frame inside it
+      const bucket = Math.floor((ped.age + delta) * 4);
+      if (watching && ped.state === 'walking' && bucket !== Math.floor(ped.age * 4) && ((ped.id + bucket) & 7) === 0) {
+        const secs = getWatchSeconds(onlookerFires, ped.tileX, ped.tileY, Math.random(), Math.random());
+        if (secs > 0) {
+          ped.state = 'idle';
+          ped.activityDuration = secs;
+          ped.activityProgress = 0;
+        }
+      }
+
       // Use the new state machine for pedestrian updates
       const alive = updatePedestrianState(
         ped,
@@ -1724,20 +1904,16 @@ export function createVehicleSystems(
       const centerX = screenX + TILE_WIDTH / 2;
       const centerY = screenY + TILE_HEIGHT / 2;
       const meta = DIRECTION_META[car.direction];
-      const carX = centerX + meta.vec.dx * car.progress + meta.normal.nx * car.laneOffset;
-      const carY = centerY + meta.vec.dy * car.progress + meta.normal.ny * car.laneOffset;
+      const lane = car.yieldShift ? car.laneOffset + (car.laneOffset < 0 ? -1 : 1) * car.yieldShift * KERB_SHIFT_PX : car.laneOffset;
+      const carX = centerX + meta.vec.dx * car.progress + meta.normal.nx * lane;
+      const carY = centerY + meta.vec.dy * car.progress + meta.normal.ny * lane;
 
       if (carX < viewLeft - 60 || carX > viewRight + 60 || carY < viewTop - 80 || carY > viewBottom + 80) {
         return;
       }
 
-      ctx.save();
-      ctx.translate(carX, carY);
-      ctx.rotate(meta.angle);
-
+      setVehicleTransform(ctx, carX, carY, Math.cos(meta.angle), Math.sin(meta.angle), dpr * currentZoom, dpr * currentOffset.x, dpr * currentOffset.y);
       drawVehicleBody(ctx, car, detailed);
-      
-      ctx.restore();
     });
 
     ctx.restore();
@@ -2012,6 +2188,8 @@ export function createVehicleSystems(
   };
 
   const incidentAnimTimeRef = { current: 0 };
+  // Burning tiles, rescanned only when the grid object changes (once per tick, not once per frame).
+  // Fire trucks put fires out in place on the same grid, so the draw loop re-checks onFire.
 
   const drawIncidentIndicators = (ctx: IsoRenderer, delta: number) => {
     const { offset: currentOffset, zoom: currentZoom, grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
@@ -2089,8 +2267,22 @@ export function createVehicleSystems(
       ctx.restore();
     }
     
-    for (let y = 0; y < currentGridSize; y++) {
-      for (let x = 0; x < currentGridSize; x++) {
+    if (burningTilesCache.grid !== currentGrid || burningTilesCache.size !== currentGridSize) {
+      const tiles: number[] = [];
+      for (let y = 0; y < currentGridSize; y++) {
+        const row = currentGrid[y];
+        for (let x = 0; x < currentGridSize; x++) {
+          if (row[x].building.onFire) tiles.push(x, y);
+        }
+      }
+      burningTilesCache.grid = currentGrid;
+      burningTilesCache.size = currentGridSize;
+      burningTilesCache.tiles = tiles;
+    }
+    const burningTiles = burningTilesCache.tiles;
+    for (let i = 0; i < burningTiles.length; i += 2) {
+      {
+        const x = burningTiles[i], y = burningTiles[i + 1];
         const tile = currentGrid[y][x];
         if (!tile.building.onFire) continue;
         

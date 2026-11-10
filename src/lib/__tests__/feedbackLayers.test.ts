@@ -104,7 +104,7 @@ describe('named advisors (S5-T6)', () => {
     expect(k).toContain('treasury:debt');
     expect(k).toContain('engineer:power_shortage');
     expect(k).toContain('health:outbreak');
-    expect(k).toContain('police:fire');
+    expect(k).toContain('fire:fire');
   });
 
   it('gives "Show me" a place and overlay, sorts by priority and caps each advisor', () => {

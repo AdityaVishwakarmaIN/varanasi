@@ -144,6 +144,12 @@ export class PixiRenderer implements IsoRenderer {
   // Shared blur filter for per-node filter='blur(px)' draws.
   private readonly blurFilter = new BlurFilter({ strength: 0, quality: 4 });
 
+  // Sprites of a retained layer that sway every frame (trees): drawn once in depth order with the
+  // buildings, then only their matrix changes (no per-frame redraw, no separate layer).
+  private swayNodes: { sprite: Sprite; base: Matrix; px: number; py: number }[] = [];
+  private readonly swayScratch = new Matrix();
+  private lastImageMatrix = new Matrix();
+
   // Opt-in: render fillText/strokeText via BitmapText (Step 7). Default off — keeps the
   // dynamic Text path until bitmap-font legibility is verified locally.
   private useBitmapText = false;
@@ -190,7 +196,35 @@ export class PixiRenderer implements IsoRenderer {
     this.resetPool(name);
     this.resetState();
     this.setLayer(name);
+    if (name === 'buildings') this.swayNodes.length = 0;
     draw();
+  }
+
+  /** How many sprites the active layer holds so far (pair with {@link markSway}). */
+  spriteCount(): number {
+    return this.getPool(this.activeLayerName).spriteCursor;
+  }
+
+  /**
+   * Make the sprite drawImage() placed since `before` (a {@link spriteCount}) sway about the pivot
+   * (current local coordinates) whenever {@link applySway} runs. Does nothing if no sprite was placed.
+   */
+  markSway(before: number, pivotX: number, pivotY: number): void {
+    const pool = this.getPool(this.activeLayerName);
+    if (pool.spriteCursor <= before) return;
+    const sprite = pool.sprite[pool.spriteCursor - 1];
+    const p = this.matrix.apply({ x: pivotX, y: pivotY });
+    this.swayNodes.push({ sprite, base: this.lastImageMatrix, px: p.x, py: p.y });
+  }
+
+  /** Rotates every marked sprite by `angle` about its pivot (cheap: one matrix per tree per frame). */
+  applySway(angle: number): void {
+    const m = this.swayScratch;
+    for (let i = 0; i < this.swayNodes.length; i++) {
+      const n = this.swayNodes[i];
+      m.copyFrom(n.base).translate(-n.px, -n.py).rotate(angle).translate(n.px, n.py);
+      n.sprite.setFromMatrix(m);
+    }
   }
 
   /** Apply (or clear, with 0) a single GPU blur over a whole layer (e.g. clouds). */
@@ -451,6 +485,7 @@ export class PixiRenderer implements IsoRenderer {
     m.append(new Matrix().set(1, 0, 0, 1, dx, dy));
     m.append(new Matrix().set(dw / texture.width, 0, 0, dh / texture.height, 0, 0));
     sp.setFromMatrix(m);
+    this.lastImageMatrix = m;
     this.place(sp);
   }
 

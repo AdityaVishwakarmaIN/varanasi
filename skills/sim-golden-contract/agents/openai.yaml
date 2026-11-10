@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sim Golden Contract"
+  short_description: "Keep simulateTick deterministic and goldens honest."
+  default_prompt: "Use $sim-golden-contract to check this sim change against the determinism and golden fingerprint contract."

@@ -89,6 +89,16 @@ export const VEHICLE_MIX: Record<VehicleKind, VehicleKindConfig> = {
   },
 };
 
+/**
+ * Bumper-to-bumper gap (tile fractions) a vehicle keeps behind its leader. Car behind car keeps the 0.34 (an 11 px car in a 37 px tile);
+ * small kinds (bikes, autos) tuck in closer, packing mixed Indian traffic tighter.
+ */
+export function getFollowGap(follower: VehicleKind | undefined, leader: VehicleKind | undefined): number {
+  const f = VEHICLE_MIX[follower ?? 'car'].look.lengthScale;
+  const l = VEHICLE_MIX[leader ?? 'car'].look.lengthScale;
+  return 0.04 + 0.15 * f + 0.15 * l;
+}
+
 export const TRAFFIC_CONFIG = {
   /** Below this zoom every kind is drawn as the same simple shape (see getLODLevel). */
   detailMinZoom: 0.8,

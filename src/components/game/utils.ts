@@ -1,6 +1,7 @@
 import { Tile } from '@/types/game';
 import { CarDirection, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { OPPOSITE_DIRECTION } from './constants';
+import { pickLeastCongested } from './trafficModel';
 
 // PERF: Pre-allocated typed arrays for BFS pathfinding to reduce GC pressure
 // Max path length of 2048 nodes should be sufficient for most city sizes
@@ -72,7 +73,9 @@ export function pickNextDirection(
   gridData: Tile[][],
   gridSizeValue: number,
   x: number,
-  y: number
+  y: number,
+  /** Optional per-tile congestion (see trafficModel.ts): when given, jammed exits are picked less often. */
+  congestion?: Float32Array
 ): CarDirection | null {
   const options = getDirectionOptions(gridData, gridSizeValue, x, y);
   if (options.length === 0) return null;
@@ -108,8 +111,18 @@ export function pickNextDirection(
   const incoming = getOppositeDirection(previousDirection);
   const filtered = validOptions.filter(dir => dir !== incoming);
   const pool = filtered.length > 0 ? filtered : validOptions;
+  if (congestion && congestion.length === gridSizeValue * gridSizeValue && pool.length > 1) {
+    const n = Math.min(pool.length, 4);
+    for (let i = 0; i < n; i++) {
+      const o = directionOffsets[pool[i]];
+      EXIT_TILES[i] = (y + o.dy) * gridSizeValue + (x + o.dx);
+    }
+    return pool[pickLeastCongested(congestion, EXIT_TILES, n, Math.random())];
+  }
   return pool[Math.floor(Math.random() * pool.length)];
 }
+
+const EXIT_TILES = new Int32Array(4);
 
 // PERF: Pre-allocated arrays for findNearestRoadToBuilding BFS
 const ROAD_BFS_MAX_SIZE = 4096; // Max tiles to check

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Procedural Sprite Authoring"
+  short_description: "Paint a procedural isometric building sprite."
+  default_prompt: "Use $procedural-sprite-authoring to author this procedural building sprite following the anchor contract and kits."

@@ -10,7 +10,7 @@ const ISOCITY_URL = 'https://github.com/amilich/isometric-city';
 function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="space-y-1.5">
-      <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider">{title}</h3>
+      <h3 className="text-[10px] text-chrome-muted font-semibold uppercase tracking-wider">{title}</h3>
       <div className="text-sm space-y-1.5">{children}</div>
     </section>
   );

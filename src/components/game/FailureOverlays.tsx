@@ -61,6 +61,7 @@ export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?:
   const [confirmNewCityFor, setConfirmNewCityFor] = useState<unknown>(null);
   const [monthsBack, setMonthsBack] = useState(0);
   const failure = state.failure;
+  const monthsToExodus = Math.max(0, FAILURE_CONFIG.exodusAfterMonths - (failure?.lowHappinessMonths ?? 0));
   const gameOver = state.gameOver;
   // The first "New city" click only arms it, for this game over only
   const confirmNewCity = !!gameOver && confirmNewCityFor === gameOver;
@@ -84,9 +85,9 @@ export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?:
   if (inDebt && failure) {
     const toBankruptcy = monthsUntilBankruptcy(failure);
     const toLoan = monthsUntilLoanOffer(failure);
-    const parts = [gt('In debt for {months} months', { months: failure.monthsInDebt })];
-    if (toBankruptcy !== null) parts.push(gt('{months} months until bankruptcy', { months: toBankruptcy }));
-    else if (toLoan !== null && toLoan > 0) parts.push(gt('{months} months until an emergency loan is offered', { months: toLoan }));
+    const parts = [gt(failure.monthsInDebt === 1 ? 'In debt for {months} month' : 'In debt for {months} months', { months: failure.monthsInDebt })];
+    if (toBankruptcy !== null) parts.push(gt(toBankruptcy === 1 ? '{months} month until bankruptcy' : '{months} months until bankruptcy', { months: toBankruptcy }));
+    else if (toLoan !== null && toLoan > 0) parts.push(gt(toLoan === 1 ? '{months} month until an emergency loan is offered' : '{months} months until an emergency loan is offered', { months: toLoan }));
     debtDetail = parts.join(' · ');
   }
 
@@ -95,31 +96,31 @@ export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?:
       {(inDebt || lowHappiness) && (
         <div className={cn('pointer-events-none flex flex-col gap-2', bannerClassName)} role="status" aria-live="polite">
           {inDebt && (
-            <div className="flex items-start gap-2 rounded-md border border-red-500/80 bg-red-950/90 px-3 py-2 text-red-50 shadow-lg">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" aria-hidden />
+            <div className="flex items-start gap-2 rounded-none border border-chrome-border border-l-4 border-l-red-800 bg-chrome-panel px-3 py-2 text-chrome-text">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-800" aria-hidden />
               <div className="min-w-0">
                 <p className="text-sm font-semibold">{m(LABELS.treasuryEmpty)}</p>
-                {debtDetail && <p className="text-xs text-red-200">{debtDetail}</p>}
+                {debtDetail && <p className="text-xs text-chrome-muted">{debtDetail}</p>}
               </div>
             </div>
           )}
           {lowHappiness && failure && (
             <div
               className={cn(
-                'flex items-start gap-2 rounded-md border px-3 py-2 shadow-lg',
-                failure.exodusActive ? 'border-red-500/80 bg-red-950/90 text-red-50' : 'border-amber-500/80 bg-amber-950/90 text-amber-50'
+                'flex items-start gap-2 rounded-none border border-chrome-border border-l-4 bg-chrome-panel px-3 py-2 text-chrome-text',
+                failure.exodusActive ? 'border-l-red-800' : 'border-l-amber-800'
               )}
             >
-              <Users className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <Users className={cn('mt-0.5 h-4 w-4 shrink-0', failure.exodusActive ? 'text-red-800' : 'text-amber-800')} aria-hidden />
               <div className="min-w-0">
                 {failure.exodusActive && <p className="text-sm font-semibold">{m(LABELS.peopleLeaving)}</p>}
-                <p className={cn(failure.exodusActive ? 'text-xs opacity-80' : 'text-sm font-medium')}>
-                  {gt('Happiness has been critical for {months} months', { months: failure.lowHappinessMonths })}
+                <p className={cn(failure.exodusActive ? 'text-xs text-chrome-muted' : 'text-sm font-medium')}>
+                  {gt(failure.lowHappinessMonths === 1 ? 'Happiness has been critical for {months} month' : 'Happiness has been critical for {months} months', { months: failure.lowHappinessMonths })}
                 </p>
                 {!failure.exodusActive && (
-                  <p className="text-xs opacity-80">
-                    {gt('{months} months until people start leaving', {
-                      months: Math.max(0, FAILURE_CONFIG.exodusAfterMonths - failure.lowHappinessMonths),
+                  <p className="text-xs text-chrome-muted">
+                    {gt(monthsToExodus === 1 ? '{months} month until people start leaving' : '{months} months until people start leaving', {
+                      months: monthsToExodus,
                     })}
                   </p>
                 )}
@@ -138,11 +139,12 @@ export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?:
             </DialogTitle>
             <DialogDescription>
               {gt(
-                'The State Government offers an emergency loan of {amount}. It will be repaid from {share}% of income for {months} months.',
+                'The State Government offers an emergency loan of {amount}. It will be repaid from {share}% of income for {months} months. If the city is still in debt {bankruptMonths} months after you answer, it goes bankrupt.',
                 {
                   amount: formatINR(failure?.loanOfferAmount ?? 0),
                   share: Math.round(FAILURE_CONFIG.loanRepaymentShare * 100),
                   months: FAILURE_CONFIG.loanRepaymentMonths,
+                  bankruptMonths: FAILURE_CONFIG.bankruptcyAfterDebtMonths,
                 }
               )}
             </DialogDescription>
@@ -163,28 +165,28 @@ export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?:
           {gameOver && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-destructive">
+                <DialogTitle className="text-red-800">
                   {m(gameOver.reason === 'bankruptcy' ? LABELS.gameOverBankrupt : LABELS.gameOverExodus)}
                 </DialogTitle>
-                <DialogDescription className="text-base font-medium text-foreground">{state.cityName}</DialogDescription>
+                <DialogDescription className="text-base font-medium text-chrome-text">{state.cityName}</DialogDescription>
               </DialogHeader>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">{m(LABELS.yearsSurvived)}</dt>
-                <dd className="text-right font-medium">{gameOver.yearsSurvived}</dd>
-                <dt className="text-muted-foreground">{m(LABELS.peakPopulation)}</dt>
-                <dd className="text-right font-medium">{formatIndianCompact(gameOver.peakPopulation)}</dd>
+                <dt className="text-chrome-muted">{m(LABELS.yearsSurvived)}</dt>
+                <dd className="text-right font-medium text-chrome-text">{gameOver.yearsSurvived}</dd>
+                <dt className="text-chrome-muted">{m(LABELS.peakPopulation)}</dt>
+                <dd className="text-right font-medium text-chrome-text">{formatIndianCompact(gameOver.peakPopulation)}</dd>
                 {gameOver.peakGangaHealth !== undefined && (
                   <>
-                    <dt className="text-muted-foreground">{m(LABELS.peakGanga)}</dt>
-                    <dd className="text-right font-medium">{Math.round(gameOver.peakGangaHealth)}</dd>
+                    <dt className="text-chrome-muted">{m(LABELS.peakGanga)}</dt>
+                    <dd className="text-right font-medium text-chrome-text">{Math.round(gameOver.peakGangaHealth)}</dd>
                   </>
                 )}
               </dl>
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              <div className="rounded-none border border-red-800/50 bg-red-800/10 px-3 py-2 text-sm text-chrome-text">
                 <span className="font-medium">{m(LABELS.whatWentWrong)}: </span>
                 {m(FAILING_LINES[gameOver.failingStat])}
               </div>
-              {autosaveMissing && <p className="text-xs text-muted-foreground">{m(LABELS.noAutosave)}</p>}
+              {autosaveMissing && <p className="text-xs text-chrome-muted">{m(LABELS.noAutosave)}</p>}
               <DialogFooter className="gap-2">
                 {onExit && (
                   <Button variant="ghost" onClick={onExit}>{m(LABELS.exitToMenu)}</Button>

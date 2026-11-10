@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { getGridVisualVersion } from './visualSignature';
 import { Tile, BuildingType } from '@/types/game';
 import { getBuildingSize } from '@/lib/simulation';
 
@@ -39,6 +40,10 @@ const ALL_PARK_TYPES = new Set<BuildingType>([
 ]);
 
 export function useBuildingHelpers(grid: Tile[][], gridSize: number, structureVersion: number) {
+  // PERF: the simulation hands over a new grid object every tick, but the metadata below depends only on
+  // building types. Rebuild it when the grid's visual version changes, not on every tick; this also keeps
+  // getTileMetadata stable so the map canvas does not redraw for ticks that changed nothing visible.
+  const visualVersion = getGridVisualVersion(grid, gridSize);
   // Pre-compute all tile metadata once when grid changes
   // This converts O(n) per-tile lookups during render to O(1) map lookups
   // PERF: Store gridSize for numeric key calculation
@@ -253,7 +258,8 @@ export function useBuildingHelpers(grid: Tile[][], gridSize: number, structureVe
     }
     
     return map;
-  }, [grid, gridSize, structureVersion]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the visual version, which tracks every type change in grid
+  }, [visualVersion, gridSize, structureVersion]);
   
   // O(1) lookup functions that use the pre-computed map
   // PERF: Use numeric key calculation (gridY * gridSize + gridX)

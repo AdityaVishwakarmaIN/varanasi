@@ -29,9 +29,9 @@ export function AudioSettings() {
     <div className="py-2" key={key}>
       <div className="flex items-center justify-between mb-2">
         <Label htmlFor={`vol-${key}`}>{m(LABELS[key])}</Label>
-        <span className="text-xs text-muted-foreground tabular-nums">{Math.round(s[key] * 100)}%</span>
+        <span className="text-xs text-chrome-muted tabular-nums">{Math.round(s[key] * 100)}%</span>
       </div>
-      {desc && <p className="text-muted-foreground text-xs mb-2">{desc}</p>}
+      {desc && <p className="text-chrome-muted text-xs mb-2">{desc}</p>}
       <Slider
         id={`vol-${key}`}
         min={0}
@@ -50,7 +50,7 @@ export function AudioSettings() {
 
   return (
     <div className="py-2">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{m(LABELS.sound)}</div>
+      <div className="text-[10px] text-chrome-muted uppercase tracking-wider mb-1">{m(LABELS.sound)}</div>
       <div className="flex items-center justify-between py-2 gap-4">
         <Label htmlFor="audio-mute">{m(LABELS.mute)}</Label>
         <Switch id="audio-mute" checked={s.muted} onCheckedChange={(muted) => setAudioSettings({ muted })} />

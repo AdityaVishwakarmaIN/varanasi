@@ -5,9 +5,10 @@
  * panel with the live readiness checklist. Clicking a failing requirement jumps to the event area with its overlay.
  */
 import React from 'react';
-import { msg, useMessages } from 'gt-next';
+import { msg, useGT, useMessages } from 'gt-next';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { GameState } from '@/types/game';
 import type { OverlayMode } from '@/components/game/types';
 import { FESTIVALS, getActiveFestivals, type FestivalId } from '@/lib/festivals';
@@ -16,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 const TEXT = {
   today: msg('today'),
-  ready: msg('ready'),
+  close: msg('Close'),
   intro: msg('Huge crowds are coming. Meet all five requirements in the event area for a triumph; three or four is a success.'),
   noArea: msg('There are no ghats yet. Build ghats on the riverfront to host the festival.'),
   showMe: msg('Show me'),
@@ -50,8 +51,8 @@ export function FestivalChip({
   return (
     <>
       {active.map((f) => (
-        <span key={f.id} className={cn('inline-flex items-center rounded-full bg-marigold/15 ring-1 ring-marigold/30 px-1.5 text-[10px] leading-4 text-marigold', className)}>
-          {f.chip}
+        <span key={f.id} title={f.chip} className={cn('inline-flex items-center rounded-none border border-amber-800/40 bg-amber-800/10 px-1.5 text-[10px] font-medium leading-4 text-amber-800 max-w-full', className)}>
+          <span className="min-w-0 truncate">{f.chip}</span>
         </span>
       ))}
     </>
@@ -61,6 +62,7 @@ export function FestivalChip({
 /** Small banner over the map while a management event is announced or running; opens the Event panel. */
 export function FestivalEventBanner({ state, onOpen, className }: { state: GameState; onOpen: (id: FestivalId) => void; className?: string }) {
   const m = useMessages();
+  const gt = useGT();
   if (state.mapId !== 'varanasi') return null;
   const upcoming = getUpcomingManagementEvent(state.month, state.day);
   if (!upcoming) return null;
@@ -71,17 +73,19 @@ export function FestivalEventBanner({ state, onOpen, className }: { state: GameS
       type="button"
       onClick={() => onOpen(upcoming.id)}
       className={cn(
-        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-full !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold shadow-[0_0_20px_-8px_hsl(var(--marigold)/0.7)]',
+        'hud-panel press pointer-events-auto inline-flex items-center gap-1.5 rounded-none !border-marigold/50 px-3.5 min-h-11 text-xs hover:!border-marigold',
         className
       )}
     >
-      <span className="ornament text-marigold animate-diya" aria-hidden />
-      <span className="font-semibold text-marigold">{f.chip}</span>
-      <span className="text-muted-foreground">
+      <span className="ornament text-chrome-accent animate-diya" aria-hidden />
+      <span className="font-semibold text-chrome-accent">{f.chip}</span>
+      <span className="text-chrome-muted">
+        {' '}
+        {upcoming.daysUntil === 0
+          ? m(TEXT.today)
+          : gt(upcoming.daysUntil === 1 ? 'in {days} day' : 'in {days} days', { days: upcoming.daysUntil })}
         {' · '}
-        {upcoming.daysUntil === 0 ? m(TEXT.today) : `${upcoming.daysUntil}d`}
-        {' · '}
-        {passed}/{checklist.length} {m(TEXT.ready)}
+        {gt('{done} of {total} preparations', { done: passed, total: checklist.length })}
       </span>
     </button>
   );
@@ -100,6 +104,7 @@ export function FestivalEventPanel({
   onLocate: (x: number, y: number, overlay: OverlayMode | undefined) => void;
 }) {
   const m = useMessages();
+  const gt = useGT();
   const readiness = festivalId ? getEventReadiness(state, festivalId) : null;
   const f = festivalId ? FESTIVALS[festivalId] : null;
   const center = readiness?.area.center ?? null;
@@ -110,32 +115,32 @@ export function FestivalEventPanel({
           <>
             <DialogHeader>
               <DialogTitle>
-                {f.chip} · {readiness.passed}/{readiness.checklist.length}
+                {f.chip} · {gt('{done} of {total} preparations', { done: readiness.passed, total: readiness.checklist.length })}
               </DialogTitle>
               <DialogDescription>{m(center ? TEXT.intro : TEXT.noArea)}</DialogDescription>
             </DialogHeader>
-            {readiness.area.scale < 1 && <p className="text-xs text-amber-300">{m(TEXT.halfScale)}</p>}
+            {readiness.area.scale < 1 && <p className="text-xs text-amber-800">{m(TEXT.halfScale)}</p>}
             <ul className="flex flex-col gap-1.5">
               {readiness.checklist.map((r) => {
                 const Icon = r.passed ? CheckCircle2 : XCircle;
                 const content = (
                   <>
-                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-emerald-300' : 'text-red-400')} aria-hidden />
+                    <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', r.passed ? 'text-green-800' : 'text-red-800')} aria-hidden />
                     <span className="flex-1 text-left">
                       <span className="font-medium">{r.label}</span>
-                      {!r.passed && <span className="block text-xs text-muted-foreground">{r.hint}</span>}
+                      {!r.passed && <span className="block text-xs text-chrome-muted">{r.hint}</span>}
                     </span>
-                    {!r.passed && center && <span className="text-xs text-marigold">{m(TEXT.showMe)}</span>}
+                    {!r.passed && center && <span className="text-xs text-chrome-accent">{m(TEXT.showMe)}</span>}
                   </>
                 );
                 return (
                   <li key={r.requirement}>
                     {r.passed || !center ? (
-                      <div className="flex items-start gap-2 rounded px-2 py-1.5 text-sm">{content}</div>
+                      <div className="flex items-start gap-2 rounded-none px-2 py-1.5 text-sm">{content}</div>
                     ) : (
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-sm hover:bg-sandstone/[0.07]"
+                        className="flex w-full items-start gap-2 rounded-none px-2 py-2 text-sm text-chrome-text hover:bg-chrome-well"
                         onClick={() => {
                           onLocate(center.x, center.y, readinessOverlay(r));
                           onClose();
@@ -148,6 +153,9 @@ export function FestivalEventPanel({
                 );
               })}
             </ul>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full">{m(TEXT.close)}</Button>
+            </DialogClose>
           </>
         )}
       </DialogContent>

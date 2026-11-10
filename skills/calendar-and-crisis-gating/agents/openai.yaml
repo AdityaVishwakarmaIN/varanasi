@@ -1,0 +1,4 @@
+interface:
+  display_name: "Calendar And Crisis Gating"
+  short_description: "Calendar, seasons, weather, floods, festivals, crisis gates."
+  default_prompt: "Use $calendar-and-crisis-gating to schedule or gate this seasonal event or crisis correctly on the game calendar."

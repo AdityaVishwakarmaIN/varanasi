@@ -16,38 +16,38 @@
        Night-Ganga indigo base, sandstone text, saffron + marigold accents,
        turquoise for water, thin gold hairlines. */
     --background: 233 42% 8%;
-    --foreground: 38 48% 91%;
+    --foreground: 25 35% 14%;
 
-    --card: 233 36% 12%;
-    --card-foreground: 38 48% 91%;
+    --card: 36 38% 86%;
+    --card-foreground: 25 35% 14%;
 
-    --popover: 233 38% 11%;
-    --popover-foreground: 38 48% 91%;
+    --popover: 36 42% 90%;
+    --popover-foreground: 25 35% 14%;
 
     /* Saffron primary */
-    --primary: 29 96% 56%;
-    --primary-foreground: 233 45% 9%;
+    --primary: 14 62% 44%;
+    --primary-foreground: 36 60% 97%;
 
-    --secondary: 233 28% 17%;
-    --secondary-foreground: 38 48% 91%;
+    --secondary: 34 30% 78%;
+    --secondary-foreground: 25 35% 14%;
 
-    --muted: 233 26% 16%;
-    --muted-foreground: 34 20% 68%;
+    --muted: 34 30% 80%;
+    --muted-foreground: 25 18% 36%;
 
     /* Turquoise (Ganga) accent */
     --accent: 178 62% 40%;
     --accent-foreground: 38 48% 95%;
 
-    --destructive: 2 76% 56%;
+    --destructive: 2 70% 40%;
     --destructive-foreground: 38 48% 96%;
 
-    --border: 233 22% 22%;
-    --input: 233 26% 19%;
-    --ring: 42 96% 58%;
+    --border: 30 22% 62%;
+    --input: 30 22% 62%;
+    --ring: 25 35% 14%;
 
-    --sidebar: 234 42% 9%;
-    --sidebar-foreground: 38 48% 91%;
-    --sidebar-border: 38 40% 32%;
+    --sidebar: 36 38% 86%;
+    --sidebar-foreground: 25 35% 14%;
+    --sidebar-border: 30 22% 60%;
 
     /* Named accents (tailwind: saffron, marigold, ganga, gold, sandstone) */
     --saffron: 27 96% 56%;
@@ -56,12 +56,22 @@
     --gold: 40 64% 60%;
     --sandstone: 36 46% 82%;
 
-    --radius: 0.75rem;
+    --radius: 0px;
 
     /* HUD surfaces */
     --hud-top: 233 38% 14%;
     --hud-bottom: 234 42% 9%;
     --hud-highlight: 40 90% 88%;
+
+    /* Warm sandstone HUD chrome (tailwind: chrome.*) */
+    --chrome-bg: 34 28% 82%;
+    --chrome-panel: 36 38% 86%;
+    --chrome-well: 34 30% 78%;
+    --chrome-border: 30 22% 60%;
+    --chrome-text: 25 35% 14%;
+    --chrome-muted: 25 22% 28%;
+    --chrome-accent: 14 62% 44%;
+    --chrome-accentText: 36 60% 97%;
   }
 }
 
@@ -73,7 +83,7 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
-  /* One consistent, high-contrast keyboard focus ring (marigold) */
+  /* One consistent, high-contrast keyboard focus ring (dark ink, so it never reads as "selected") */
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
@@ -101,7 +111,7 @@
 
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--gold) / 0.28);
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -220,57 +230,79 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: hsl(var(--gold) / 0.85);
+  color: hsl(var(--chrome-muted));
 }
 
 @layer components {
-  /* ── HUD surfaces ────────────────────────────────────────────────────
-     .hud-panel  opaque-ish gradient, no blur: large or always-on surfaces
-     .hud-glass  translucent with a light blur: small floating pieces only */
-  .hud-panel {
-    background:
-      linear-gradient(180deg, hsl(var(--hud-top) / 0.97) 0%, hsl(var(--hud-bottom) / 0.97) 100%);
-    border: 1px solid hsl(var(--gold) / 0.2);
-    box-shadow:
-      inset 0 1px 0 hsl(var(--hud-highlight) / 0.07),
-      0 12px 32px -12px rgb(0 0 0 / 0.65);
-  }
-
+  /* ── HUD surfaces: flat warm sandstone ─────────────────────────────── */
+  .hud-panel,
   .hud-glass {
-    background:
-      linear-gradient(180deg, hsl(var(--hud-top) / 0.84) 0%, hsl(var(--hud-bottom) / 0.88) 100%);
-    border: 1px solid hsl(var(--gold) / 0.22);
-    box-shadow:
-      inset 0 1px 0 hsl(var(--hud-highlight) / 0.08),
-      0 10px 28px -10px rgb(0 0 0 / 0.6);
-    -webkit-backdrop-filter: blur(8px) saturate(1.15);
-    backdrop-filter: blur(8px) saturate(1.15);
+    background: hsl(var(--chrome-panel));
+    color: hsl(var(--chrome-text));
+    border: 1px solid hsl(var(--chrome-border));
+    border-radius: 0;
+    box-shadow: 0 1px 2px rgb(60 40 20 / 0.18);
   }
 
   /* Recessed well inside a panel (stat chips, button groups) */
   .hud-well {
+    background: hsl(var(--chrome-well));
+    color: hsl(var(--chrome-text));
+    border: 1px solid hsl(var(--chrome-border));
+    border-radius: 0;
+  }
+
+  /* Neutralised decorations (kept so existing markup does not break) */
+  .gold-hairline {
+    position: relative;
+  }
+  .ornament {
+    display: none;
+  }
+  .jaali-bg {
+    background-image: none;
+  }
+
+  /* Plain divider line */
+  .ornament-divider {
+    height: 1px;
+    background: hsl(var(--chrome-border));
+  }
+
+  /* Colour transition only */
+  .press {
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* Selected tool / active toggle: flat terracotta */
+  .hud-selected {
+    background: hsl(var(--chrome-accent));
+    color: hsl(var(--chrome-accentText)) !important;
+    box-shadow: none;
+  }
+}
+
+/* Title-screen only: the original dark/gold look, kept off the flattened HUD classes */
+@layer components {
+  .title-panel {
+    background: linear-gradient(180deg, hsl(var(--hud-top) / 0.97) 0%, hsl(var(--hud-bottom) / 0.97) 100%);
+    border: 1px solid hsl(var(--gold) / 0.2);
+    box-shadow: inset 0 1px 0 hsl(var(--hud-highlight) / 0.07), 0 12px 32px -12px rgb(0 0 0 / 0.65);
+  }
+  .title-well {
     background: hsl(234 40% 7% / 0.55);
     border: 1px solid hsl(var(--gold) / 0.12);
     box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35);
   }
-
-  /* Thin gold hairline along the top edge of a panel */
-  .gold-hairline {
-    position: relative;
+  .title-label {
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: hsl(var(--gold) / 0.85);
   }
-  .gold-hairline::before {
-    content: '';
-    position: absolute;
-    left: 12%;
-    right: 12%;
-    top: -1px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, hsl(var(--gold) / 0.75), transparent);
-    pointer-events: none;
-  }
-
-  /* Tiny lotus/mandala ornament (use on a span; colour = currentColor) */
-  .ornament {
+  .title-lotus {
     display: inline-block;
     width: 12px;
     height: 12px;
@@ -279,51 +311,7 @@
     -webkit-mask: var(--lotus-svg) center / contain no-repeat;
     mask: var(--lotus-svg) center / contain no-repeat;
   }
-
-  /* Gold hairline divider with a small lotus in the middle */
-  .ornament-divider {
-    position: relative;
-    height: 12px;
-    background: linear-gradient(90deg, transparent, hsl(var(--gold) / 0.45) 30%, transparent 45%, transparent 55%, hsl(var(--gold) / 0.45) 70%, transparent) center / 100% 1px no-repeat;
-  }
-  .ornament-divider::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 0;
-    width: 12px;
-    height: 12px;
-    margin-left: -6px;
-    background-color: hsl(var(--gold) / 0.8);
-    -webkit-mask: var(--lotus-svg) center / contain no-repeat;
-    mask: var(--lotus-svg) center / contain no-repeat;
-  }
-
-  /* Hover lift + press: transform only (cheap) */
-  .press {
-    transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-  }
-  @media (hover: hover) {
-    .press:hover:not(:disabled) {
-      transform: translateY(-1px);
-    }
-  }
-  .press:active:not(:disabled) {
-    transform: translateY(0) scale(0.96);
-  }
-
-  /* Selected tool / active toggle: saffron glow */
-  .hud-selected {
-    background: linear-gradient(180deg, hsl(var(--marigold)) 0%, hsl(var(--saffron)) 100%);
-    color: hsl(var(--primary-foreground)) !important;
-    box-shadow:
-      inset 0 1px 0 hsl(48 100% 85% / 0.6),
-      0 0 0 1px hsl(var(--saffron) / 0.6),
-      0 6px 16px -6px hsl(var(--saffron) / 0.7);
-  }
-
-  /* Jaali (lattice) texture, very faint, for large empty surfaces */
-  .jaali-bg {
+  .title-jaali {
     background-image: var(--jaali-svg);
     background-size: 36px 36px;
   }
@@ -336,21 +324,46 @@
 
 /* Radix switch / progress pick up the saffron accent */
 [role="switch"][data-state="checked"] {
-  background: linear-gradient(135deg, hsl(var(--saffron)) 0%, hsl(var(--marigold)) 100%);
+  background: hsl(var(--chrome-accent));
+}
+
+
+/* Dark (legacy) palette for the title screen and other full-screen dark surfaces. */
+.theme-dark {
+  --foreground: 38 48% 91%;
+  --card: 233 36% 12%;
+  --card-foreground: 38 48% 91%;
+  --popover: 233 38% 11%;
+  --popover-foreground: 38 48% 91%;
+  --secondary: 233 28% 17%;
+  --secondary-foreground: 38 48% 91%;
+  --muted: 233 26% 16%;
+  --muted-foreground: 34 20% 68%;
+  --border: 233 22% 22%;
+  --input: 233 26% 19%;
+  --sidebar: 234 42% 9%;
+  --sidebar-foreground: 38 48% 91%;
+  --sidebar-border: 38 40% 32%;
+  --primary: 29 96% 56%;
+  --primary-foreground: 233 45% 9%;
+  --destructive: 2 76% 56%;
+  --ring: 42 96% 58%;
+  color: hsl(var(--foreground));
 }
 
 /* Input styling */
 input[type="text"],
 input[type="number"] {
-  background: hsl(234 40% 8%);
-  border: 1px solid hsl(var(--gold) / 0.22);
+  background: hsl(36 45% 94%);
+  color: hsl(var(--chrome-text));
+  border: 1px solid hsl(var(--chrome-border));
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 input[type="text"]:focus,
 input[type="number"]:focus {
-  border-color: hsl(var(--marigold));
-  box-shadow: 0 0 0 3px hsl(var(--marigold) / 0.2);
+  border-color: hsl(var(--chrome-accent));
+  box-shadow: 0 0 0 3px hsl(var(--chrome-accent) / 0.2);
   outline: none;
 }
 
@@ -380,6 +393,22 @@ input[type="number"]:focus {
     max-width: calc(100vw - 16px) !important;
     max-height: calc(100vh - 32px) !important;
     margin: 8px;
+  }
+}
+
+/* Touch targets: at least 40px on tablets and touch screens (phones get 44px above) */
+@media (min-width: 769px) and (max-width: 1023px), (min-width: 769px) and (pointer: coarse) {
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]), [role="button"] {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Phones held sideways are wider than 768px but still phones: 44px */
+@media (pointer: coarse) and (max-height: 500px) {
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]), [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

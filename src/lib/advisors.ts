@@ -3,7 +3,7 @@
  * (newer replaces the same kind, at most 3 per advisor, sorted by priority).
  */
 
-export type AdvisorId = 'treasury' | 'engineer' | 'river' | 'health' | 'police';
+export type AdvisorId = 'treasury' | 'engineer' | 'river' | 'health' | 'police' | 'fire';
 
 export interface AdvisorDef {
   id: AdvisorId;
@@ -27,7 +27,7 @@ export const ADVISORS: Record<AdvisorId, AdvisorDef> = {
   engineer: {
     id: 'engineer',
     title: 'City Engineer',
-    covers: 'Power, water, roads, traffic, collapses',
+    covers: 'Power, water, roads, traffic, housing',
     avatar: 'advisor_engineer',
     icon: '🛠️',
   },
@@ -40,8 +40,8 @@ export const ADVISORS: Record<AdvisorId, AdvisorDef> = {
   },
   health: {
     id: 'health',
-    title: 'Health Officer',
-    covers: 'Health, disease, heatwaves',
+    title: 'Health and Education Officer',
+    covers: 'Health, education, disease, heatwaves',
     avatar: 'advisor_health',
     icon: '🩺',
   },
@@ -52,9 +52,16 @@ export const ADVISORS: Record<AdvisorId, AdvisorDef> = {
     avatar: 'advisor_police',
     icon: '🛡️',
   },
+  fire: {
+    id: 'fire',
+    title: 'Fire Chief',
+    covers: 'Fires, fire stations, collapses',
+    avatar: 'advisor_fire',
+    icon: '🚒',
+  },
 };
 
-export const ADVISOR_IDS: readonly AdvisorId[] = ['treasury', 'engineer', 'river', 'health', 'police'];
+export const ADVISOR_IDS: readonly AdvisorId[] = ['treasury', 'engineer', 'river', 'health', 'police', 'fire'];
 
 /** Every topic a system can raise, routed to exactly one advisor. */
 export const ADVISOR_TOPICS = {
@@ -67,7 +74,7 @@ export const ADVISOR_TOPICS = {
   water: 'engineer',
   roads: 'engineer',
   traffic: 'engineer',
-  collapse: 'engineer',
+  collapse: 'fire',
   zoning: 'engineer',
   housing: 'engineer',
   informal_settlement: 'engineer',
@@ -83,7 +90,7 @@ export const ADVISOR_TOPICS = {
   education: 'health',
   safety: 'police',
   crime: 'police',
-  fire: 'police',
+  fire: 'fire',
   festival: 'police',
   crowds: 'police',
 } as const satisfies Record<string, AdvisorId>;

@@ -37,7 +37,7 @@ export function MobileMiniMapToggle({
         data-testid="mobile-minimap-toggle"
         aria-label={gt('Minimap')}
         aria-pressed={open}
-        className={`press h-11 w-11 rounded-full ${open ? 'hud-selected hover:text-primary-foreground' : 'hud-panel text-sandstone'} ${className}`}
+        className={`press h-11 w-11 rounded-none focus-visible:ring-chrome-text ${open ? 'hud-selected hover:text-chrome-accentText' : 'hud-panel text-chrome-text hover:bg-chrome-well'} ${className}`}
         onClick={() => setOpen(!open)}
       >
         <MapIcon className="w-5 h-5" />
@@ -54,7 +54,7 @@ export function MobileMiniMapToggle({
               variant="ghost"
               size="icon"
               aria-label={gt('Close')}
-              className="absolute -top-2 -right-2 h-11 w-11 rounded-full hud-panel text-sandstone"
+              className="absolute -top-2 -right-2 h-11 w-11 rounded-none hud-panel text-chrome-text hover:bg-chrome-well"
               onClick={() => setOpen(false)}
             >
               <CloseIcon size={16} />
@@ -109,13 +109,13 @@ export function TouchGestureHint({ selectedTool }: { selectedTool: Tool }) {
       data-testid="touch-gesture-hint"
       role="dialog"
       aria-label={gt('Touch controls')}
-      className="hud-panel gold-hairline animate-rise-in pointer-events-auto rounded-2xl p-3 text-sm text-sandstone shadow-lg"
+      className="hud-panel animate-rise-in pointer-events-auto rounded-none p-3 text-sm text-chrome-text"
     >
       <div className="hud-label mb-1.5">{gt('Touch controls')}</div>
       <ul className="space-y-1 mb-2 list-disc pl-4">
         {lines.map((line) => <li key={line}>{line}</li>)}
       </ul>
-      <Button className="w-full h-11" onClick={() => setVisible(false)}>
+      <Button className="w-full h-11 rounded-none" onClick={() => setVisible(false)}>
         {gt('Got it')}
       </Button>
     </div>

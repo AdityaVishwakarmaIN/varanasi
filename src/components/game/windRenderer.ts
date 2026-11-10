@@ -259,6 +259,46 @@ export function updateWindVisualState({
   }
 }
 
+/** Draws a tree sprite at rest (no sway) into `ctx`, at its own position. */
+export function drawWindTreeAtRest(ctx: IsoRenderer, tree: WindTreeRenderItem): void {
+  ctx.save();
+  if (tree.shouldFlip) {
+    const centerX = tree.drawX + tree.destWidth * 0.5;
+    ctx.translate(centerX, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-centerX, 0);
+  }
+  ctx.drawImage(
+    tree.image as CanvasImageSource,
+    tree.coords.sx,
+    tree.coords.sy,
+    tree.coords.sw,
+    tree.coords.sh,
+    Math.round(tree.drawX),
+    Math.round(tree.drawY),
+    Math.round(tree.destWidth),
+    Math.round(tree.destHeight)
+  );
+  ctx.restore();
+}
+
+/** Erases a tree's (unswayed) silhouette from `ctx`, so a tree drawn on a layer below shows through. */
+export function cutWindTreeSilhouette(ctx: CanvasRenderingContext2D, tree: WindTreeRenderItem): void {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  drawWindTreeAtRest(ctx, tree);
+  ctx.restore();
+}
+
+/** Current sway angle (radians) of all trees. */
+export function windSwayAngle(windState: WindVisualState): number {
+  return (
+    (0.003 + windState.strength * 0.014) +
+    ((0.004 + windState.strength * 0.026) * windState.gust) *
+      (0.5 + 0.5 * Math.sin(windState.time * 1.8))
+  );
+}
+
 export function drawWindTreesFrame(
   { ctx, worldState, windState, dpr }: WindDrawInput,
   visibleTrees: WindTreeRenderItem[]
@@ -270,10 +310,7 @@ export function drawWindTreesFrame(
   }
 
   const pixelRatio = getPixelRatio(dpr);
-  const swayAngle =
-    (0.003 + windState.strength * 0.014) +
-    ((0.004 + windState.strength * 0.026) * windState.gust) *
-      (0.5 + 0.5 * Math.sin(windState.time * 1.8));
+  const swayAngle = windSwayAngle(windState);
 
   ctx.save();
   ctx.scale(pixelRatio * zoom, pixelRatio * zoom);

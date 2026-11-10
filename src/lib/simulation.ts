@@ -30,6 +30,12 @@ import {
 import { generateCityName, generateWaterName } from './names';
 import {
   FIRE_SIMULATION_CONFIG,
+  FIRE_BLAZE_THRESHOLD,
+  FIRE_WIND_STRENGTH,
+  SCORCH_TICKS,
+  getFireFuelFactor,
+  getFireFundingFactor,
+  getFirePressure,
   countAdjacentBurningTiles,
   createDefaultFireState,
   getFireSpreadChance,
@@ -56,6 +62,8 @@ import { gatherGangaInputs, getGhatPlacement, isWaterWorksPlacementValid, RIVERF
 import { isEmbankmentSiteInRange } from '@/lib/floods';
 import { calculateGangaTargetHealth, stepGangaHealth } from '@/lib/scoring';
 import { calculateTourismIncome } from '@/lib/tourism';
+import { getBuildingUpkeep, RAIL_TILE_UPKEEP_MONTHLY, type UpkeepCategory, type UpkeepEntry } from '@/lib/upkeep';
+import { describeFirePlace } from '@/lib/firePlaces';
 import { addForecast, pruneForecasts, pushNotifications, shouldPauseForCrisis, type ForecastInput } from '@/lib/notifications';
 import { advanceFailureState, applyLoanRepayment, createFailureState, FAILING_STAT_LINES, getTopFailingStat } from '@/lib/failure';
 import { formatINR, POPULATION_DISPLAY_SCALE } from '@/lib/format';
@@ -91,6 +99,7 @@ import {
   POWER_CONFIG, WATER_CONFIG, calculatePowerSupply, calculatePowerDemand, calculateWaterSupply, calculateWaterDemand,
   supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
 } from '@/lib/utilities';
+import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
 import { getFeederBounds, getFeederIndex } from '@/lib/feederZones';
 import { applyFeederCuts } from '@/lib/utilityCuts';
 import { INFORMAL_CONFIG } from '@/lib/informal';
@@ -186,6 +195,105 @@ function buildPollutionCleanupTargets(radius: number, strength: number, width: n
   return Float64Array.from(targets);
 }
 
+/**
+ * Tile pollution model. Each tick a tile moves `approachRate` of the way toward its building's pollution
+ * stat (negative stats count as 0), so a factory's tile settles at about its stat. Green reducers then
+ * remove `strength * approachRate` per tick from nearby tiles, which lowers that steady state by
+ * about `strength` per reducer in range. (The old rule `p * 0.95 + stat` settled at 20x the stat.)
+ */
+export const POLLUTION_CONFIG = {
+  approachRate: 0.05,
+  /** Pollution below this snaps to 0, so cleared tiles return to the fast paths in simulateTick. */
+  snapToZero: 0.01,
+} as const;
+
+/** One tick of a tile's pollution toward its building's stat (see POLLUTION_CONFIG). */
+export function stepTilePollution(current: number, stat: number): number {
+  const next = current + (stat - current) * POLLUTION_CONFIG.approachRate;
+  return next < POLLUTION_CONFIG.snapToZero ? 0 : next;
+}
+
+/**
+ * Land value (S-env): every land tile's value is `base` plus the summed `BUILDING_STATS.landValue` of the
+ * non-zoned buildings and industry within `radius` tiles (a square), times `scale`, clamped to
+ * [maxPenalty, maxBonus]. Parks, temples and services raise it; factories, power plants and settlements
+ * lower it. Homes and shops are left out (their stat describes themselves, and counting them would make
+ * every dense block upgrade itself). Water is left out too, so riverside value is unchanged. Computed once
+ * per tick with a separable box sum (O(tiles), independent of the radius); only changed tiles are copied.
+ */
+export const LAND_VALUE_CONFIG = {
+  base: 50,
+  radius: 3,
+  /** A park (stat 20) adds 7, a hospital 8.75; a large factory (-18) takes 6.3 off, a power plant 7. */
+  scale: 0.35,
+  maxBonus: 15,
+  maxPenalty: -20,
+} as const;
+
+/** The per-tile land-value source of a tile: its building's landValue stat, or 0 when it does not count. */
+function getLandValueSource(tile: Tile): number {
+  const type = tile.building.type;
+  if (type === 'water' || type === 'empty' || tile.zone === 'residential' || tile.zone === 'commercial') return 0;
+  return BUILDING_STATS[type]?.landValue ?? 0;
+}
+
+/** Land value of a land tile from the box sum of nearby sources (see LAND_VALUE_CONFIG). */
+export function getLandValueFromInfluence(sourceSum: number): number {
+  const influence = Math.min(
+    LAND_VALUE_CONFIG.maxBonus,
+    Math.max(LAND_VALUE_CONFIG.maxPenalty, sourceSum * LAND_VALUE_CONFIG.scale)
+  );
+  return Math.round(LAND_VALUE_CONFIG.base + influence);
+}
+
+let landValueScratch: { source: Float32Array; rowSum: Float32Array } | null = null;
+
+function getLandValueScratch(tileCount: number): { source: Float32Array; rowSum: Float32Array } {
+  if (!landValueScratch || landValueScratch.source.length < tileCount) {
+    landValueScratch = { source: new Float32Array(tileCount), rowSum: new Float32Array(tileCount) };
+  }
+  return landValueScratch;
+}
+
+/**
+ * Sets every land tile's landValue from `source` (filled by scanGridTotals). Writes through `writable`
+ * only where the value changes, so a city whose buildings did not change copies no tiles.
+ */
+function applyLandValues(
+  grid: Tile[][],
+  size: number,
+  source: Float32Array,
+  rowSum: Float32Array,
+  writable: (x: number, y: number) => Tile
+): void {
+  const r = LAND_VALUE_CONFIG.radius;
+  // Horizontal running window sum
+  for (let y = 0; y < size; y++) {
+    const rowStart = y * size;
+    let sum = 0;
+    for (let x = 0; x < r && x < size; x++) sum += source[rowStart + x];
+    for (let x = 0; x < size; x++) {
+      if (x + r < size) sum += source[rowStart + x + r];
+      rowSum[rowStart + x] = sum;
+      if (x - r >= 0) sum -= source[rowStart + x - r];
+    }
+  }
+  // Vertical running window sum, then compare and write
+  for (let x = 0; x < size; x++) {
+    let sum = 0;
+    for (let y = 0; y < r && y < size; y++) sum += rowSum[y * size + x];
+    for (let y = 0; y < size; y++) {
+      if (y + r < size) sum += rowSum[(y + r) * size + x];
+      const tile = grid[y][x];
+      if (tile.building.type !== 'water') {
+        const value = getLandValueFromInfluence(sum);
+        if (tile.landValue !== value) writable(x, y).landValue = value;
+      }
+      if (y - r >= 0) sum -= rowSum[(y - r) * size + x];
+    }
+  }
+}
+
 // Reusable per-tick buffers for the pollution cleanup in simulateTick (grown when the map grows).
 let pollutionCleanupScratch: { pollution: Float64Array; changed: Uint8Array } | null = null;
 
@@ -211,7 +319,10 @@ function getPollutionCleanupEntry(buildingType: BuildingType): PollutionCleanupE
           strength: profile.strength,
           width: footprint.width,
           height: footprint.height,
-          targets: buildPollutionCleanupTargets(profile.radius, profile.strength, footprint.width, footprint.height),
+          // Per-tick amounts are scaled by the approach rate so each reducer lowers the steady state by `strength`
+          targets: buildPollutionCleanupTargets(
+            profile.radius, profile.strength * POLLUTION_CONFIG.approachRate, footprint.width, footprint.height
+          ),
         }
       : null;
     pollutionCleanupEntries.set(buildingType, entry);
@@ -1534,6 +1645,7 @@ function collectActiveServiceBuildings(grid: Tile[][], size: number, out: number
 /** Compute the coverage grids from a service list made by collectActiveServiceBuildings. */
 function computeServiceCoverage(serviceList: number[], size: number, budget?: Budget): ServiceCoverage {
   const services = createServiceCoverage(size);
+  const fireFundingFactor = getFireFundingFactor(budget?.fire?.funding);
 
   for (let i = 0; i < serviceList.length; i += SERVICE_LIST_STRIDE) {
     const x = serviceList[i];
@@ -1574,10 +1686,12 @@ function computeServiceCoverage(serviceList: number[], size: number, budget?: Bu
       // Handle percentage-based coverage (police, fire, health, education)
       const serviceType = (config as { type: 'police' | 'fire' | 'health' | 'education' }).type;
       const currentCoverage = services[serviceType] as number[][];
-      // Department funding scales coverage: strength x funding/100, radius x (0.5 + 0.5*funding/100).
-      const fundingFrac = Math.max(0, (budget?.[serviceType]?.funding ?? 100) / 100);
+      // Department funding scales coverage. Fire keeps its full radius and a floor (getFireFundingFactor);
+      // police, health and education scale strength x funding/100 and radius x (0.5 + 0.5*funding/100).
+      const isFire = serviceType === 'fire';
+      const fundingFrac = isFire ? fireFundingFactor : Math.max(0, (budget?.[serviceType]?.funding ?? 100) / 100);
       if (fundingFrac <= 0) continue;
-      const fRange = Math.floor(effectiveRange * (0.5 + 0.5 * fundingFrac));
+      const fRange = isFire ? range : Math.floor(effectiveRange * (0.5 + 0.5 * fundingFrac));
       if (fRange < 1) continue;
       const fRangeSquared = fRange * fRange;
       const fMinY = Math.max(0, y - fRange);
@@ -1867,48 +1981,6 @@ function hasRoadAccess(
  */
 type WritableTileAccessor = (x: number, y: number) => Tile;
 
-/**
- * Recompute `landValue` for zoned tiles (called once per in-game day). Unzoned tiles are skipped.
- * 50 + 3 per tree/park tile within radius 3 (max +20) + 10 if water within radius 2
- * - min(30, pollution/10) + 0.1 * max(0, avg(police, health, education coverage) - 50), clamped 10..100.
- */
-export function updateLandValues(
-  grid: Tile[][],
-  size: number,
-  services: ServiceCoverage,
-  writableTile: WritableTileAccessor = (tx, ty) => grid[ty][tx]
-): void {
-  for (let y = 0; y < size; y++) {
-    const row = grid[y];
-    for (let x = 0; x < size; x++) {
-      const tile = row[x];
-      if (tile.zone === 'none') continue;
-      let green = 0;
-      let nearWater = false;
-      const minY = Math.max(0, y - 3), maxY = Math.min(size - 1, y + 3);
-      const minX = Math.max(0, x - 3), maxX = Math.min(size - 1, x + 3);
-      for (let ny = minY; ny <= maxY; ny++) {
-        const nrow = grid[ny];
-        for (let nx = minX; nx <= maxX; nx++) {
-          const dx = nx - x, dy = ny - y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 > 9) continue;
-          const t = nrow[nx].building.type;
-          if (t === 'tree' || t === 'park' || t === 'park_large') green++;
-          else if (t === 'water' && d2 <= 4) nearWater = true;
-        }
-      }
-      const coverageAvg = (services.police[y][x] + services.health[y][x] + services.education[y][x]) / 3;
-      const value = 50
-        + Math.min(20, green * 3)
-        + (nearWater ? 10 : 0)
-        - Math.min(30, (tile.pollution || 0) / 10)
-        + 0.1 * Math.max(0, coverageAvg - 50);
-      const landValue = Math.round(Math.max(10, Math.min(100, value)));
-      if (tile.landValue !== landValue) writableTile(x, y).landValue = landValue;
-    }
-  }
-}
 
 /** Consecutive unserved (no power or no water) days after which a building may be abandoned. */
 const UNSERVED_ABANDON_DAYS = 30;
@@ -2219,7 +2291,7 @@ interface GridTotals {
   totalPollution: number;
   playableTileCount: number;
   treeCount: number;
-  /** park, park_large and tennis (used by both stats and budget) */
+  /** park, park_large and tennis (used by the ratings; their upkeep comes from `upkeep`) */
   parkCount: number;
   subwayTiles: number;
   subwayStations: number;
@@ -2256,6 +2328,11 @@ interface GridTotals {
   stps: { x: number; y: number }[];
   /** Finished landmarks (S5-T2). */
   landmarks: PlacedLandmark[];
+  /** Monthly upkeep of non-service buildings (parks, attractions, ghats, landmarks, stations, bridges) by budget line. */
+  upkeep: Record<UpkeepCategory, number>;
+  /** Jobs in commercial and industrial zones (for industrial demand). */
+  commercialJobs: number;
+  industrialJobs: number;
   /** Power and water capacity inputs (S3-T7/T8). Only filled when scanGridTotals gets the uncut coverage. */
   utility?: UtilityTotals;
 }
@@ -2284,6 +2361,8 @@ interface UtilityTotals {
 interface PollutionCapture {
   pollution: Float64Array;
   reducerIndices: number[];
+  /** When set, filled with each tile's land-value source (getLandValueSource). */
+  landValueSource?: Float32Array;
 }
 
 function scanGridTotals(
@@ -2339,6 +2418,11 @@ function scanGridTotals(
   const ghats: { x: number; y: number }[] = [];
   const stps: { x: number; y: number }[] = [];
   const landmarks: PlacedLandmark[] = [];
+  const upkeep: Record<UpkeepCategory, number> = { parks: 0, transportation: 0, education: 0, water: 0 };
+  let commercialJobs = 0;
+  let industrialJobs = 0;
+  let lastUpkeepType: BuildingType | null = null;
+  let lastUpkeep: UpkeepEntry | null = null;
 
   for (let y = 0; y < size; y++) {
     const row = grid[y];
@@ -2357,6 +2441,7 @@ function scanGridTotals(
           lastIsReducer = getPollutionCleanupEntry(type) !== null;
         }
         if (lastIsReducer) capture.reducerIndices.push(index);
+        if (capture.landValueSource) capture.landValueSource[index] = getLandValueSource(tile);
       }
 
       // --- stats ---
@@ -2367,6 +2452,8 @@ function scanGridTotals(
       }
       population += building.population;
       jobs += jobsFromTile;
+      if (zone === 'commercial') commercialJobs += jobsFromTile;
+      else if (zone === 'industrial') industrialJobs += jobsFromTile;
       totalPollution += tile.pollution;
 
       if (isEnvironmentPlayableBuildingType(type)) playableTileCount++;
@@ -2401,6 +2488,11 @@ function scanGridTotals(
         case 'sewage_treatment_plant': stps.push({ x, y }); break;
       }
       if (isComplete && !building.abandoned && isLandmarkType(type)) landmarks.push({ id: type, x, y });
+      if (type !== lastUpkeepType) {
+        lastUpkeepType = type;
+        lastUpkeep = getBuildingUpkeep(type);
+      }
+      if (lastUpkeep && !building.abandoned) upkeep[lastUpkeep.category] += lastUpkeep.monthly;
 
       // --- power and water capacity (S3-T7/T8) ---
       let inPowerCoverage = building.powered;
@@ -2462,7 +2554,7 @@ function scanGridTotals(
     hasAmusementPark, policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount,
     waterCount, waterWorksCount, roadCount, unpoweredBuildings, unwateredBuildings, abandonedBuildings,
     abandonedResidential, abandonedCommercial, abandonedIndustrial, ghats, stps, landmarks, utility,
-    informalSettlements, informalPopulation, informalDryPopulation,
+    informalSettlements, informalPopulation, informalDryPopulation, upkeep, commercialJobs, industrialJobs,
   };
 }
 
@@ -2493,6 +2585,38 @@ export function calculateTaxIncome(population: number, jobs: number, taxRate: nu
   return Math.floor(population * taxRate * 0.1 + jobs * taxRate * 0.05);
 }
 
+const DEFICIT_NOTE_TITLE = 'Monthly budget is in the red';
+
+/** Industrial demand tunables (economy balance pass). */
+export const INDUSTRIAL_DEMAND_CONFIG = {
+  /** Share of residents who want a job (same 0.7 the residential demand balances jobs against). */
+  workforceShare: 0.7,
+  /** Demand points at a full labour surplus (no jobs yet) / full shortage. */
+  laborWeight: 60,
+  /** Industrial jobs the shops and offices want supplying them, per commercial job. */
+  goodsPerCommercialJob: 0.6,
+  /** Demand points when industry is far short of / far over what commerce needs. */
+  goodsWeight: 40,
+  /** Floor of the goods-gap denominator, so the first factory or shop does not swing demand by 40 points. */
+  goodsScaleMin: 200,
+} as const;
+
+/**
+ * Base industrial demand before building bonuses and tax: a labour term (idle workers want factory jobs; once jobs
+ * outnumber the workforce it turns negative) plus a goods term (commerce needs industry to supply it). Each term is
+ * a ratio, so it stays responsive at any city size; the old absolute formula ((0.35 pop − 0.3 jobs) / 2) sat at +100
+ * for any city of a few hundred people unless jobs passed 1.17 × population.
+ */
+export function calculateBaseIndustrialDemand(population: number, jobs: number, commercialJobs: number, industrialJobs: number): number {
+  const c = INDUSTRIAL_DEMAND_CONFIG;
+  const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
+  const workforce = population * c.workforceShare;
+  const labor = workforce > 0 ? clamp1((workforce - jobs) / workforce) : jobs > 0 ? -1 : 0;
+  const goodsWanted = commercialJobs * c.goodsPerCommercialJob;
+  const goods = clamp1((goodsWanted - industrialJobs) / Math.max(c.goodsScaleMin, goodsWanted));
+  return labor * c.laborWeight + goods * c.goodsWeight;
+}
+
 function calculateStats(
   grid: Tile[][],
   size: number,
@@ -2508,6 +2632,9 @@ function calculateStats(
   /** Extra demand multipliers on top of the season's, e.g. a heatwave (S4-T7). */
   extraDemand?: { power: number; water: number }
 ): Stats {
+  // Tax is capped at TAX_RATE_MAX, whatever the (possibly old or edited) state says
+  taxRate = clampTaxRate(taxRate);
+  effectiveTaxRate = clampEffectiveTaxRate(effectiveTaxRate);
   const seasonFx = season && seasonalEffectsEnabled ? SEASON_CONFIG[season] : undefined;
   const {
     population, jobs, totalPollution, playableTileCount, treeCount, parkCount, subwayTiles,
@@ -2570,7 +2697,7 @@ function calculateStats(
   // Calculate base demands from economic factors
   const baseResidentialDemand = (jobs - population * 0.7) / 18;
   const baseCommercialDemand = (population * 0.3 - jobs * 0.3) / 4 + subwayBonus;
-  const baseIndustrialDemand = (population * 0.35 - jobs * 0.3) / 2.0;
+  const baseIndustrialDemand = calculateBaseIndustrialDemand(population, jobs, totals.commercialJobs, totals.industrialJobs);
   
   // Add special building bonuses to base demands
   const residentialWithBonuses = baseResidentialDemand + cityHallResidentialBonus + spaceProgramResidentialBonus + museumResidentialBonus + (landmarkFx?.residentialDemand ?? 0);
@@ -2592,19 +2719,29 @@ function calculateStats(
   const taxIncome = calculateTaxIncome(population - totals.informalPopulation, jobs - cutJobLoss, effectiveTaxRate);
 
   // Varanasi: the Ganga (S2-T7) and tourism from ghats (S2-T9)
-  let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'tourismIncome'> = {};
+  let gangaStats: Pick<Stats, 'gangaHealth' | 'gangaHealthTarget' | 'gangaLoad' | 'tourismIncome'> = {};
   let gangaRatingsInput: { health: number; catchmentPopulationShare: number } | undefined;
   let tourismIncome = 0;
   if (river && river.mapId === 'varanasi') {
     const inputs = gatherGangaInputs(grid, size, totals.stps);
-    const target = calculateGangaTargetHealth(inputs).targetHealth;
+    const gangaLoad = calculateGangaTargetHealth(inputs);
+    const target = gangaLoad.targetHealth;
     const floodMask = river.floodMask;
     const openGhats = floodMask ? totals.ghats.filter((g) => !floodMask[g.y * size + g.x]) : totals.ghats;
-    const tourGhats = landmarkFx ? [...openGhats, ...landmarkFx.extraGhats] : openGhats;
+    // The player's ghats share one visitor pool sized by population and landmarks; landmark ghats sit outside it
+    const pool = { population, landmarkCount: totals.landmarks.length };
+    // Ghats and landmarks are kept up from the Parks line: cutting its funding drives visitors away in step
+    const upkeepFactor = Math.min(1, Math.max(0, (budget.parks?.funding ?? 100) / 100));
     tourismIncome = Math.floor(
-      calculateTourismIncome(grid, size, tourGhats, river.gangaHealth, seasonFx?.tourism ?? 1) + (landmarkFx?.tourismIncome ?? 0)
+      (calculateTourismIncome(grid, size, openGhats, river.gangaHealth, seasonFx?.tourism ?? 1, pool, landmarkFx?.extraGhats) +
+        (landmarkFx?.tourismIncome ?? 0)) * upkeepFactor
     );
-    gangaStats = { gangaHealth: river.gangaHealth, gangaHealthTarget: target, tourismIncome };
+    gangaStats = {
+      gangaHealth: river.gangaHealth,
+      gangaHealthTarget: target,
+      gangaLoad: { industrial: gangaLoad.industrialLoad, sewage: gangaLoad.sewageLoad, untreatedPopulation: inputs.untreatedPopulation },
+      tourismIncome,
+    };
     gangaRatingsInput = {
       health: river.gangaHealth,
       catchmentPopulationShare: population > 0 ? inputs.catchmentPopulation / population : 0,
@@ -2705,7 +2842,7 @@ function calculateStats(
 function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = scanGridTotals(grid, grid.length)): Budget {
   const newBudget = { ...budget };
   const {
-    policeCount, fireCount, hospitalCount, schoolCount, universityCount, parkCount, powerCount, waterCount,
+    policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount, waterCount,
     roadCount,
   } = totals;
   const subwayTileCount = totals.subwayTiles;
@@ -2716,16 +2853,22 @@ function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = 
   newBudget.police = { ...budget.police, cost: policeCount * 50 };
   newBudget.fire = { ...budget.fire, cost: fireCount * 50 };
   newBudget.health = { ...budget.health, cost: hospitalCount * 100 };
-  newBudget.education = { ...budget.education, cost: schoolCount * 30 + universityCount * 100 };
-  newBudget.transportation = { ...budget.transportation, cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 };
-  newBudget.parks = { ...budget.parks, cost: parkCount * 10 };
+  // Parks, attractions, ghats, landmarks, stations, rail and bridges: see BUILDING_UPKEEP in ./upkeep
+  const upkeep = totals.upkeep;
+  newBudget.education = { ...budget.education, cost: schoolCount * 30 + universityCount * 100 + upkeep.education };
+  newBudget.transportation = {
+    ...budget.transportation,
+    cost: roadCount * 2 + subwayTileCount * 3 + subwayStationCount * 25 + totals.railTiles * RAIL_TILE_UPKEEP_MONTHLY + upkeep.transportation,
+  };
+  newBudget.parks = { ...budget.parks, cost: upkeep.parks };
   newBudget.power = { ...budget.power, cost: powerCount * 150 };
   newBudget.water = {
     ...budget.water,
     cost:
       waterCount * 75 +
       totals.stps.length * RIVERFRONT_CONFIG.stpUpkeepMonthly +
-      totals.waterWorksCount * WATER_CONFIG.worksUpkeepMonthly,
+      totals.waterWorksCount * WATER_CONFIG.worksUpkeepMonthly +
+      upkeep.water,
   };
 
   return newBudget;
@@ -3158,6 +3301,11 @@ export function simulateTick(
   const newGrid = cowGrid.rows;
   const writableTile: WritableTileAccessor = (tx, ty) => cowGrid.writable(tx, ty);
   let didStructureChange = false;
+  // Fire bookkeeping for the notifications after the loop (plain counters: nothing allocated per tile)
+  const fireWindStrength = FIRE_WIND_STRENGTH[cloudWeatherMode];
+  let fireStartCount = 0, fireStartX = 0, fireStartY = 0;
+  let fireSpreadCount = 0, fireSpreadX = 0, fireSpreadY = 0;
+  let fireDestroyedCount = 0, fireDestroyedX = 0, fireDestroyedY = 0, fireDestroyedType = '';
 
   // Process all tiles
   for (let y = 0; y < size; y++) {
@@ -3185,6 +3333,10 @@ export function simulateTick(
       
       // PERF: Roads and bridges are static unless bulldozed - skip if no utility update needed
       if ((originalBuilding.type === 'road' || originalBuilding.type === 'bridge') && !needsPowerWaterUpdate) {
+        // Saves from before the pollution fix stored up to 20x the stat on roads, which this fast path
+        // never decayed: settle such a tile at its stat once.
+        const roadPollution = BUILDING_STATS[originalBuilding.type].pollution;
+        if (originalTile.pollution > roadPollution) cowGrid.writable(x, y).pollution = roadPollution;
         continue;
       }
       
@@ -3298,7 +3450,8 @@ export function simulateTick(
       }
 
       // Check for road access and grow buildings in zones
-      if (tile.zone !== 'none' && tile.building.type === 'grass') {
+      // A scorched lot from a fire builds nothing until it has cooled (see the fire block below)
+      if (tile.zone !== 'none' && tile.building.type === 'grass' && !(tile.building.fireProgress > 0)) {
         const roadAccess = hasRoadAccess(newGrid, x, y, size);
         const hasPower = newPowered;
         const hasWater = newWatered;
@@ -3362,18 +3515,42 @@ export function simulateTick(
         }
       }
 
-      // Update pollution from buildings
-      const buildingStats = BUILDING_STATS[tile.building.type];
-      tile.pollution = Math.max(0, tile.pollution * 0.95 + (buildingStats?.pollution || 0));
+      // Update pollution from buildings: the tile moves part of the way toward its building's
+      // pollution stat each tick, so it settles at about the stat (minus nearby green cleanup).
+      tile.pollution = stepTilePollution(tile.pollution, BUILDING_STATS[tile.building.type]?.pollution || 0);
 
       // Fire simulation -- only trucks can extinguish fires; coverage only slows spread
       if (state.disastersEnabled && tile.building.onFire) {
         tile.building.fireProgress += FIRE_SIMULATION_CONFIG.fireProgressPerTick;
         if (hasFireDestroyedBuilding(tile.building.fireProgress)) {
           didStructureChange = true;
+          const burnedType = tile.building.type;
+          const burnedZone = tile.zone;
+          const burnedSize = getBuildingSize(burnedType);
+          fireDestroyedCount++;
+          if (fireDestroyedCount === 1) { fireDestroyedX = x; fireDestroyedY = y; fireDestroyedType = burnedType; }
           tile.building = createBuilding('grass');
-          tile.zone = 'none';
+          // A zoned lot keeps its zone and lies scorched for a while, so the city can rebuild it
+          if (burnedZone !== 'none') {
+            tile.building.fireProgress = SCORCH_TICKS;
+            for (let dy = 0; dy < burnedSize.height && y + dy < size; dy++) {
+              cowGrid.touchRow(y + dy);
+              for (let dx = 0; dx < burnedSize.width && x + dx < size; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const part = cowGrid.writable(x + dx, y + dy);
+                if (part.building.type === 'empty') {
+                  part.building = createBuilding('grass');
+                  part.building.fireProgress = SCORCH_TICKS;
+                }
+              }
+            }
+          } else {
+            tile.zone = 'none';
+          }
         }
+      } else if (tile.building.fireProgress > 0 && tile.building.type === 'grass') {
+        // Scorched lot cools down
+        tile.building.fireProgress--;
       }
 
       // Fire spread to adjacent buildings
@@ -3386,16 +3563,18 @@ export function simulateTick(
         // No burning tile in the three rows around means no burning neighbour (and no random number is drawn below)
         const mayHaveBurningNeighbour =
           burningPerRow[y] > 0 || (y > 0 && burningPerRow[y - 1] > 0) || (y + 1 < size && burningPerRow[y + 1] > 0);
-        const adjacentFireCount = mayHaveBurningNeighbour ? countAdjacentBurningTiles(newGrid, size, x, y) : 0;
+        const firePressure = mayHaveBurningNeighbour ? getFirePressure(newGrid, size, x, y, fireWindStrength) : 0;
 
-        if (adjacentFireCount > 0) {
+        if (firePressure > 0) {
           const fireCoverage = services.fire[y][x];
-          const spreadChance = getFireSpreadChance(adjacentFireCount, fireCoverage, cloudWeatherMode);
+          const spreadChance = getFireSpreadChance(firePressure, fireCoverage, cloudWeatherMode, getFireFuelFactor(tile.building.type));
           
           if (Math.random() < spreadChance) {
             didStructureChange = true;
             igniteBuilding(tile.building);
             burningPerRow[y]++;
+            fireSpreadCount++;
+            if (fireSpreadCount === 1) { fireSpreadX = x; fireSpreadY = y; }
           }
         }
       }
@@ -3410,6 +3589,8 @@ export function simulateTick(
         didStructureChange = true;
         igniteBuilding(tile.building);
         burningPerRow[y]++;
+        fireStartCount++;
+        if (fireStartCount === 1) { fireStartX = x; fireStartY = y; }
       }
     }
   }
@@ -3442,7 +3623,12 @@ export function simulateTick(
   // only pollution, so everything else counted here is final. The same pass copies every tile's
   // pollution into a typed array and lists the green pollution reducers for the cleanup.
   const cleanupScratch = getPollutionCleanupScratch(size * size);
-  const pollutionCapture: PollutionCapture = { pollution: cleanupScratch.pollution, reducerIndices: [] };
+  const landValueBuffers = getLandValueScratch(size * size);
+  const pollutionCapture: PollutionCapture = {
+    pollution: cleanupScratch.pollution,
+    reducerIndices: [],
+    landValueSource: landValueBuffers.source,
+  };
   const gridTotals = scanGridTotals(
     newGrid, size, pollutionCapture, utilityCapacityEnabled ? baseServices : undefined
   );
@@ -3488,8 +3674,8 @@ export function simulateTick(
     gridTotals.totalPollution = totalPollution;
   }
 
-  // Land value is recomputed once per in-game day (zoned tiles only)
-  if (state.tick === 0) updateLandValues(newGrid, size, services, writableTile);
+  // Land value from nearby amenities and industry (read by building evolution next tick)
+  applyLandValues(newGrid, size, landValueBuffers.source, landValueBuffers.rowSum, (x, y) => cowGrid.writable(x, y));
 
   // Drop copies whose values did not change, so unchanged tiles and rows keep their identity
   cowGrid.finish();
@@ -3500,11 +3686,12 @@ export function simulateTick(
   // Gradually move effectiveTaxRate toward taxRate
   // This creates a lagging effect so tax changes don't immediately impact demand
   // Rate of change: 3% of difference per tick, so large changes take ~50-80 ticks (~2-3 game days)
-  const taxRateDiff = state.taxRate - state.effectiveTaxRate;
-  const newEffectiveTaxRate = state.effectiveTaxRate + taxRateDiff * 0.03;
+  const taxRateNow = clampTaxRate(state.taxRate);
+  const taxRateDiff = taxRateNow - clampEffectiveTaxRate(state.effectiveTaxRate);
+  const newEffectiveTaxRate = clampEffectiveTaxRate(state.effectiveTaxRate) + taxRateDiff * 0.03;
 
   // Calculate stats (using lagged effectiveTaxRate for demand calculations)
-  const newStats = calculateStats(newGrid, size, newBudget, state.taxRate, newEffectiveTaxRate, services, gridTotals, riverContextWithFlood(state, floodMask), {
+  const newStats = calculateStats(newGrid, size, newBudget, taxRateNow, newEffectiveTaxRate, services, gridTotals, riverContextWithFlood(state, floodMask), {
     power: Array.from(powerCut).sort((a, b) => a - b),
     water: Array.from(waterCut).sort((a, b) => a - b),
   }, season, crisesOn ? getHeatwaveDemandMultipliers(state.heatwave, tickDay) : undefined);
@@ -3550,9 +3737,12 @@ export function simulateTick(
       newStats.gangaHealth = stepGangaHealth(newStats.gangaHealth, newStats.gangaHealthTarget, recovery);
     }
     // Weekly income/expense (deposit every 7 days at 1/4 monthly rate)
-    // Only deposit when day changes to a multiple of 7
+    // Only deposit when day changes to a multiple of 7. The 4th deposit (day 28) takes the rounding
+    // remainder, so a month's deposits add up exactly to the monthly net the UI shows.
     if (newDay % 7 === 0) {
-      newStats.money += Math.floor((newStats.income - newStats.expenses) / 4);
+      const net = newStats.income - newStats.expenses;
+      const weekly = Math.floor(net / 4);
+      newStats.money += newDay === 28 ? net - weekly * 3 : weekly;
     }
     // Informal settlements (S3-T9): daily formalisation, weekly spawns when housing is short
     if (informalSettlementsEnabled) {
@@ -3605,6 +3795,18 @@ export function simulateTick(
   if (newMonth > 12) {
     newMonth = 1;
     newYear++;
+  }
+
+  // Budget warning: once the monthly net is negative at a month change (and no such warning is still on screen)
+  if (newMonth !== state.month && newStats.income - newStats.expenses < 0 && !state.notifications.some((n) => n.title === DEFICIT_NOTE_TITLE)) {
+    informalNotifications.push({
+      id: `deficit-${newYear}-${newMonth}`,
+      title: DEFICIT_NOTE_TITLE,
+      description: `The city now spends ${formatINR(newStats.expenses - newStats.income)}/mo more than it earns. Raise taxes a little or trim a budget line.`,
+      icon: 'alert',
+      severity: 'warning',
+      timestamp: Date.now(),
+    });
   }
 
   // Failure states (S4-T11): once per in-game month, debt → emergency loan → bankruptcy, and exodus.
@@ -3822,8 +4024,30 @@ export function simulateTick(
   const advisorMessages = generateAdvisorMessages(newStats, services, newGrid, gridTotals);
 
   // New notifications go first; a crisis pauses the city when the player wants that (S4-T4)
-  const addedNotifications = [...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
-  let newNotifications = pushNotifications(state.notifications, addedNotifications);
+  // One merged notice per incident: the id is stable, so a new tick's notice replaces the last one instead of stacking
+  const fireNotifications: GameState['notifications'] = [];
+  const burningNow = burningInputTiles + fireStartCount + fireSpreadCount - fireDestroyedCount;
+  const blaze = burningNow >= FIRE_BLAZE_THRESHOLD && burningInputTiles < FIRE_BLAZE_THRESHOLD;
+  if (fireStartCount > 0 || fireDestroyedCount > 0 || blaze) {
+    const lostAt = fireDestroyedCount > 0 ? describeFirePlace(newGrid, size, fireDestroyedX, fireDestroyedY, state.mapId, fireDestroyedType) : '';
+    const startAt = fireStartCount > 0 ? describeFirePlace(newGrid, size, fireStartX, fireStartY, state.mapId) : '';
+    // A blaze reached by spread alone has no start or loss this tick, so point at the newest spread
+    const focusX = fireDestroyedCount > 0 ? fireDestroyedX : fireStartCount > 0 ? fireStartX : fireSpreadX;
+    const focusY = fireDestroyedCount > 0 ? fireDestroyedY : fireStartCount > 0 ? fireStartY : fireSpreadY;
+    const lost = fireDestroyedCount > 0
+      ? `${lostAt.charAt(0).toUpperCase()}${lostAt.slice(1)}${fireDestroyedCount > 1 ? ` and ${fireDestroyedCount - 1} more` : ''} burned down; the lots lie scorched for about two days.`
+      : '';
+    const title = blaze ? 'Blaze out of control' : fireDestroyedCount > 0 ? 'Lost to fire' : 'Fire!';
+    const description = blaze
+      ? `${burningNow} buildings are burning. Check fire station funding and coverage, and mind the wind. ${lost}`.trim()
+      : fireDestroyedCount > 0
+        ? lost
+        : `Fire at ${startAt}. Only trucks put it out; stations slow the spread.`;
+    fireNotifications.push({ id: 'fire-incident', title, description, icon: 'fire', timestamp: Date.now(), x: focusX, y: focusY, overlay: 'fire', severity: blaze ? 'crisis' : 'warning' });
+  }
+  const priorNotifications = fireNotifications.length > 0 ? state.notifications.filter((n) => n.id !== 'fire-incident') : state.notifications;
+  const addedNotifications = [...fireNotifications, ...floodNotifications, ...crisisNotifications, ...informalNotifications, ...landmarkNotifications];
+  let newNotifications = pushNotifications(priorNotifications, addedNotifications);
   const pauseForCrisis = shouldPauseForCrisis(state, addedNotifications);
   // Forecasts that have happened drop off the calendar strip; new ones go on it with a warning
   let forecasts = newTick === 0 ? pruneForecasts(state.forecasts, absoluteDay(newYear, newMonth, newDay)) : state.forecasts;

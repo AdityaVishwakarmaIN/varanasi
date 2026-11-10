@@ -6,6 +6,7 @@ import { useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { Card } from '@/components/ui/card';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/components/game/types';
+import { getGridVisualVersion } from '@/components/game/visualSignature';
 
 // Service buildings for minimap color mapping
 const SERVICE_BUILDINGS = new Set([
@@ -80,12 +81,12 @@ const MINIMAP_LABEL = msg('Minimap');
 
 export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubscribe, viewport, inline = false, size = 140 }: MiniMapProps) {
   const { state } = useGame();
-  const { grid, gridSize, tick, structureVersion } = state;
+  const { grid, gridSize, tick } = state;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [subscribedViewport, setSubscribedViewport] = useState<MiniMapViewport | null>(null);
   const gridImageRef = useRef<ImageData | null>(null);
   const lastGridRenderTickRef = useRef(-1);
-  const lastStructureVersionRef = useRef(-1);
+  const lastVisualVersionRef = useRef(-1);
   const m = useMessages();
   
   // Pre-compute color map for faster lookups
@@ -107,24 +108,21 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }); // grid image is read back with getImageData
     if (!ctx) return;
     
     const size = 140;
     const scale = size / gridSize;
     
-    // Track if structure version changed (indicates building/zone/terrain changes)
-    const currentStructureVersion = structureVersion ?? 0;
-    const structureVersionChanged = lastStructureVersionRef.current !== currentStructureVersion;
-    
-    // Re-render grid portion every 10 ticks OR when grid changes (building placed, etc.)
-    // This ensures immediate updates when user places buildings while keeping CPU usage low
-    const shouldRenderGrid = lastGridRenderTickRef.current === -1 || 
-                             tick - lastGridRenderTickRef.current >= 10 ||
-                             structureVersionChanged;
+    // PERF: redraw the grid portion only when something it shows (type, zone, fire) changed: the grid's
+    // visual version covers all of those, so ticks that only change stats reuse the cached image.
+    const visualVersion = getGridVisualVersion(grid, gridSize);
+    const shouldRenderGrid = lastGridRenderTickRef.current === -1 ||
+                             lastVisualVersionRef.current !== visualVersion ||
+                             !gridImageRef.current;
     
     if (shouldRenderGrid) {
-      lastStructureVersionRef.current = currentStructureVersion;
+      lastVisualVersionRef.current = visualVersion;
       lastGridRenderTickRef.current = tick;
       
       const C = MINIMAP_COLORS;
@@ -193,7 +191,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       ctx.closePath();
       ctx.stroke();
     }
-  }, [grid, gridSize, tick, structureVersion, subscribedViewport, serviceBuildings, parkBuildings]);
+  }, [grid, gridSize, tick, subscribedViewport, serviceBuildings, parkBuildings]);
 
   const [isDragging, setIsDragging] = useState(false);
   
@@ -238,9 +236,8 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
   }, []);
 
   return (
-    <Card className={`hud-panel gold-hairline p-2.5 rounded-2xl ${inline ? '' : 'fixed bottom-4 right-4 z-50'}`}>
+    <Card className={`hud-panel bg-chrome-panel text-chrome-text p-2.5 rounded-none ${inline ? '' : 'fixed bottom-4 right-4 z-[42]'}`}>
       <div className="hud-label mb-2 flex items-center gap-1.5">
-        <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
         {m(MINIMAP_LABEL)}
       </div>
       <canvas
@@ -248,7 +245,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
         width={140}
         height={140}
         style={{ width: size, height: size }}
-        className="block rounded-lg ring-1 ring-gold/25 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.4)] cursor-pointer select-none touch-none"
+        className="block rounded-none border border-chrome-border cursor-pointer select-none touch-none"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -257,8 +254,8 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] leading-tight">
         {MINIMAP_LEGEND.map(({ color, label }) => (
           <div key={color} className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
-            <span className="text-muted-foreground truncate">{m(label)}</span>
+            <div className="w-2.5 h-2.5 rounded-none shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-chrome-text truncate">{m(label)}</span>
           </div>
         ))}
       </div>

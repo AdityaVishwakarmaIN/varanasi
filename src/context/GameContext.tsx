@@ -66,6 +66,8 @@ import {
 import { migrateAndValidateState } from '@/lib/saveMigration';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
 import { SaveErrorToast } from '@/components/game/SaveErrorToast';
+import { UndoToast, type UndoToastInfo } from '@/components/game/UndoToast';
+import { applyUndo, createUndoEntry, pushUndoEntry, type UndoEntry } from '@/lib/undo';
 import {
   copyLegacyGridToBuffer,
   createIsoCityGridBufferFromGrid,
@@ -77,6 +79,7 @@ import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
 import { acceptEmergencyLoan as acceptLoan, declineEmergencyLoan as declineLoan } from '@/lib/failure';
 import { playSfx } from '@/lib/audio';
 import { sfxForTool } from '@/lib/audio/audioConfig';
+import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
 import {
   addForecast as addForecastToState,
   pushNotifications,
@@ -108,17 +111,22 @@ type GameContextValue = {
   gridBufferRef: React.RefObject<IsoCityGridBuffer | null>;
   setTool: (tool: Tool) => void;
   setSpeed: (speed: 0 | 1 | 2 | 3) => void;
+  /** Speed to return to when the player resumes (the last non-zero speed the player chose). */
+  lastRunSpeed: 1 | 2 | 3;
+  /** Why the city is paused when the game paused itself (e.g. a crisis); null for a player pause or while running. */
+  pauseReason: string | null;
+  /** Resume at the last running speed. */
+  resumeGame: () => void;
+  /** "Exit Without Saving": drop changes since the last save by skipping every further autosave. */
+  discardUnsavedChanges: () => void;
   setTaxRate: (rate: number) => void;
   setActivePanel: (panel: GameState['activePanel']) => void;
   setBudgetFunding: (key: keyof Budget, funding: number) => void;
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
   /** 'noMoney': the placement was valid but the city could not pay for it. */
   placeAtTile: (x: number, y: number, isRemote?: boolean) => PlaceResult;
-  /** Undo strokes: the canvas opens one on pointer down and closes it on release (one click or one drag). */
-  beginPlacementStroke: () => void;
-  endPlacementStroke: () => void;
-  /** One-step undo of the last stroke (within 20 s, before the next stroke); refunds its cost. */
-  undoLastPlacement: () => void;
+  /** Undoes the last build / bulldoze (up to 10 deep). Returns false when there is nothing to undo. */
+  undoLast: () => boolean;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
   finishTrackDrag: (pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote?: boolean) => void; // Create bridges after road/rail drag
   setBridgeCallback: (callback: ((args: { pathTiles: { x: number; y: number }[]; trackType: 'road' | 'rail' }) => void) | null) => void;
@@ -249,6 +257,17 @@ const toolZoneMap: Partial<Record<Tool, ZoneType>> = {
   zone_industrial: 'industrial',
   zone_dezone: 'none',
 };
+
+/** A loaded city never starts faster than Normal (a save made on Very Fast must not jump ahead); a paused save stays paused. */
+function withCalmSpeed<T extends { speed: 0 | 1 | 2 | 3 }>(state: T): T {
+  return state.speed > 1 ? { ...state, speed: 1 } : state;
+}
+
+// A freshly loaded/new city starts on the Select tool so the first drag pans
+// the map instead of painting whatever tool was active when it was saved.
+function withSelectTool<T extends { selectedTool: Tool }>(state: T): T {
+  return state.selectedTool === 'select' ? state : { ...state, selectedTool: 'select' };
+}
 
 // Load the autosave from IndexedDB (S1-T9)
 // Supports both compressed (lz-string) and uncompressed (legacy) formats.
@@ -452,63 +471,6 @@ function deleteCityState(cityId: string): void {
   });
 }
 
-// ---- One-step placement undo (see placeAtTile / undoLastPlacement) ----
-type UndoTile = GameState['grid'][number][number];
-/** One placement stroke (one click or one drag): pre-stroke tiles by index (y * size + x) and money spent per call. */
-type UndoStroke = { gridSize: number; tiles: Map<number, UndoTile>; costs: Map<number, number>; lastAt: number };
-const UNDO_WINDOW_MS = 20_000;
-/** Footprint margin scanned around a placed tile (multi-tile buildings and their bulldoze). */
-const UNDO_SCAN_RADIUS = 6;
-
-function newUndoStroke(gridSize: number): UndoStroke {
-  return { gridSize, tiles: new Map(), costs: new Map(), lastAt: Date.now() };
-}
-
-/** Placement code clones every tile, so compare values (tile fields + building fields), not references. */
-function undoTileDiffers(a: UndoTile, b: UndoTile): boolean {
-  if (a === b) return false;
-  const ar = a as unknown as Record<string, unknown>;
-  const br = b as unknown as Record<string, unknown>;
-  for (const k in ar) if (k !== 'building' && ar[k] !== br[k]) return true;
-  for (const k in br) if (!(k in ar)) return true;
-  const ab = a.building as unknown as Record<string, unknown>;
-  const bb = b.building as unknown as Record<string, unknown>;
-  if (ab === bb) return false;
-  for (const k in ab) if (ab[k] !== bb[k]) return true;
-  for (const k in bb) if (!(k in ab)) return true;
-  return false;
-}
-
-/**
- * Remember the pre-stroke value of every tile `prev → next` changed inside the box (whole grid when
- * `box` is null), plus the money this call spent. Idempotent per `callId` (StrictMode double updaters).
- */
-function recordUndoChange(
-  stroke: UndoStroke,
-  prev: GameState,
-  next: GameState,
-  callId: number,
-  box: { minX: number; maxX: number; minY: number; maxY: number } | null,
-): void {
-  const size = prev.gridSize;
-  if (size !== stroke.gridSize || next.gridSize !== size) return;
-  const minX = Math.max(0, box?.minX ?? 0);
-  const maxX = Math.min(size - 1, box?.maxX ?? size - 1);
-  const minY = Math.max(0, box?.minY ?? 0);
-  const maxY = Math.min(size - 1, box?.maxY ?? size - 1);
-  for (let y = minY; y <= maxY; y++) {
-    for (let x = minX; x <= maxX; x++) {
-      const a = prev.grid[y]?.[x];
-      const b = next.grid[y]?.[x];
-      if (!a || !b || !undoTileDiffers(a, b)) continue;
-      const key = y * size + x;
-      if (!stroke.tiles.has(key)) stroke.tiles.set(key, a);
-    }
-  }
-  stroke.costs.set(callId, Math.max(0, prev.stats.money - next.stats.money));
-  stroke.lastAt = Date.now();
-}
-
 export function GameProvider({
   children,
   startFresh = false,
@@ -531,6 +493,11 @@ export function GameProvider({
   const skipNextSaveRef = useRef(false);
   /** Set when the autosave on disk could not be loaded and no copy of it was kept: autosaving would destroy it. */
   const autosaveBlockedRef = useRef(false);
+  // Set by "Exit Without Saving": no autosave may write after this (interval, tab hide or unmount)
+  const discardChangesRef = useRef(false);
+  // Last speed the player chose, and whether the player (not a crisis) paused
+  const [lastRunSpeed, setLastRunSpeed] = useState<1 | 2 | 3>(1);
+  const [pausedByPlayer, setPausedByPlayer] = useState(false);
   const hasLoadedRef = useRef(false);
   
   // Callback for multiplayer action broadcast
@@ -557,6 +524,13 @@ export function GameProvider({
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
   const stateChangedRef = useRef(false);
   const latestStateRef = useRef(state);
+  // Undo ring (last 10 build / bulldoze actions): changed tiles only, see lib/undo.ts
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  const undoSeqRef = useRef(0);
+  /** The state an action was recorded from: a re-run of the same updater (Strict Mode) records once. */
+  const undoRecordedFromRef = useRef<GameState | null>(null);
+  const shownUndoSeqRef = useRef(0);
+  const [undoToast, setUndoToast] = useState<(UndoToastInfo & { cityKey: string }) | null>(null);
   const [pendingLandmarkBulldoze, setPendingLandmarkBulldoze] = useState<{ x: number; y: number; id: LandmarkId } | null>(null);
   const gridBufferRef = useRef<IsoCityGridBuffer | null>(null);
 
@@ -676,8 +650,9 @@ export function GameProvider({
       if (loaded.status === 'ok') {
         skipNextSaveRef.current = true; // Set skip flag BEFORE updating state
         // Point the simulation loop at the loaded city right away
-        latestStateRef.current = loaded.state;
-        setState(loaded.state);
+        const calmSaved = withSelectTool(withCalmSpeed(loaded.state));
+        latestStateRef.current = calmSaved;
+        setState(calmSaved);
         setHasExistingGame(true);
         return;
       }
@@ -758,6 +733,11 @@ export function GameProvider({
     const autosave = () => {
       // Wait for the initial load; never overwrite an autosave that failed to load and was not copied
       if (!hasLoadedRef.current || autosaveBlockedRef.current) {
+        return;
+      }
+
+      // "Exit Without Saving": leave the last save as it is
+      if (discardChangesRef.current) {
         return;
       }
 
@@ -894,11 +874,25 @@ export function GameProvider({
   }, [commit]);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
+    if (speed !== 0) setLastRunSpeed(speed);
+    setPausedByPlayer(speed === 0);
     commit((prev) => (prev.gameOver ? prev : { ...prev, speed }));
   }, [commit]);
 
+  const resumeGame = useCallback(() => setSpeed(lastRunSpeed), [setSpeed, lastRunSpeed]);
+
+  const discardUnsavedChanges = useCallback(() => {
+    discardChangesRef.current = true;
+    stateChangedRef.current = false;
+  }, []);
+
+  // A crisis (not the player) paused the city: name it, so the pause is never a mystery
+  const pauseReason = state.speed === 0 && !pausedByPlayer
+    ? (state.notifications.find((n) => n.severity === 'crisis')?.title ?? null)
+    : null;
+
   const setTaxRate = useCallback((rate: number) => {
-    commit((prev) => ({ ...prev, taxRate: clamp(rate, 0, 20) }));
+    commit((prev) => ({ ...prev, taxRate: clampTaxRate(rate) }));
   }, [commit]);
 
   const setActivePanel = useCallback(
@@ -922,55 +916,13 @@ export function GameProvider({
     [commit],
   );
 
-  // One-step undo (ISSUE 6c). The canvas opens a stroke on pointer down and closes it on release;
-  // a placeAtTile call outside an open stroke is its own one-call stroke. A new stroke replaces the old.
-  const undoStrokeRef = useRef<UndoStroke | null>(null);
-  const strokeOpenRef = useRef(false);
-  const placeCallIdRef = useRef(0);
-
-  const beginPlacementStroke = useCallback(() => {
-    strokeOpenRef.current = true;
-    undoStrokeRef.current = newUndoStroke(latestStateRef.current.gridSize);
+  /** Called from state updaters: must stay idempotent for the same `prev` (React may run an updater twice). */
+  const rememberForUndo = useCallback((prev: GameState, next: GameState, tool: Tool = prev.selectedTool) => {
+    if (undoRecordedFromRef.current === prev) return;
+    undoRecordedFromRef.current = prev;
+    const entry = createUndoEntry(prev, next, tool, Date.now());
+    if (entry) undoStackRef.current = pushUndoEntry(undoStackRef.current, entry, ++undoSeqRef.current);
   }, []);
-
-  const endPlacementStroke = useCallback(() => {
-    strokeOpenRef.current = false;
-  }, []);
-
-  /** Restores the last stroke's tiles and refunds its cost, if within 20 s. Applied on the latest simulation state. */
-  const undoLastPlacement = useCallback(() => {
-    const stroke = undoStrokeRef.current;
-    if (!stroke || strokeOpenRef.current) return;
-    undoStrokeRef.current = null;
-    if (stroke.tiles.size === 0 || Date.now() - stroke.lastAt > UNDO_WINDOW_MS) return;
-    let refund = 0;
-    stroke.costs.forEach((c) => { refund += c; });
-    commit((base) => {
-      if (base.gridSize !== stroke.gridSize) return base;
-      const size = base.gridSize;
-      const grid = base.grid.slice();
-      const copiedRows = new Set<number>();
-      stroke.tiles.forEach((tile, key) => {
-        const ty = Math.floor(key / size);
-        const tx = key % size;
-        if (!grid[ty]) return;
-        if (!copiedRows.has(ty)) {
-          grid[ty] = grid[ty].slice();
-          copiedRows.add(ty);
-        }
-        grid[ty][tx] = tile;
-      });
-      const note = { id: `undo-${Date.now()}`, title: 'Undone', description: '', icon: '↩️', timestamp: Date.now() };
-      return recalculateDerivedState({
-        ...base,
-        grid,
-        structureVersion: (base.structureVersion ?? 0) + 1,
-        roadNetworkVersion: (base.roadNetworkVersion ?? 0) + 1,
-        stats: { ...base.stats, money: base.stats.money + refund },
-        notifications: pushNotifications(base.notifications, [note]),
-      });
-    });
-  }, [commit]);
 
   const placeAtTile = useCallback((x: number, y: number, isRemote = false): PlaceResult => {
     // For multiplayer broadcast, we need to capture the tool synchronously
@@ -987,20 +939,6 @@ export function GameProvider({
         const id = origin.buildingType;
         setPendingLandmarkBulldoze((p) => p ?? { x, y, id });
         return 'unchanged';
-      }
-    }
-
-    // Undo recording (local placements only; terraform is not undoable and drops the undo step)
-    let undoStroke: UndoStroke | null = null;
-    const undoCallId = ++placeCallIdRef.current;
-    if (!isRemote && currentTool !== 'select') {
-      if (currentTool === 'zone_water' || currentTool === 'zone_land') {
-        undoStrokeRef.current = null;
-      } else {
-        if (!strokeOpenRef.current || !undoStrokeRef.current) {
-          undoStrokeRef.current = newUndoStroke(latestStateRef.current.gridSize);
-        }
-        undoStroke = undoStrokeRef.current;
       }
     }
 
@@ -1052,13 +990,12 @@ export function GameProvider({
       return recalculateDerivedState(nextState);
     };
 
+    // Multiplayer actions are broadcast tile by tile, so only a solo city can be undone.
+    const recordUndo = !isRemote && !placeCallbackRef.current;
     const before = latestStateRef.current;
     const after = commit((prev) => {
       const next = applyPlacement(prev);
-      if (undoStroke && next !== prev) {
-        const r = UNDO_SCAN_RADIUS;
-        recordUndoChange(undoStroke, prev, next, undoCallId, { minX: x - r, maxX: x + r, minY: y - r, maxY: y + r });
-      }
+      if (recordUndo && next !== prev) rememberForUndo(prev, next);
       return next;
     });
     if (after !== before) result = 'placed';
@@ -1073,7 +1010,7 @@ export function GameProvider({
       placeCallbackRef.current({ x, y, tool: currentTool });
     }
     return result;
-  }, [commit]);
+  }, [commit, rememberForUndo]);
 
   const upgradeServiceBuildingHandler = useCallback((x: number, y: number) => {
     let upgradeSucceeded = false;
@@ -1090,13 +1027,11 @@ export function GameProvider({
 
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
-    // Bridges belong to the drag's undo stroke (full-grid diff: only runs when a bridge was built)
-    const undoStroke = !isRemote ? undoStrokeRef.current : null;
-    const undoCallId = ++placeCallIdRef.current;
     commit((prev) => {
       const bridged = createBridgesOnPath(prev, pathTiles, trackType);
       if (bridged === prev) return prev;
-      if (undoStroke) recordUndoChange(undoStroke, prev, bridged, undoCallId, null);
+      // Bridges built by a drag join that drag's undo entry
+      if (!isRemote && !placeCallbackRef.current) rememberForUndo(prev, bridged, trackType);
       return recalculateDerivedState(bridged);
     });
 
@@ -1104,7 +1039,39 @@ export function GameProvider({
     if (!isRemote && bridgeCallbackRef.current) {
       bridgeCallbackRef.current({ pathTiles, trackType });
     }
+  }, [commit, rememberForUndo]);
+
+  const undoLast = useCallback((): boolean => {
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!entry) return false;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    commit((prev) => recalculateDerivedState(applyUndo(prev, entry)));
+    setUndoToast(null);
+    return true;
   }, [commit]);
+
+  // A new game or a loaded city starts with an empty history
+  const cityKey = `${state.id}:${state.gameVersion ?? 0}`;
+  useEffect(() => {
+    undoStackRef.current = [];
+  }, [cityKey]);
+
+  // Show the "Built X - Undo" toast for the newest history entry (a drag keeps updating one entry)
+  useEffect(() => {
+    const top = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!top || top.seq === shownUndoSeqRef.current) return;
+    shownUndoSeqRef.current = top.seq;
+    setUndoToast({
+      seq: top.seq,
+      cityKey,
+      kind: top.kind,
+      subject: top.subject,
+      count: top.count,
+      mapId: state.mapId,
+      lostValue: top.lostValue,
+      refund: top.spent,
+    });
+  }, [state, cityKey]);
 
   const connectToCity = useCallback((cityId: string) => {
     commit((prev) => {
@@ -1281,7 +1248,7 @@ export function GameProvider({
   const replaceCity = useCallback((next: GameState, versionBase: Pick<GameState, 'structureVersion' | 'roadNetworkVersion'>) => {
     const prev = latestStateRef.current;
     const city: GameState = {
-      ...next,
+      ...withSelectTool(next),
       gameVersion: (prev.gameVersion ?? 0) + 1,
       structureVersion: (versionBase.structureVersion ?? 0) + 1,
       roadNetworkVersion: (versionBase.roadNetworkVersion ?? 0) + 1,
@@ -1349,8 +1316,9 @@ export function GameProvider({
 
   const loadState = useCallback((stateString: string): boolean => {
     try {
-      const imported = migrateAndValidateState(JSON.parse(stateString));
-      if (!imported) return false;
+      const migrated = migrateAndValidateState(JSON.parse(stateString));
+      if (!migrated) return false;
+      const imported = withCalmSpeed(migrated);
       // Keep the city being replaced as a saved-city backup (5b)
       void backupLiveCity(imported.id);
       // Bumps gameVersion to clear vehicles/entities when loading a new state
@@ -1659,8 +1627,9 @@ export function GameProvider({
   // Load a saved city from the multi-save system
   const loadSavedCity = useCallback(async (cityId: string): Promise<boolean> => {
     // loadCityState migrates and validates (and uses cityId when the save has no id)
-    const cityState = await loadCityState(cityId);
-    if (!cityState) return false;
+    const loadedCity = await loadCityState(cityId);
+    if (!loadedCity) return false;
+    const cityState = withCalmSpeed(loadedCity);
 
     // Keep the city being replaced as a saved-city backup (5b)
     void backupLiveCity(cityState.id === latestStateRef.current.id ? cityState.id : cityId);
@@ -1720,13 +1689,15 @@ export function GameProvider({
     gridBufferRef,
     setTool,
     setSpeed,
+    lastRunSpeed,
+    pauseReason,
+    resumeGame,
+    discardUnsavedChanges,
     setTaxRate,
     setActivePanel,
     setBudgetFunding,
     placeAtTile,
-    beginPlacementStroke,
-    endPlacementStroke,
-    undoLastPlacement,
+    undoLast,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,
     finishTrackDrag,
@@ -1778,9 +1749,12 @@ export function GameProvider({
   return (
     <GameContext.Provider value={value}>
       {isStateReady ? children : (
-        <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/60">
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-white/90 text-base font-medium">
           <T>Loading city...</T>
         </div>
+      )}
+      {undoToast && undoToast.cityKey === cityKey && (
+        <UndoToast info={undoToast} onUndo={undoLast} onDismiss={() => setUndoToast(null)} />
       )}
       {saveError && (
         <SaveErrorToast

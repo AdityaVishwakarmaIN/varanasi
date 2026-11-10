@@ -1,0 +1,4 @@
+interface:
+  display_name: "Render Pipeline Gotchas"
+  short_description: "Depth order, layers, renderer choice and render caches."
+  default_prompt: "Use $render-pipeline-gotchas to check this render change against the pipeline's layers, caches and known traps."

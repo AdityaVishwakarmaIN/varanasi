@@ -1,0 +1,4 @@
+interface:
+  display_name: "Save Compat Append-Only Ids"
+  short_description: "Keep old saves loading: append-only ids and fields."
+  default_prompt: "Use $save-compat-append-only-ids to make this change without breaking old saves, ids, storage keys or version counters."

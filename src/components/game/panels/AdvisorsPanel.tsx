@@ -1,10 +1,11 @@
 'use client';
 
+import { useScrollFade } from '@/hooks/useScrollFade';
 import React from 'react';
 import { msg, useMessages } from 'gt-next';
 import { MapPin } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
 // Translatable UI labels
 const UI_LABELS = {
   cityAdvisors: msg('City Advisors'),
+  cityAdvisorsDesc: msg('Your city rating and what your advisors suggest fixing next.'),
   overallCityRating: msg('Overall City Rating'),
   ratingDescription: msg('Based on happiness, health, education, safety & environment'),
   noUrgentIssues: msg('No urgent issues to report!'),
@@ -27,10 +29,11 @@ const UI_LABELS = {
 
 const ADVISOR_LABELS: Record<AdvisorId, { title: string; covers: string }> = {
   treasury: { title: msg('Treasury Officer'), covers: msg('Money, taxes, loans, bankruptcy risk') },
-  engineer: { title: msg('City Engineer'), covers: msg('Power, water, roads, traffic, collapses') },
+  engineer: { title: msg('City Engineer'), covers: msg('Power, water, roads, traffic, housing') },
   river: { title: msg('River Officer'), covers: msg('Ganga Health, floods, embankments, ghats, tourism') },
-  health: { title: msg('Health Officer'), covers: msg('Health, disease, heatwaves') },
+  health: { title: msg('Health and Education Officer'), covers: msg('Health, education, disease, heatwaves') },
   police: { title: msg('Police Commissioner'), covers: msg('Safety, crime, festivals and crowds') },
+  fire: { title: msg('Fire Chief'), covers: msg('Fires, fire stations, collapses') },
 };
 
 const PRIORITY_LABELS = {
@@ -46,6 +49,7 @@ const AVATAR_COLORS: Record<AdvisorId, { bg: string; accent: string }> = {
   river: { bg: '#0e7490', accent: '#67e8f9' },
   health: { bg: '#047857', accent: '#f8fafc' },
   police: { bg: '#334155', accent: '#e2e8f0' },
+  fire: { bg: '#b91c1c', accent: '#fdba74' },
 };
 
 /** Simple illustrated avatar: a face on a coloured disc, with one prop per role. */
@@ -81,6 +85,12 @@ export function AdvisorAvatar({ advisor, size = 32 }: { advisor: AdvisorId; size
           <path d="M25.5 22.2 V25.8 M23.7 24 H27.3" stroke="#dc2626" strokeWidth="1.2" />
         </>
       )}
+      {advisor === 'fire' && (
+        <>
+          <path d="M9.5 11 Q16 3 22.5 11 L23.5 12 L8.5 12 Z" fill={accent} />
+          <path d="M16 5 Q18 7.5 16 9.5 Q14 7.5 16 5 Z" fill="#b91c1c" />
+        </>
+      )}
       {advisor === 'police' && (
         <>
           <path d="M9 11 L23 11 L22 7 Q16 5 10 7 Z" fill="#1e3a8a" />
@@ -92,13 +102,14 @@ export function AdvisorAvatar({ advisor, size = 32 }: { advisor: AdvisorId; size
 }
 
 const PRIORITY_BORDER: Record<AdvisorNote['priority'], string> = {
-  critical: 'border-l-2 border-l-red-500',
-  high: 'border-l-2 border-l-amber-500',
-  medium: 'border-l-2 border-l-yellow-500',
+  critical: 'border-l-2 border-l-red-800',
+  high: 'border-l-2 border-l-amber-800',
+  medium: 'border-l-2 border-l-amber-800',
   low: '',
 };
 
 export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => void } = {}) {
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const { state, setActivePanel } = useGame();
   const { stats } = state;
   const { notes } = useAdvisorNotes(state);
@@ -106,7 +117,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   const avgRating = (stats.happiness + stats.health + stats.education + stats.safety + stats.environment) / 5;
   const grade = avgRating >= 90 ? 'A+' : avgRating >= 80 ? 'A' : avgRating >= 70 ? 'B' : avgRating >= 60 ? 'C' : avgRating >= 50 ? 'D' : 'F';
-  const gradeColor = avgRating >= 70 ? 'text-green-400' : avgRating >= 50 ? 'text-amber-400' : 'text-red-400';
+  const gradeColor = avgRating >= 70 ? 'text-green-800' : avgRating >= 50 ? 'text-amber-800' : 'text-red-800';
   const quiet = ADVISOR_IDS.filter((id) => !notes.some((n) => n.advisor === id));
 
   const showMe = (note: AdvisorNote) => {
@@ -116,26 +127,27 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
 
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent className="max-w-[520px] max-h-[85vh] sm:max-h-[640px]">
-        <DialogHeader>
+      <DialogContent showClose className="max-w-[520px] max-h-[min(85vh,calc(100dvh-2rem))] sm:max-h-[min(640px,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(UI_LABELS.cityAdvisors)}</DialogTitle>
+          <DialogDescription className="sr-only">{m(UI_LABELS.cityAdvisorsDesc)}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 min-h-0">
-          <Card className="jaali-bg flex items-center gap-4 p-4 bg-transparent hud-well">
-            <div className={`w-16 h-16 flex items-center justify-center text-3xl font-black rounded-2xl ${gradeColor} font-display font-normal bg-gradient-to-b from-marigold/20 to-saffron/5 ring-1 ring-marigold/40`}>
+        <div ref={scrollRef} style={scrollFadeStyle} className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-4">
+          <Card className=" flex items-center gap-4 p-4 bg-chrome-well">
+            <div className={`w-16 h-16 flex items-center justify-center text-3xl rounded-none ${gradeColor} font-sans font-semibold bg-chrome-panel border border-chrome-border`}>
               {grade}
             </div>
             <div>
-              <div className="text-foreground font-semibold">{m(UI_LABELS.overallCityRating)}</div>
-              <div className="text-muted-foreground text-sm">{m(UI_LABELS.ratingDescription)}</div>
+              <div className="text-chrome-text font-semibold">{m(UI_LABELS.overallCityRating)}</div>
+              <div className="text-chrome-muted text-sm">{m(UI_LABELS.ratingDescription)}</div>
             </div>
           </Card>
 
           <ScrollArea className="h-[min(420px,55vh)]">
             <div className="space-y-3 pr-2">
               {notes.length === 0 ? (
-                <Card className="text-center py-8 text-muted-foreground hud-well bg-transparent">
+                <Card className="text-center py-8 text-chrome-muted bg-chrome-well">
                   <AdvisorIcon size={32} className="mx-auto mb-3 opacity-50" />
                   <div className="text-sm">{m(UI_LABELS.noUrgentIssues)}</div>
                   <div className="text-xs mt-1">{m(UI_LABELS.cityRunningSmoothly)}</div>
@@ -145,23 +157,23 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                   const labels = ADVISOR_LABELS[note.advisor];
                   const canShow = (note.x !== undefined && note.y !== undefined) || !!note.overlay;
                   return (
-                    <Card key={note.id} className={`p-3 hud-well bg-transparent ${PRIORITY_BORDER[note.priority]}`}>
+                    <Card key={note.id} className={`p-3 bg-chrome-well ${PRIORITY_BORDER[note.priority]}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <AdvisorAvatar advisor={note.advisor} size={28} />
-                        <span className="text-foreground font-medium text-sm">{m(labels.title)}</span>
+                        <span className="text-chrome-text font-medium text-sm">{m(labels.title)}</span>
                         <Badge
-                          variant={note.priority === 'critical' || note.priority === 'high' ? 'destructive' : 'secondary'}
-                          className="ml-auto text-[10px]"
+                          variant={note.priority === 'critical' || note.priority === 'high' ? 'destructive' : note.priority === 'medium' ? 'outline' : 'secondary'}
+                          className={`ml-auto text-[10px] ${note.priority === 'medium' ? 'border-amber-800/60 bg-amber-800/10 text-amber-800' : ''}`}
                         >
                           {m(PRIORITY_LABELS[note.priority])}
                         </Badge>
                       </div>
-                      <div className="text-foreground text-sm leading-snug">{note.problem}</div>
-                      <div className="text-muted-foreground text-xs leading-snug mt-0.5">
+                      <div className="text-chrome-text text-sm leading-snug">{note.problem}</div>
+                      <div className="text-chrome-muted text-xs leading-snug mt-0.5">
                         <span className="font-medium">{m(UI_LABELS.fix)}</span> {note.fix}
                       </div>
                       {canShow && onShowMe && (
-                        <Button variant="ghost" size="sm" className="mt-1 h-9 px-2 text-xs text-marigold hover:text-marigold" onClick={() => showMe(note)}>
+                        <Button variant="ghost" size="sm" className="mt-1 h-9 px-2 text-xs text-chrome-text hover:text-chrome-text" onClick={() => showMe(note)}>
                           <MapPin className="w-3.5 h-3.5 mr-1" />
                           {m(UI_LABELS.showMe)}
                         </Button>
@@ -171,7 +183,7 @@ export function AdvisorsPanel({ onShowMe }: { onShowMe?: (note: AdvisorNote) => 
                 })
               )}
               {notes.length > 0 && quiet.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-chrome-muted">
                   <span>{m(UI_LABELS.allClear)}:</span>
                   {quiet.map((id) => (
                     <span key={id} className="inline-flex items-center gap-1" title={m(ADVISOR_LABELS[id].covers)}>

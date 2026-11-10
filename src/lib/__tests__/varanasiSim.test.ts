@@ -48,7 +48,8 @@ describe('Varanasi simulation wiring (Sprint 2)', () => {
     expect(placeBuilding(state, east.x, east.y, 'ghat', null)).toBe(state);
     const inland = findZone(state, 'westBank');
     expect(placeBuilding(state, inland.x, inland.y, 'ghat', null)).toBe(state);
-    expect(getPlacementCheck(state, 'ghat', east.x, east.y).reason).toBe("Ghats must be on the Ganga's west bank");
+    expect(getPlacementCheck(state, 'ghat', east.x, east.y).reason).toBe("Ghats must be on the Ganga's west bank, the side with the city");
+    expect(getPlacementCheck(state, 'ghat', inland.x, inland.y).reason).toBe("Ghats must go right at the river's edge");
   });
 
   it('Ganga Health drifts toward its target once per in-game day', () => {

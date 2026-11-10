@@ -280,9 +280,10 @@ export function CoopModal({
   if (autoJoinAttempted && (isLoading || waitingForState)) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 text-white" aria-describedby={undefined}>
+        <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 text-white">
           <VisuallyHidden.Root>
             <DialogTitle><T>Joining Co-op City</T></DialogTitle>
+            <DialogDescription><T>Connecting to the shared city.</T></DialogDescription>
           </VisuallyHidden.Root>
           {/* Back button in top left */}
           <Button

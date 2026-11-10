@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ganga River Economy"
+  short_description: "Ganga Health, STPs, catchment and tourism tuning."
+  default_prompt: "Use $ganga-river-economy to change or tune Ganga Health, treatment plants or tourism income using the existing pipeline."

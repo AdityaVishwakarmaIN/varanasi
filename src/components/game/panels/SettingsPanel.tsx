@@ -1,11 +1,12 @@
 'use client';
 
+import { useScrollFade } from '@/hooks/useScrollFade';
 import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { msg, useMessages } from 'gt-next';
 import { useGame, DayNightMode } from '@/context/GameContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -18,41 +19,47 @@ import { CreditsButton } from '@/components/CreditsDialog';
 import { isDevModeSearch } from '@/lib/devMode';
 import { ControlsHelpButton } from '@/components/game/ControlsHelpDialog';
 import { SavedCityMeta } from '@/types/game';
+import { LocaleSelector } from 'gt-next';
+import { ChevronDown } from 'lucide-react';
 import { formatINR, formatPopulation } from '@/lib/format';
 import { loadBenchmarkCity } from '@/lib/benchmark';
 import { MapChoiceCards } from '@/components/MapChoiceCards';
 import { getShowProblemIcons, getTipsEnabled, resetShownTips, setShowProblemIcons, setTipsEnabled, subscribeFeedbackPrefs } from '@/lib/feedbackPrefs';
 import type { MapId } from '@/games/isocity/maps/varanasi';
+import { localizeExampleState } from '@/lib/exampleCity';
+import { DEFAULT_SPRITE_PACK_ID } from '@/lib/renderConfig';
 
 // Translatable UI labels
 const UI_LABELS = {
   settings: msg('Settings'),
-  gameSettings: msg('Game Settings'),
+  gameSettings: msg('Game settings'),
   disasters: msg('Crises'),
   disastersDesc: msg('Enable random fires and disasters'),
   pauseOnCrisis: msg('Pause when a crisis starts'),
   pauseOnCrisisDesc: msg('Stop the clock on floods, outbreaks and collapses so you can respond'),
   showProblemIcons: msg('Show problem icons'),
   showProblemIconsDesc: msg('Small icons over buildings with no power, water or road, fires, floods and disease'),
-  resetTips: msg('Reset tips'),
-  resetTipsDesc: msg('Turn tips on and show every tip again the next time it applies'),
   showTips: msg('Show tips'),
   showTipsDesc: msg('Short hints when a city system first matters'),
+  resetTips: msg('Reset tips'),
+  resetTipsDesc: msg('Show every tip again the next time it applies'),
   tipsReset: msg('Tips reset'),
-  spritePack: msg('Sprite Pack'),
+  spritePack: msg('Sprite pack'),
   spritePackDesc: msg('Choose building artwork style'),
-  cityInformation: msg('City Information'),
-  cityName: msg('City Name'),
-  gridSize: msg('Grid Size'),
+  language: msg('Language'),
+  languageDesc: msg('Choose your preferred language'),
+  cityInformation: msg('City information'),
+  cityName: msg('City name'),
+  gridSize: msg('Grid size'),
   autoSave: msg('Auto-Save'),
   enabled: msg('Enabled'),
   expandCity: msg('Expand City (+30x30)'),
   expandCityDesc: msg('Add 15 tiles on each side. Land edges extend as land, water edges extend as water.'),
   shrinkCity: msg('Shrink City (-30x30)'),
   shrinkCityDesc: msg('Remove 15 tiles from each edge. Buildings on edges will be deleted.'),
-  savedCities: msg('Saved Cities'),
-  savedCitiesDesc: msg('Save multiple cities and switch between them'),
-  citySaved: msg('City Saved!'),
+  savedCities: msg('Saved cities'),
+  savedCitiesDesc: msg('Save multiple cities and switch between them.'),
+  citySaved: msg('City saved!'),
   save: msg('Save'),
   newCityName: msg('New city name...'),
   cancel: msg('Cancel'),
@@ -64,30 +71,39 @@ const UI_LABELS = {
   load: msg('Load'),
   rename: msg('Rename'),
   noSavedCities: msg('No saved cities yet.'),
-  startNewGame: msg('Start New Game'),
+  startNewGame: msg('Start new game'),
   confirmReset: msg('Are you sure? This will reset all progress.'),
   reset: msg('Reset'),
-  exportGame: msg('Export Game'),
+  exportGame: msg('Export game'),
   exportGameDesc: msg('Copy your game state to share or backup'),
   copied: msg('Copied!'),
-  copyGameState: msg('Copy Game State'),
-  importGame: msg('Import Game'),
+  copyGameState: msg('Copy game state'),
+  importGame: msg('Import game'),
   importGameDesc: msg('Paste a game state to load it'),
   pasteGameState: msg('Paste game state here...'),
   invalidGameState: msg('Invalid game state. Please check and try again.'),
   gameLoadedSuccess: msg('Game loaded successfully!'),
-  loadGameState: msg('Load Game State'),
-  developerTools: msg('Developer Tools'),
-  openSpriteTestView: msg('Open Sprite Test View'),
-  loadExampleState: msg('Load Example State'),
+  loadGameState: msg('Load game state'),
+  developerTools: msg('Developer tools'),
+  openSpriteTestView: msg('Open sprite test view'),
+  loadExampleState: msg('Load example state'),
   benchmarkMedium: msg('Benchmark: Medium (120)'),
   benchmarkLarge: msg('Benchmark: Large (160)'),
   benchmarkDesc: msg('Fixed test city for performance checks. It is never auto-saved: reload the page to get your own city back.'),
-  dayNightMode: msg('Day/Night Mode'),
+  dayNightMode: msg('Day/Night mode'),
   dayNightModeDesc: msg('Override the time-of-day appearance without affecting time progression'),
   auto: msg('Auto'),
   day: msg('Day'),
   night: msg('Night'),
+  dangerZone: msg('Danger zone'),
+  saveShortcut: msg('Shortcut: Ctrl+S (⌘S on Mac).'),
+  confirmExpandTitle: msg('Expand the city?'),
+  confirmExpandDesc: msg('This reshapes the map: 15 tiles are added on every side. This cannot be undone.'),
+  confirmShrinkTitle: msg('Shrink the city?'),
+  confirmShrinkDesc: msg('This reshapes the map: 15 tiles are removed from every edge and every building on them is deleted. This cannot be undone. Save first if you may want the old map back.'),
+  cityExpanded: msg('City expanded'),
+  cityShrunk: msg('City shrunk'),
+  cityResizedDesc: msg('The map was reshaped. Buildings on removed edges are gone.'),
   cannotShrink: msg('Cannot shrink city further - minimum size reached.'),
 };
 
@@ -116,7 +132,7 @@ async function loadExampleState(
       alert(`Failed to load example state: ${response.status}`);
       return;
     }
-    const exampleState = await response.json();
+    const exampleState = localizeExampleState(await response.json());
     const success = loadState(JSON.stringify(exampleState));
     if (success) {
       setActivePanel('none');
@@ -132,8 +148,11 @@ async function loadExampleState(
 
 
 export function SettingsPanel() {
-  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity } = useGame();
+  const [scrollRef, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
+  const { state, setActivePanel, setDisastersEnabled, setPauseOnCrisis, newGame, loadState, exportState, expandCity, shrinkCity, currentSpritePack, availableSpritePacks, setSpritePack, dayNightMode, setDayNightMode, savedCities, saveCity, loadSavedCity, deleteSavedCity, renameSavedCity, addNotification } = useGame();
   const { disastersEnabled, pauseOnCrisis, cityName, gridSize, id: currentCityId } = state;
+  // Only the Varanasi art is offered; the other packs stay in the code but are hidden (unless one is already selected).
+  const visibleSpritePacks = availableSpritePacks.filter((p) => p.id === DEFAULT_SPRITE_PACK_ID || p.id === currentSpritePack.id);
   const showProblemIcons = useSyncExternalStore(subscribeFeedbackPrefs, getShowProblemIcons, () => true);
   const tipsEnabled = useSyncExternalStore(subscribeFeedbackPrefs, getTipsEnabled, () => true);
   const [tipsWereReset, setTipsWereReset] = useState(false);
@@ -143,6 +162,7 @@ export function SettingsPanel() {
   const [newCityName, setNewCityName] = useState(cityName);
   const [newMapId, setNewMapId] = useState<MapId>(state.mapId ?? 'varanasi');
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [pendingResize, setPendingResize] = useState<'expand' | 'shrink' | null>(null);
   const [saveCitySuccess, setSaveCitySuccess] = useState(false);
   const [cityToDelete, setCityToDelete] = useState<SavedCityMeta | null>(null);
   const [cityToRename, setCityToRename] = useState<SavedCityMeta | null>(null);
@@ -151,7 +171,7 @@ export function SettingsPanel() {
   const [exportCopied, setExportCopied] = useState(false);
   const [importError, setImportError] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
-
+  
   // S5-T12: developer tools (sprite test, benchmarks, example states) only with ?dev=1
   const devMode = isDevModeSearch(searchParams?.toString());
   // Initialize showSpriteTest from query parameter
@@ -193,6 +213,26 @@ export function SettingsPanel() {
     }, 0);
   }, [showSpriteTest, searchParams, router]);
   
+  const confirmResize = () => {
+    const kind = pendingResize;
+    setPendingResize(null);
+    if (kind === 'expand') {
+      expandCity();
+    } else if (kind === 'shrink') {
+      if (!shrinkCity()) {
+        alert(String(m(UI_LABELS.cannotShrink)));
+        return;
+      }
+    } else {
+      return;
+    }
+    addNotification(
+      String(m(kind === 'expand' ? UI_LABELS.cityExpanded : UI_LABELS.cityShrunk)),
+      String(m(UI_LABELS.cityResizedDesc)),
+      'info',
+    );
+  };
+
   const handleCopyExport = async () => {
     const exported = exportState();
     await navigator.clipboard.writeText(exported);
@@ -217,185 +257,22 @@ export function SettingsPanel() {
   
   return (
     <Dialog open={true} onOpenChange={() => setActivePanel('none')}>
-      <DialogContent className="max-w-[400px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent showClose className="max-w-[400px] max-h-[min(85vh,calc(100dvh-2rem))] flex flex-col overflow-hidden max-sm:overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{m(UI_LABELS.settings)}</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6">
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
-            
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.disasters)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.disastersDesc)}</p>
-              </div>
-              <Switch
-                checked={disastersEnabled}
-                onCheckedChange={setDisastersEnabled}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
-              </div>
-              <Switch
-                checked={pauseOnCrisis !== false}
-                onCheckedChange={setPauseOnCrisis}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.showProblemIcons)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
-              </div>
-              <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.showTips)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.showTipsDesc)}</p>
-              </div>
-              <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
-            </div>
-
-            <div className="flex items-center justify-between py-2 gap-4">
-              <div className="flex-1 min-w-0">
-                <Label>{m(UI_LABELS.resetTips)}</Label>
-                <p className="text-muted-foreground text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={tipsWereReset}
-                onClick={() => {
-                  resetShownTips();
-                  setTipsWereReset(true);
-                }}
-              >
-                {m(tipsWereReset ? UI_LABELS.tipsReset : UI_LABELS.resetTips)}
-              </Button>
-            </div>
-            
-            {/* Sprite packs are random-map artwork; Varanasi draws its own buildings */}
-            {state.mapId !== 'varanasi' && (
-            <div className="py-2">
-              <Label>{m(UI_LABELS.spritePack)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
-              <div className="grid grid-cols-1 gap-2">
-                {availableSpritePacks.map((pack) => (
-                  <button
-                    key={pack.id}
-                    onClick={() => setSpritePack(pack.id)}
-                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors text-left ${
-                      currentSpritePack.id === pack.id
-                        ? 'border-primary bg-primary/10 text-foreground'
-                        : 'border-border hover:border-muted-foreground/50 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded overflow-hidden bg-muted flex-shrink-0 relative">
-                      <Image 
-                        src={pack.src} 
-                        alt={pack.name}
-                        fill
-                        className="object-cover object-top"
-                        style={{ imageRendering: 'pixelated' }}
-                        unoptimized
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{pack.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{pack.src}</div>
-                    </div>
-                    {currentSpritePack.id === pack.id && (
-                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-            )}
-
-            <GraphicsSettings />
-
-            <AudioSettings />
-
-            <ControlsHelpButton />
-            <CreditsButton className="w-full mt-2" />
-          </div>
-
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>{m(UI_LABELS.cityName)}</span>
-                <span className="text-foreground">{cityName}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>{m(UI_LABELS.gridSize)}</span>
-                <span className="text-foreground">{gridSize} x {gridSize}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>{m(UI_LABELS.autoSave)}</span>
-                <span className="text-green-400">{m(UI_LABELS.enabled)}</span>
-              </div>
-            </div>
-
-            {/* The fixed Varanasi map never changes size */}
-            {state.mapId !== 'varanasi' && (
-            <div className="mt-4 space-y-3">
-              <div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    expandCity();
-                  }}
-                >
-                  {m(UI_LABELS.expandCity)}
-                </Button>
-                <p className="text-muted-foreground text-xs mt-1 text-center">
-                  {m(UI_LABELS.expandCityDesc)}
-                </p>
-              </div>
-              <div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    const success = shrinkCity();
-                    if (!success) {
-                      alert(String(m(UI_LABELS.cannotShrink)));
-                    }
-                  }}
-                  disabled={gridSize <= 50}
-                >
-                  {m(UI_LABELS.shrinkCity)}
-                </Button>
-                <p className="text-muted-foreground text-xs mt-1 text-center">
-                  {m(UI_LABELS.shrinkCityDesc)}
-                </p>
-              </div>
-            </div>
-            )}
-          </div>
-          
-          <Separator />
-          
+        <div ref={scrollRef} style={scrollFadeStyle} className="min-h-0 flex-1 overflow-y-auto overscroll-contain -mr-3 pr-3 space-y-6">
           {/* Saved Cities Section */}
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
-            <p className="text-muted-foreground text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)}</p>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.savedCities)}</div>
+            <p className="text-chrome-muted text-xs mb-3">{m(UI_LABELS.savedCitiesDesc)} {m(UI_LABELS.saveShortcut)}</p>
             
             {/* Save Current City Button */}
             <Button
               variant="default"
               className="w-full mb-3"
+              aria-live="polite"
               onClick={() => {
                 saveCity();
                 setSaveCitySuccess(true);
@@ -414,10 +291,10 @@ export function SettingsPanel() {
                 {savedCities.map((city) => (
                   <div
                     key={city.id}
-                    className={`p-3 rounded-md border transition-colors ${
+                    className={`p-3 rounded-none border transition-colors ${
                       city.id === currentCityId
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-muted-foreground/50'
+                        ? 'border-chrome-accent bg-chrome-well'
+                        : 'border-chrome-border hover:border-chrome-text'
                     }`}
                   >
                     {cityToRename?.id === city.id ? (
@@ -459,7 +336,7 @@ export function SettingsPanel() {
                       </div>
                     ) : cityToDelete?.id === city.id ? (
                       <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground text-center">{m(UI_LABELS.deleteThisCity)}</p>
+                        <p className="text-xs text-chrome-muted text-center">{m(UI_LABELS.deleteThisCity)}</p>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
@@ -488,16 +365,16 @@ export function SettingsPanel() {
                           <div className="font-medium text-sm truncate flex-1">
                             {city.cityName}
                             {city.id === currentCityId && (
-                              <span className="ml-2 text-[10px] text-primary">{m(UI_LABELS.current)}</span>
+                              <span className="ml-2 text-[10px] text-chrome-text font-semibold">{m(UI_LABELS.current)}</span>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+                        <div className="flex items-center gap-3 text-xs text-chrome-muted mb-2">
                           <span>{m(UI_LABELS.pop)}: {formatPopulation(city.population)}</span>
                           <span>{formatINR(city.money)}</span>
                           <span>{city.gridSize}×{city.gridSize}</span>
                         </div>
-                        <div className="text-[10px] text-muted-foreground mb-2">
+                        <div className="text-[10px] text-chrome-muted mb-2">
                           {m(UI_LABELS.saved)} {formatDate(city.savedAt)}
                         </div>
                         <div className="flex gap-2">
@@ -540,56 +417,152 @@ export function SettingsPanel() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted-foreground text-xs text-center py-3 border border-dashed rounded-md">
+              <p className="text-chrome-muted text-xs text-center py-3 border border-dashed rounded-none">
                 {m(UI_LABELS.noSavedCities)}
               </p>
             )}
           </div>
           
-          {!showNewGameConfirm ? (
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => setShowNewGameConfirm(true)}
-            >
-              {m(UI_LABELS.startNewGame)}
-            </Button>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-muted-foreground text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
-              <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
-              <Input
-                value={newCityName}
-                onChange={(e) => setNewCityName(e.target.value)}
-                placeholder={String(m(UI_LABELS.newCityName))}
+          <Separator />
+
+          <div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.gameSettings)}</div>
+            
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.disasters)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.disastersDesc)}</p>
+              </div>
+              <Switch
+                checked={disastersEnabled}
+                onCheckedChange={setDisastersEnabled}
               />
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowNewGameConfirm(false)}
-                >
-                  {m(UI_LABELS.cancel)}
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => {
-                    newGame({ name: newCityName, mapId: newMapId, size: gridSize });
-                    setActivePanel('none');
-                  }}
-                >
-                  {m(UI_LABELS.reset)}
-                </Button>
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.pauseOnCrisis)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.pauseOnCrisisDesc)}</p>
+              </div>
+              <Switch
+                checked={pauseOnCrisis !== false}
+                onCheckedChange={setPauseOnCrisis}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.showProblemIcons)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.showProblemIconsDesc)}</p>
+              </div>
+              <Switch checked={showProblemIcons} onCheckedChange={setShowProblemIcons} />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.showTips)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.showTipsDesc)}</p>
+              </div>
+              <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
+            </div>
+
+            <div className="flex items-center justify-between py-2 gap-4">
+              <div className="flex-1 min-w-0">
+                <Label>{m(UI_LABELS.resetTips)}</Label>
+                <p className="text-chrome-muted text-xs">{m(UI_LABELS.resetTipsDesc)}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tipsWereReset}
+                onClick={() => {
+                  resetShownTips();
+                  setTipsWereReset(true);
+                }}
+              >
+                {m(tipsWereReset ? UI_LABELS.tipsReset : UI_LABELS.resetTips)}
+              </Button>
+            </div>
+            
+            {visibleSpritePacks.length > 1 && (
+            <div className="py-2">
+              <Label>{m(UI_LABELS.spritePack)}</Label>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.spritePackDesc)}</p>
+              <div className="grid grid-cols-1 gap-2">
+                {visibleSpritePacks.map((pack) => (
+                  <button
+                    key={pack.id}
+                    onClick={() => setSpritePack(pack.id)}
+                    className={`flex items-center gap-3 p-2 rounded-none border transition-colors text-left ${
+                      currentSpritePack.id === pack.id
+                        ? 'border-chrome-accent bg-chrome-well text-chrome-text'
+                        : 'border-chrome-border hover:border-chrome-text text-chrome-muted hover:text-chrome-text'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-none overflow-hidden bg-chrome-well flex-shrink-0 relative">
+                      <Image 
+                        src={pack.src} 
+                        alt={pack.name}
+                        fill
+                        className="object-cover object-top"
+                        style={{ imageRendering: 'pixelated' }}
+                        unoptimized
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{pack.name}</div>
+                    </div>
+                    {currentSpritePack.id === pack.id && (
+                      <div className="w-2 h-2 rounded-none bg-chrome-accent flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
+            )}
+
+            <div className="py-2">
+              <Label>{m(UI_LABELS.language)}</Label>
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.languageDesc)}</p>
+              <div className="relative inline-flex">
+                <LocaleSelector className="h-11 md:h-9 short:!h-11 min-w-36 appearance-none bg-chrome-well border border-chrome-border text-chrome-text rounded-none pl-2.5 pr-8 text-sm" />
+                <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-chrome-muted" />
+              </div>
+            </div>
+
+            <GraphicsSettings />
+
+            <AudioSettings />
+
+            <ControlsHelpButton />
+            <CreditsButton className="w-full mt-2" />
+          </div>
+
+          <div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.cityInformation)}</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.cityName)}</span>
+                <span className="text-chrome-text">{cityName}</span>
+              </div>
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.gridSize)}</span>
+                <span className="text-chrome-text">{gridSize} x {gridSize}</span>
+              </div>
+              <div className="flex justify-between text-chrome-muted">
+                <span>{m(UI_LABELS.autoSave)}</span>
+                <span className="text-green-800">{m(UI_LABELS.enabled)}</span>
+              </div>
+            </div>
+            
+          </div>
+          
           
           <Separator />
           
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
-            <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.exportGameDesc)}</p>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.exportGame)}</div>
+            <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.exportGameDesc)}</p>
             <Button
               variant="outline"
               className="w-full"
@@ -600,10 +573,10 @@ export function SettingsPanel() {
           </div>
           
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
-            <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.importGame)}</div>
+            <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.importGameDesc)}</p>
             <textarea
-              className="w-full h-20 bg-background border border-border rounded-md p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-20 bg-chrome-panel border border-chrome-border rounded-none p-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder={String(m(UI_LABELS.pasteGameState))}
               value={importValue}
               onChange={(e) => {
@@ -613,10 +586,10 @@ export function SettingsPanel() {
               }}
             />
             {importError && (
-              <p className="text-red-400 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
+              <p className="text-red-800 text-xs mt-1">{m(UI_LABELS.invalidGameState)}</p>
             )}
             {importSuccess && (
-              <p className="text-green-400 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
+              <p className="text-green-800 text-xs mt-1">{m(UI_LABELS.gameLoadedSuccess)}</p>
             )}
             <Button
               variant="outline"
@@ -631,7 +604,7 @@ export function SettingsPanel() {
           <div>
             {/* S5-T12: developer tools only with ?dev=1 */}
             {devMode && (<>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
+            <div className="text-[10px] font-semibold text-chrome-muted uppercase tracking-wider mb-3">{m(UI_LABELS.developerTools)}</div>
             <Button
               variant="outline"
               className="w-full"
@@ -639,7 +612,7 @@ export function SettingsPanel() {
             >
               {m(UI_LABELS.openSpriteTestView)}
             </Button>
-            <p className="text-muted-foreground text-xs mt-3 mb-1">{m(UI_LABELS.benchmarkDesc)}</p>
+            <p className="text-chrome-muted text-xs mt-3 mb-1">{m(UI_LABELS.benchmarkDesc)}</p>
             <Button variant="outline" className="w-full mt-1" onClick={() => { if (loadBenchmarkCity(120, loadState)) setActivePanel('none'); }}>
               {m(UI_LABELS.benchmarkMedium)}
             </Button>
@@ -680,18 +653,18 @@ export function SettingsPanel() {
               Load Example State 11
             </Button>
             </>)}
-            <div className={devMode ? 'mt-4 pt-4 border-t border-border' : ''}>
+            <div className={devMode ? 'mt-4 pt-4 border-t border-chrome-border' : ''}>
               <Label>{m(UI_LABELS.dayNightMode)}</Label>
-              <p className="text-muted-foreground text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
-              <div className="flex rounded-md border border-border overflow-hidden">
+              <p className="text-chrome-muted text-xs mb-2">{m(UI_LABELS.dayNightModeDesc)}</p>
+              <div className="flex rounded-none border border-chrome-border overflow-hidden">
                 {(['auto', 'day', 'night'] as DayNightMode[]).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setDayNightMode(mode)}
                     className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
                       dayNightMode === mode
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+                        ? 'bg-chrome-accent text-chrome-accentText'
+                        : 'bg-chrome-panel hover:bg-chrome-well text-chrome-muted hover:text-chrome-text'
                     }`}
                   >
                     {mode === 'auto' && m(UI_LABELS.auto)}
@@ -702,8 +675,104 @@ export function SettingsPanel() {
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          {/* Danger zone: actions that reshape or reset the city, away from Save */}
+          <div className="space-y-3 rounded-none border border-destructive/40 p-3">
+            <div className="text-[10px] font-semibold text-red-800 uppercase tracking-wider">{m(UI_LABELS.dangerZone)}</div>
+            {/* The fixed Varanasi map never changes size */}
+            {state.mapId !== 'varanasi' && (
+            <div className="space-y-3">
+              <div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setPendingResize('expand')}
+                >
+                  {m(UI_LABELS.expandCity)}
+                </Button>
+                <p className="text-chrome-muted text-xs mt-1 text-center">
+                  {m(UI_LABELS.expandCityDesc)}
+                </p>
+              </div>
+              <div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setPendingResize('shrink')}
+                  disabled={gridSize <= 50}
+                >
+                  {m(UI_LABELS.shrinkCity)}
+                </Button>
+                <p className="text-chrome-muted text-xs mt-1 text-center">
+                  {m(UI_LABELS.shrinkCityDesc)}
+                </p>
+              </div>
+            </div>
+            )}
+          {!showNewGameConfirm ? (
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => setShowNewGameConfirm(true)}
+            >
+              {m(UI_LABELS.startNewGame)}
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-chrome-muted text-sm text-center">{m(UI_LABELS.confirmReset)}</p>
+              <MapChoiceCards value={newMapId} onChange={setNewMapId} compact />
+              <Input
+                value={newCityName}
+                onChange={(e) => setNewCityName(e.target.value)}
+                placeholder={String(m(UI_LABELS.newCityName))}
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowNewGameConfirm(false)}
+                >
+                  {m(UI_LABELS.cancel)}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => {
+                    newGame({ name: newCityName, mapId: newMapId, size: gridSize });
+                    setActivePanel('none');
+                  }}
+                >
+                  {m(UI_LABELS.reset)}
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          </div>
         </div>
       </DialogContent>
+
+      {/* Confirm before the map is reshaped (edge buildings are deleted when shrinking) */}
+      <Dialog open={pendingResize !== null} onOpenChange={(open) => !open && setPendingResize(null)}>
+        <DialogContent role="alertdialog" className="max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{m(pendingResize === 'shrink' ? UI_LABELS.confirmShrinkTitle : UI_LABELS.confirmExpandTitle)}</DialogTitle>
+            <DialogDescription>
+              {m(pendingResize === 'shrink' ? UI_LABELS.confirmShrinkDesc : UI_LABELS.confirmExpandDesc)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setPendingResize(null)} autoFocus>
+              {m(UI_LABELS.cancel)}
+            </Button>
+            <Button variant="destructive" onClick={confirmResize}>
+              {m(pendingResize === 'shrink' ? UI_LABELS.shrinkCity : UI_LABELS.expandCity)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {devMode && showSpriteTest && (
         <SpriteTestPanel onClose={() => {

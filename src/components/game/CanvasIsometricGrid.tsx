@@ -10,6 +10,7 @@ import { useGame } from '@/context/GameContext';
 import { TOOL_INFO, Tile, Building, BuildingType, AdjacentCity, Tool } from '@/types/game';
 import { getBuildingSize, requiresWaterAdjacency, getWaterAdjacency } from '@/lib/simulation';
 import { FireIcon, SafetyIcon } from '@/components/ui/Icons';
+import { getNeighbourhoodName } from '@/lib/firePlaces';
 import { getSpriteCoords, BUILDING_TO_SPRITE, SPRITE_VERTICAL_OFFSETS, SPRITE_HORIZONTAL_OFFSETS, getActiveSpritePack } from '@/lib/renderConfig';
 import { selectSpriteSource, calculateSpriteCoords, calculateSpriteScale, calculateSpriteOffsets, getSpriteRenderInfo } from '@/components/game/buildingSprite';
 
@@ -45,6 +46,7 @@ import {
   WATER_ASSET_PATH,
   AIRPLANE_SPRITE_SRC,
   TRAIN_MIN_ZOOM,
+  TRAFFIC_LIGHT_MIN_ZOOM,
 } from '@/components/game/constants';
 import { DEFAULT_CLOUD_WEATHER_MODE } from '@/components/game/cloudWeatherConfig';
 import { CLOUD_SPRITE_SHEET_SRC } from '@/components/game/cloudSpriteConfig';
@@ -54,6 +56,9 @@ import {
 } from '@/components/game/utils';
 import {
   drawGreenBaseTile,
+  drawZoneLotMarks,
+  drawScorchedLot,
+  ZONE_LOT_STYLES,
   drawGreyBaseTile,
   drawBeachOnWater,
   drawFoundationPlot,
@@ -87,7 +92,7 @@ import {
   generateTourWaypoints,
 } from '@/components/game/gridFinders';
 import { drawAirplanes as drawAirplanesUtil, drawHelicopters as drawHelicoptersUtil, drawSeaplanes as drawSeaplanesUtil } from '@/components/game/drawAircraft';
-import { createVehicleSystems, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
+import { createVehicleSystems, invalidateVehicleSystemCaches, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
 import { useBuildingHelpers } from '@/components/game/buildingHelpers';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
@@ -99,13 +104,18 @@ import {
   buildWindTreeRenderItem,
   createDefaultWindVisualState,
   createWindSystem,
+  cutWindTreeSilhouette,
+  drawWindTreeAtRest,
+  windSwayAngle,
   WindSystemRefs,
   WindSystemState,
   WindTreeRenderItem,
 } from '@/components/game/windSystem';
 import {
   analyzeMergedRoad,
+  getTrafficLightState,
 } from '@/components/game/trafficSystem';
+import { getGridVisualChangesSince, getGridVisualVersion } from '@/components/game/visualSignature';
 import { drawRoad, RoadDrawingOptions } from '@/components/game/roadDrawing';
 import {
   drawBridgeTile,
@@ -181,6 +191,125 @@ import { getInitialFocusTile } from '@/lib/mapConfig';
 const LIGHTING_GRID_RESEND_MS = 3000;
 /** Hour sent to the lighting pass when night lighting is off (daylight: nothing is drawn). */
 const LIGHTING_OFF_HOUR = 12;
+/**
+ * PERF: the static layers (terrain + buildings canvases) are drawn this many CSS px larger than the view
+ * on every side. A camera move (drag, glide, keys, wheel zoom) then moves and scales the drawn canvases
+ * with a CSS transform and redraws only when the view would leave the drawn area, so the shift reveals
+ * real map instead of empty background.
+ */
+const STATIC_OVERSCAN_PX = 160;
+const STATIC_OVERSCAN_MOBILE_PX = 96;
+/** PERF: smaller margin while the simulation runs (every grid update redraws in full), enough for
+ * drag moves between ticks to shift instead of redraw. */
+const STATIC_OVERSCAN_RUNNING_PX = 64;
+const STATIC_OVERSCAN_RUNNING_MOBILE_PX = 40;
+/** PERF: redraw full detail this long after the camera stops, when the transformed layers are scaled,
+ * off the device-pixel grid, or close to running out of overscan. */
+const STATIC_SETTLE_MS = 200;
+/** PERF: zooming in further than this through the CSS transform redraws (the bitmap gets too blurry). */
+const STATIC_MAX_CSS_SCALE = 1.6;
+/** PERF: a partial redraw handles at most this many changed tiles (and at most this share of the canvas). */
+const STATIC_PARTIAL_MAX_TILES = 256;
+const STATIC_PARTIAL_MAX_AREA = 0.5;
+/** Cell size (device px) of the coverage grid a partial redraw region is built on. */
+const PARTIAL_CELL_PX = 32;
+
+/**
+ * Screen area (device px rects on a coarse cell grid) to redraw around changed tiles, plus the world
+ * window whose tiles must be drawn to fill it: anything that can reach into a rect (multi-tile footprints up
+ * to 4x4, sprites up to 5 tile widths tall, neighbours whose road/shore joins change). Null when the area is
+ * too large for a partial redraw to pay off.
+ */
+function buildPartialRegion(
+  tiles: ArrayLike<number>,
+  grid: Tile[][],
+  gridSize: number,
+  zoom: number,
+  drawOffset: { x: number; y: number },
+  dpr: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): { rects: { x: number; y: number; w: number; h: number }[]; left: number; top: number; right: number; bottom: number } | null {
+  const spriteTop = TILE_WIDTH * 5;
+  const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < tiles.length; i++) {
+    const raw = tiles[i];
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    // ~index: the building type changed, so the old sprite may have been larger than the new one
+    const major = raw < 0;
+    const idx = major ? ~raw : raw;
+    const x = idx % gridSize;
+    const y = (idx - x) / gridSize;
+    const sx = (x - y) * (TILE_WIDTH / 2);
+    const sy = (x + y) * (TILE_HEIGHT / 2);
+    // A small building that keeps its type (the usual per-tick change: construction phase, level-up) gets a
+    // tight box around the tile, its joins with neighbours and a sprite up to 2.5 tile widths tall; any
+    // other change the generous one
+    const size = getBuildingSize(grid[y]?.[x]?.building.type ?? 'grass');
+    const small = !major && size.width <= 1 && size.height <= 1;
+    const left = small ? TILE_WIDTH * 1.5 : TILE_WIDTH * 2;
+    const right = small ? TILE_WIDTH * 2.5 : TILE_WIDTH * 3;
+    const top = small ? TILE_WIDTH * 2.5 : spriteTop;
+    const bottom = small ? TILE_HEIGHT * 3 : TILE_HEIGHT * 5;
+    const x0 = Math.max(0, Math.floor(((sx - left) * zoom + drawOffset.x) * dpr));
+    const x1 = Math.min(canvasWidth, Math.ceil(((sx + right) * zoom + drawOffset.x) * dpr));
+    const y0 = Math.max(0, Math.floor(((sy - top) * zoom + drawOffset.y) * dpr));
+    const y1 = Math.min(canvasHeight, Math.ceil(((sy + bottom) * zoom + drawOffset.y) * dpr));
+    if (x1 > x0 && y1 > y0) rects.push({ x0, y0, x1, y1 });
+  }
+  if (rects.length === 0) return { rects: [], left: 0, top: 0, right: -1, bottom: -1 };
+  // Union of the rects on a coarse cell grid (merging overlapping rects into their bounding box would
+  // cover far more than needed once a few changes are scattered around the view)
+  const cell = PARTIAL_CELL_PX;
+  const cols = Math.ceil(canvasWidth / cell);
+  const rows = Math.ceil(canvasHeight / cell);
+  const covered = new Uint8Array(cols * rows);
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const r of rects) {
+    const c0 = Math.floor(r.x0 / cell), c1 = Math.ceil(r.x1 / cell);
+    const r0 = Math.floor(r.y0 / cell), r1 = Math.ceil(r.y1 / cell);
+    for (let row = r0; row < r1; row++) covered.fill(1, row * cols + c0, row * cols + c1);
+    bx0 = Math.min(bx0, c0 * cell); by0 = Math.min(by0, r0 * cell);
+    bx1 = Math.max(bx1, c1 * cell); by1 = Math.max(by1, r1 * cell);
+  }
+  let coveredCells = 0;
+  for (let i = 0; i < covered.length; i++) coveredCells += covered[i];
+  if (coveredCells > cols * rows * STATIC_PARTIAL_MAX_AREA) return null;
+  // Horizontal runs per cell row, stacked where consecutive rows repeat the same run
+  const out: { x: number; y: number; w: number; h: number }[] = [];
+  let open = new Map<number, { x: number; y: number; w: number; h: number }>();
+  for (let row = 0; row < rows; row++) {
+    const next = new Map<number, { x: number; y: number; w: number; h: number }>();
+    let c = 0;
+    while (c < cols) {
+      if (!covered[row * cols + c]) { c++; continue; }
+      const start = c;
+      while (c < cols && covered[row * cols + c]) c++;
+      const key = start * 65536 + c;
+      const prev = open.get(key);
+      if (prev) {
+        prev.h += cell;
+        next.set(key, prev);
+      } else {
+        const rect = { x: start * cell, y: row * cell, w: (c - start) * cell, h: cell };
+        out.push(rect);
+        next.set(key, rect);
+      }
+    }
+    open = next;
+  }
+  const toWorldX = (v: number) => (v / dpr - drawOffset.x) / zoom;
+  const toWorldY = (v: number) => (v / dpr - drawOffset.y) / zoom;
+  return {
+    rects: out,
+    left: toWorldX(bx0) - TILE_WIDTH * 2,
+    right: toWorldX(bx1) + TILE_WIDTH * 2,
+    top: toWorldY(by0) - TILE_WIDTH * 2,
+    bottom: toWorldY(by1) + spriteTop,
+  };
+}
 
 // Props interface for CanvasIsometricGrid
 export interface CanvasIsometricGridProps {
@@ -261,9 +390,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     state,
     latestStateRef,
     placeAtTile,
-    beginPlacementStroke,
-    endPlacementStroke,
-    undoLastPlacement,
     finishTrackDrag,
     connectToCity,
     checkAndDiscoverCities,
@@ -293,6 +419,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const graphics = useGraphicsSettings();
   const qualityPreset = QUALITY_PRESETS[graphics.qualityLevel];
   const gpuEnabled = graphics.renderer === 'gpu';
+  // GPU mode keeps viewport-sized static layers (its retained layers are drawn with `offset`)
+  // While the simulation runs the static layers are redrawn with every grid update anyway (as before), so
+  // they use a smaller margin (the full one would make each of those redraws ~1.75x larger)
+  const simRunning = speed !== 0;
+  const staticOverscanCss = gpuEnabled ? 0
+    : simRunning ? (isMobile ? STATIC_OVERSCAN_RUNNING_MOBILE_PX : STATIC_OVERSCAN_RUNNING_PX)
+    : isMobile ? STATIC_OVERSCAN_MOBILE_PX : STATIC_OVERSCAN_PX;
   const gpuEnabledRef = useRef(gpuEnabled);
   useEffect(() => {
     gpuEnabledRef.current = gpuEnabled;
@@ -318,15 +451,41 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lastSlowFrameLogRef = useRef(0);
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null); // PERF: Separate canvas for hover/selection highlights
   const carsCanvasRef = useRef<HTMLCanvasElement>(null);
-  const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const buildingsCanvasRef = useRef<HTMLCanvasElement>(null); // Buildings rendered on top of cars/trains
-  const airCanvasRef = useRef<HTMLCanvasElement>(null); // Air-low: incident/recreation peds, helicopters, seaplanes
-  const ambientCanvasRef = useRef<HTMLCanvasElement>(null); // Wind dust + clouds (dedicated layer; future render-worker target)
-  const airHighCanvasRef = useRef<HTMLCanvasElement>(null); // Air-high: airplanes + fireworks (above clouds)
+  // Sky layer, drawn bottom to top: air-low (incident/recreation peds, helicopters, seaplanes), then
+  // ambient (wind dust + clouds), then air-high (airplanes + fireworks). PERF: these were three
+  // full-viewport canvases (and wind trees a fourth, now drawn on the cars canvas). Every canvas that
+  // is touched in a frame is re-uploaded and re-composited, so each extra layer cost a full-screen
+  // copy + blend per frame. All their draws are source-over, so one canvas gives identical pixels.
+  const airCanvasRef = useRef<HTMLCanvasElement>(null);
   const lightingCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderPendingRef = useRef<number | null>(null); // PERF: Track pending render frame
   const lastMainRenderTimeRef = useRef<number>(0); // PERF: Throttle main renders at high speed
+  // PERF (static layer cache): what the static layers (terrain + buildings canvases) were last fully
+  // drawn with. Renders whose scene key is unchanged skip the redraw; camera-only changes move and
+  // scale the drawn (overscanned) canvases with a CSS transform while they still cover the view, and
+  // full detail is redrawn when the camera settles or the view leaves the drawn area.
+  const staticLayerRenderRef = useRef<{
+    offset: { x: number; y: number };
+    zoom: number;
+    deps: unknown[];
+    /** Grid visual version (no overlay) or the grid itself (per-tile overlays). */
+    contentKey: unknown;
+    lightKey: string | null;
+    crossingKey: string;
+    transformed: boolean;
+    /** Mobile skips traffic lights while panning/pinching: redraw them once the gesture ends. */
+    lightsSkipped: boolean;
+  } | null>(null);
+  // Overscan of the static layers in device px (0 until the canvases are sized, and in GPU mode)
+  const [staticOverscanDev, setStaticOverscanDev] = useState(0);
+  const staticRedrawRef = useRef<((forceFull: boolean) => void) | null>(null); // latest main render
+  const staticRedrawTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (staticRedrawTimerRef.current !== null) window.clearTimeout(staticRedrawTimerRef.current);
+    staticRedrawRef.current = null;
+  }, []);
   const [offset, setOffset] = useState({ x: isMobile ? 200 : 620, y: isMobile ? 100 : 160 });
   // Latest offset for the smooth camera move (S4-T4), which must not restart on every frame
   const offsetRef = useRef(offset);
@@ -380,13 +539,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const touchGestureRef = useRef<TouchGesture | null>(null);
   // Expensive tap waiting for the ✓ / ✗ confirm bubble
   const [pendingPlacement, setPendingPlacement] = useState<{ x: number; y: number; tool: Tool; cost: number } | null>(null);
-  // Refused tap: the placement check's reason, shown near the tap for a moment
-  const [tapRefusal, setTapRefusal] = useState<{ left: number; top: number; reason: string; key: number } | null>(null);
-  useEffect(() => {
-    if (!tapRefusal) return;
-    const t = setTimeout(() => setTapRefusal(null), 2500);
-    return () => clearTimeout(t);
-  }, [tapRefusal]);
 
   // Airplane system refs
   const airplanesRef = useRef<Airplane[]>([]);
@@ -454,6 +606,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const lightningIdRef = useRef(0);
   const windStateRef = useRef(createDefaultWindVisualState());
   const visibleWindTreesRef = useRef<WindTreeRenderItem[]>([]);
+  // Tile key and draw depth of each entry in visibleWindTreesRef (for partial redraws)
+  const visibleWindTreeTilesRef = useRef<{ key: number; depth: number }[]>([]);
 
   // Traffic light system timer (cumulative time for cycling through states)
   const trafficLightTimerRef = useRef(0);
@@ -539,11 +693,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     return () => clearTimeout(t);
   }, [moneyNotice]);
   const startStroke = useCallback(() => {
-    beginPlacementStroke();
     setStrokeSpent(0);
     setStrokeOutOfMoney(false);
     strokeNoMoneyRef.current = false;
-  }, [beginPlacementStroke]);
+  }, []);
   /** Desktop placement: one tile of the current stroke; tracks spending and says when money runs out. */
   const placeInStroke = useCallback((x: number, y: number, inDrag: boolean) => {
     const result = placeAtTile(x, y);
@@ -610,6 +763,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       weather: state.weather,
       floodMask,
       festivalCrowd: festivalLive.crowd,
+      fireFunding: state.budget?.fire?.funding,
     },
     visualHour,
     isMobile,
@@ -898,6 +1052,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     
     // Reset traffic light timer
     trafficLightTimerRef.current = 0;
+
+    // Homes, shops and road counts of the old city (keyed only by size and version counters)
+    invalidateVehicleSystemCaches();
   }, [gameVersion, latestStateRef]);
 
   // Sync isPanning state to ref for animation loop access
@@ -1225,9 +1382,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const dpr = getRenderDpr();
         const rect = containerRef.current.getBoundingClientRect();
         
-        // Set display size
-        canvasRef.current.style.width = `${rect.width}px`;
-        canvasRef.current.style.height = `${rect.height}px`;
         if (hoverCanvasRef.current) {
           hoverCanvasRef.current.style.width = `${rect.width}px`;
           hoverCanvasRef.current.style.height = `${rect.height}px`;
@@ -1236,25 +1390,21 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           carsCanvasRef.current.style.width = `${rect.width}px`;
           carsCanvasRef.current.style.height = `${rect.height}px`;
         }
-        if (windCanvasRef.current) {
-          windCanvasRef.current.style.width = `${rect.width}px`;
-          windCanvasRef.current.style.height = `${rect.height}px`;
+        // Static layers: overscanned on every side and positioned at -margin (see STATIC_OVERSCAN_PX)
+        const overscanDev = Math.round(staticOverscanCss * dpr);
+        const margin = overscanDev / dpr;
+        for (const layer of [canvasRef.current, buildingsCanvasRef.current]) {
+          if (!layer) continue;
+          layer.style.width = `${rect.width + 2 * margin}px`;
+          layer.style.height = `${rect.height + 2 * margin}px`;
+          layer.style.left = `${-margin}px`;
+          layer.style.top = `${-margin}px`;
+          layer.style.transformOrigin = `${margin}px ${margin}px`;
         }
-        if (buildingsCanvasRef.current) {
-          buildingsCanvasRef.current.style.width = `${rect.width}px`;
-          buildingsCanvasRef.current.style.height = `${rect.height}px`;
-        }
+        setStaticOverscanDev(overscanDev);
         if (airCanvasRef.current) {
           airCanvasRef.current.style.width = `${rect.width}px`;
           airCanvasRef.current.style.height = `${rect.height}px`;
-        }
-        if (ambientCanvasRef.current) {
-          ambientCanvasRef.current.style.width = `${rect.width}px`;
-          ambientCanvasRef.current.style.height = `${rect.height}px`;
-        }
-        if (airHighCanvasRef.current) {
-          airHighCanvasRef.current.style.width = `${rect.width}px`;
-          airHighCanvasRef.current.style.height = `${rect.height}px`;
         }
         if (lightingCanvasRef.current) {
           lightingCanvasRef.current.style.width = `${rect.width}px`;
@@ -1272,7 +1422,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
     // S1-T7: re-run when the quality preset changes the device-pixel-ratio cap
-  }, [qualityPreset.dprCap]);
+  }, [qualityPreset.dprCap, staticOverscanCss]);
 
   useEffect(() => {
     if (lightingCanvasTransferredRef.current) return;
@@ -1399,35 +1549,188 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
     
     // PERF: Defer render to next animation frame - batches multiple state updates into one render
-    renderPendingRef.current = requestAnimationFrame(() => {
+    const renderFrame = (forceFull: boolean) => {
       renderPendingRef.current = null;
-      
+
+      const buildingsLayer = buildingsCanvasRef.current;
+      const dpr = getRenderDpr();
+      const margin = staticOverscanDev / dpr; // overscan of the static layers, CSS px
+      const lightsSkipped = isMobile && (isPanningRef.current || isPinchZoomingRef.current);
+      // Scene key, in three parts:
+      // - content: the grid. Without a per-tile overlay it enters through its visual version, so ticks that
+      //   change only stats do not redraw, and ticks that change a few tiles redraw only around them. Per-tile
+      //   overlays key on the grid itself and so follow the simulation (React sync, about 2 Hz).
+      // - animation: traffic light phase and railroad crossings, redrawn around those tiles only.
+      // - everything else (camera excluded): any change redraws in full.
+      const tileOverlay = overlayMode !== 'none';
+      // While the simulation runs: redraw in full on every grid update, as before (no partial redraws)
+      const keyOnGrid = tileOverlay || simRunning;
+      const visualVersion = keyOnGrid ? -1 : getGridVisualVersion(grid, gridSize);
+      const contentKey: unknown = keyOnGrid ? grid : visualVersion;
+      let crossingKey = '';
+      const crossings = crossingPositionsRef.current;
+      if (crossings.length > 0) {
+        const gateAngles = crossingGateAnglesRef.current;
+        let angleSum = 0;
+        let anyActive = false;
+        for (let i = 0; i < crossings.length; i++) {
+          const { x: cx, y: cy } = crossings[i];
+          angleSum += Math.round(gateAngles.get(cy * gridSize + cx) ?? 0);
+          if (!anyActive && getCrossingStateForTile(trainsRef.current, cx, cy) !== 'open') anyActive = true;
+        }
+        crossingKey = `${angleSum}|${anyActive ? Math.floor(crossingFlashTimerRef.current * 2) : -1}`;
+      }
+      const lightKey = zoom >= TRAFFIC_LIGHT_MIN_ZOOM ? getTrafficLightState(trafficLightTimerRef.current) : null;
+      const sceneDeps: unknown[] = [
+        tileOverlay ? state.services : null,
+        tileOverlay ? state.stats.gangaHealth : null,
+        gridSize, overlayMode, imageLoadVersion, canvasSize.width, canvasSize.height, staticOverscanDev, dpr,
+        dragStartTile, dragEndTile, currentSpritePack, waterBodies, showsDragGrid, isMobile,
+        state.mapId, qualityPreset, floodMask, siltMask, gpuEnabled,
+      ];
+      const lastStatic = staticLayerRenderRef.current;
+      const clearSettleTimer = () => {
+        if (staticRedrawTimerRef.current !== null) {
+          window.clearTimeout(staticRedrawTimerRef.current);
+          staticRedrawTimerRef.current = null;
+        }
+      };
+      const sceneSame = !forceFull && lastStatic !== null && !(lastStatic.lightsSkipped && !lightsSkipped) &&
+        lastStatic.deps.length === sceneDeps.length && lastStatic.deps.every((d, i) => d === sceneDeps[i]);
+      const cameraSame = lastStatic !== null && zoom === lastStatic.zoom &&
+        offset.x === lastStatic.offset.x && offset.y === lastStatic.offset.y;
+      // (getTileMetadata is derived from building types only: a new instance under the same content key
+      // describes the same map, so it is not part of the key)
+      const contentSame = lastStatic !== null && contentKey === lastStatic.contentKey;
+      // (while the simulation runs, lights and crossings are picked up by the next grid redraw, as before)
+      const animSame = simRunning ||
+        (lastStatic !== null && lightKey === lastStatic.lightKey && crossingKey === lastStatic.crossingKey);
+      // While the camera moves, light/crossing changes wait for the settle redraw
+      if (sceneSame && lastStatic && contentSame && (animSame || !cameraSame)) {
+        const scale = zoom / lastStatic.zoom;
+        const tx = offset.x - scale * lastStatic.offset.x;
+        const ty = offset.y - scale * lastStatic.offset.y;
+        if (scale === 1 && tx === 0 && ty === 0) {
+          // Nothing visible changed (a tick that touched only stats, or the camera came back)
+          if (lastStatic.transformed) {
+            canvas.style.transform = '';
+            if (buildingsLayer) buildingsLayer.style.transform = '';
+            lastStatic.transformed = false;
+          }
+          clearSettleTimer();
+          return;
+        }
+        // Camera-only change: move/scale the drawn layers if they still cover the whole view
+        const viewW = canvasSize.width / dpr;
+        const viewH = canvasSize.height / dpr;
+        const covers = margin > 0 && scale <= STATIC_MAX_CSS_SCALE &&
+          tx - scale * margin <= 0.01 && ty - scale * margin <= 0.01 &&
+          tx + scale * (viewW + margin) >= viewW - 0.01 && ty + scale * (viewH + margin) >= viewH - 0.01;
+        if (covers) {
+          const transform = scale === 1
+            ? `translate3d(${tx}px, ${ty}px, 0)`
+            : `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
+          canvas.style.transform = transform;
+          if (buildingsLayer) buildingsLayer.style.transform = transform;
+          lastStatic.transformed = true;
+          // A whole-device-pixel shift shows exactly what a redraw would; otherwise (or when little
+          // overscan is left for the next move, or lights/crossings changed meanwhile) redraw once the
+          // camera has rested.
+          const onPixelGrid = (v: number) => Math.abs(v * dpr - Math.round(v * dpr)) < 0.01;
+          const needsSettle = scale !== 1 || !onPixelGrid(tx) || !onPixelGrid(ty) || !animSame ||
+            Math.max(Math.abs(tx), Math.abs(ty)) > margin / 2;
+          clearSettleTimer();
+          if (needsSettle) {
+            staticRedrawTimerRef.current = window.setTimeout(() => {
+              staticRedrawTimerRef.current = null;
+              requestAnimationFrame(() => staticRedrawRef.current?.(true));
+            }, STATIC_SETTLE_MS);
+          }
+          return;
+        }
+      }
+
       // PERF: Throttle main renders at 3x speed to reduce dropped frames
       // At high speed, we can skip some renders since simulation ticks are frequent
       const currentSpeed = worldStateRef.current.speed;
       const now = performance.now();
       const timeSinceLastRender = now - lastMainRenderTimeRef.current;
-      const minRenderInterval = currentSpeed === 3 ? 50 : 0; // Skip renders within 50ms at 3x speed
-      
+      const minRenderInterval = currentSpeed === 3 && !forceFull ? 50 : 0; // Skip renders within 50ms at 3x speed
+
       if (timeSinceLastRender < minRenderInterval) {
         return; // Skip this render, next tick will trigger a new one
       }
       lastMainRenderTimeRef.current = now;
-      
-      const dpr = getRenderDpr();
+
+      // Static layers are drawn shifted by the overscan margin (the GPU path below keeps `offset`)
+      const drawOffset = { x: offset.x + margin, y: offset.y + margin };
+      const fullWidth = canvasSize.width + 2 * staticOverscanDev;
+      const fullHeight = canvasSize.height + 2 * staticOverscanDev;
+
+      // PERF (partial redraw): when only some tiles changed (a growing city changes a handful per tick),
+      // the camera has not moved and nothing else in the scene changed, redraw just the screen area around
+      // those tiles. Everything that overlaps that area is drawn again in the usual order under a clip, so
+      // the result matches a full redraw.
+      let partial: { rects: { x: number; y: number; w: number; h: number }[]; left: number; top: number; right: number; bottom: number } | null = null;
+      if (sceneSame && lastStatic && cameraSame && !lastStatic.transformed && !gpuEnabled && !keyOnGrid &&
+          canvas.width === fullWidth && canvas.height === fullHeight) {
+        let tiles: ArrayLike<number> | null = contentKey === lastStatic.contentKey
+          ? new Int32Array(0)
+          : getGridVisualChangesSince(lastStatic.contentKey as number);
+        if (tiles && lightKey !== lastStatic.lightKey && lightKey !== null) {
+          // Traffic lights stand on 3- and 4-way road junctions
+          const junctions: number[] = Array.from(tiles);
+          for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+              if (grid[y][x].building.type === 'road' && (getTileMetadata(x, y)?.roadConnectionCount ?? 0) >= 3) junctions.push(y * gridSize + x);
+            }
+          }
+          tiles = junctions;
+        }
+        if (tiles && crossingKey !== lastStatic.crossingKey) {
+          const withCrossings: number[] = Array.from(tiles);
+          for (let i = 0; i < crossings.length; i++) withCrossings.push(crossings[i].y * gridSize + crossings[i].x);
+          tiles = withCrossings;
+        }
+        if (tiles && tiles.length <= STATIC_PARTIAL_MAX_TILES) {
+          partial = buildPartialRegion(tiles, grid, gridSize, zoom, drawOffset, dpr, fullWidth, fullHeight);
+        }
+      }
+
+      clearSettleTimer();
+      if (lastStatic?.transformed) {
+        canvas.style.transform = '';
+        if (buildingsLayer) buildingsLayer.style.transform = '';
+      }
+      staticLayerRenderRef.current = {
+        offset: { x: offset.x, y: offset.y }, zoom, deps: sceneDeps, contentKey, lightKey, crossingKey,
+        transformed: false, lightsSkipped,
+      };
+      if (canvas.width !== fullWidth) canvas.width = fullWidth;
+      if (canvas.height !== fullHeight) canvas.height = fullHeight;
+      // Clip both static layers to the partial region (device px, identity transform); restored at the end
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.save();
+      if (partial) {
+        ctx.beginPath();
+        for (const r of partial.rects) ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+      }
     
       // Disable image smoothing for crisp pixel art
       ctx.imageSmoothingEnabled = false;
     
       // PERF: Clear canvas with cached gradient background - only recreate when canvas height changes
       const bgCache = bgGradientCacheRef.current;
-      if (!bgCache.gradient || bgCache.height !== canvas.height) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      // The gradient spans the view (not the overscan), so the background looks as it did before overscan
+      const bgKey = canvasSize.height * 100000 + staticOverscanDev;
+      if (!bgCache.gradient || bgCache.height !== bgKey) {
+        const gradient = ctx.createLinearGradient(0, staticOverscanDev, 0, staticOverscanDev + canvasSize.height);
         gradient.addColorStop(0, '#0f1419');
         gradient.addColorStop(0.5, '#141c24');
         gradient.addColorStop(1, '#1a2a1f');
         bgCache.gradient = gradient;
-        bgCache.height = canvas.height;
+        bgCache.height = bgKey;
       }
       ctx.fillStyle = bgCache.gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1435,16 +1738,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.save();
       // Scale for device pixel ratio first, then apply zoom
       ctx.scale(dpr * zoom, dpr * zoom);
-      ctx.translate(offset.x / zoom, offset.y / zoom);
-    
+      ctx.translate(drawOffset.x / zoom, drawOffset.y / zoom);
+
     // Calculate visible tile range for culling (account for DPR in canvas size)
     const viewWidth = canvas.width / (dpr * zoom);
     const viewHeight = canvas.height / (dpr * zoom);
-    const viewLeft = -offset.x / zoom - TILE_WIDTH;
-    const viewTop = -offset.y / zoom - TILE_HEIGHT * 2;
-    const viewRight = viewWidth - offset.x / zoom + TILE_WIDTH;
-    const viewBottom = viewHeight - offset.y / zoom + TILE_HEIGHT * 2;
-    
+    const viewLeft = partial ? partial.left : -drawOffset.x / zoom - TILE_WIDTH;
+    const viewTop = partial ? partial.top : -drawOffset.y / zoom - TILE_HEIGHT * 2;
+    const viewRight = partial ? partial.right : viewWidth - drawOffset.x / zoom + TILE_WIDTH;
+    const viewBottom = partial ? partial.bottom : viewHeight - drawOffset.y / zoom + TILE_HEIGHT * 2;
+    // Tiles a partial redraw goes through (their wind-tree entries are replaced, the rest kept)
+    const partialTiles = partial ? new Set<number>() : null;
+        
     // PERF: Pre-compute visible diagonal range to skip entire rows of tiles
     // In isometric rendering, screenY = (x + y) * (TILE_HEIGHT / 2), so sum = x + y = screenY * 2 / TILE_HEIGHT
     // Add padding for tall buildings that may extend above their tile position
@@ -1620,27 +1925,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Skip if skipGreyBase is true (will be drawn later after water)
         topColor = '#6b7280';
         strokeColor = '#374151';
-      } else if (tile.zone === 'residential') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#3d7c3f';
-        } else {
-          topColor = '#2d5a2d';
-        }
-        strokeColor = '#22c55e';
-      } else if (tile.zone === 'commercial') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#3a5c7c';
-        } else {
-          topColor = '#2a4a6a';
-        }
-        strokeColor = '#3b82f6';
-      } else if (tile.zone === 'industrial') {
-        if (tile.building.type !== 'grass' && tile.building.type !== 'empty') {
-          topColor = '#7c5c3a';
-        } else {
-          topColor = '#6a4a2a';
-        }
-        strokeColor = '#f59e0b';
+      } else if (tile.zone !== 'none') {
+        // Empty zoned lots: strong fill (outline + letter drawn below). Developed tiles: subtler hint.
+        const zoneStyle = ZONE_LOT_STYLES[tile.zone]!;
+        const isEmptyLot = tile.building.type === 'grass' || tile.building.type === 'empty';
+        topColor = isEmptyLot ? zoneStyle.fill : showsDragGrid ? zoneStyle.builtStrong : zoneStyle.built;
+        strokeColor = zoneStyle.line;
       }
       if (floodplainSand && !isPark && !hasGreyBase) {
         const sand = floodplainSandScheme(tile);
@@ -1674,16 +1964,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           ctx.stroke();
         }
         
-        // Draw zone border with dashed line (hide when zoomed out, only on grass/empty tiles - not on roads or buildings)
-        if (tile.zone !== 'none' && 
-            currentZoom >= 0.95 &&
-            (tile.building.type === 'grass' || tile.building.type === 'empty')) {
-          ctx.strokeStyle = tile.zone === 'residential' ? '#22c55e' : 
-                            tile.zone === 'commercial' ? '#3b82f6' : '#f59e0b';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 2]);
-          ctx.stroke();
-          ctx.setLineDash([]);
+        // Crisp inset outline + R/C/I letter on empty zoned lots only (not on roads or buildings)
+        if (tile.zone !== 'none' && (tile.building.type === 'grass' || tile.building.type === 'empty')) {
+          drawZoneLotMarks(ctx, x, y, tile.zone, currentZoom, showsDragGrid);
+          if (tile.building.type === 'grass' && !tile.building.onFire && tile.building.fireProgress > 0) {
+            drawScorchedLot(ctx, x, y, tile.building.fireProgress, (tile.x * 7 + tile.y * 13) & 7);
+          }
         }
       }
       
@@ -1708,7 +1994,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
     function drawTileFireEffect(ctx: IsoRenderer, x: number, y: number) {
       const fireX = x + TILE_WIDTH / 2;
-      const fireY = y - 10;
+      // Centre the flames on the burning tile rather than its back corner
+      const fireY = y + TILE_HEIGHT / 2 - 10;
 
       ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
       ctx.beginPath();
@@ -2189,7 +2476,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             screenY + TILE_HEIGHT * 4 < viewTop || screenY > viewBottom) {
           continue;
         }
-        
+        partialTiles?.add(y * gridSize + x);
+
         const tile = grid[y][x];
         
         // PERF: Hover and selection highlights are now rendered on a separate canvas layer
@@ -2252,7 +2540,9 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           const isBuilding = tile.building.type !== 'grass' && tile.building.type !== 'empty';
           if (isBuilding) {
             const size = getBuildingSize(tile.building.type);
-            const depth = x + y + size.width + size.height - 2;
+            // Sort by footprint centre, not front corner: a front-corner key paints 3x3/4x4 lots over the
+            // smaller neighbours beside their front edges (footprints are square, so this stays integral)
+            const depth = x + y + (size.width + size.height - 2) / 2;
             buildingQueue.push({ screenX, screenY, tile, depth });
           }
         }
@@ -2342,7 +2632,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     insertionSortByDepth(greenBaseTileQueue);
     for (let i = 0; i < greenBaseTileQueue.length; i++) {
       const { tile, screenX, screenY } = greenBaseTileQueue[i];
-      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
+      drawGreenBaseTile(ctx, screenX, screenY, tile, zoom, floodplainSandScheme(tile), showsDragGrid);
     }
     
     // Draw roads (above water, needs full redraw including base tile)
@@ -2494,33 +2784,69 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // Render buildings on the buildings canvas (on top of cars/trains)
     const buildingsCanvas = buildingsCanvasRef.current;
     if (buildingsCanvas) {
-      // Set canvas size in memory (scaled for DPI)
-      buildingsCanvas.width = canvasSize.width;
-      buildingsCanvas.height = canvasSize.height;
+      // Set canvas size in memory (scaled for DPI). PERF: only when it changed - assigning
+      // width/height reallocates (and clears) the backing store even when the value is the same.
+      if (buildingsCanvas.width !== canvas.width) buildingsCanvas.width = canvas.width;
+      if (buildingsCanvas.height !== canvas.height) buildingsCanvas.height = canvas.height;
       
       const buildingsCtx = buildingsCanvas.getContext('2d');
       if (buildingsCtx) {
-        // Clear buildings canvas
+        // Clear buildings canvas (only the partial region, when there is one)
         buildingsCtx.setTransform(1, 0, 0, 1, 0, 0);
+        buildingsCtx.save();
+        if (partial) {
+          buildingsCtx.beginPath();
+          for (const r of partial.rects) buildingsCtx.rect(r.x, r.y, r.w, r.h);
+          buildingsCtx.clip();
+        }
         buildingsCtx.clearRect(0, 0, buildingsCanvas.width, buildingsCanvas.height);
         
         // Apply same transform as main canvas
         buildingsCtx.scale(dpr, dpr);
-        buildingsCtx.translate(offset.x, offset.y);
+        buildingsCtx.translate(drawOffset.x, drawOffset.y);
         buildingsCtx.scale(zoom, zoom);
         
         // Disable image smoothing for crisp pixel art
         buildingsCtx.imageSmoothingEnabled = false;
 
         const nextVisibleWindTrees = visibleWindTreesRef.current;
-        nextVisibleWindTrees.length = 0;
+        const windTreeTiles = visibleWindTreeTilesRef.current;
+        if (partialTiles) {
+          // Keep the trees outside the redrawn tiles; the ones inside are added again below
+          let kept = 0;
+          for (let i = 0; i < nextVisibleWindTrees.length; i++) {
+            if (partialTiles.has(windTreeTiles[i].key)) continue;
+            nextVisibleWindTrees[kept] = nextVisibleWindTrees[i];
+            windTreeTiles[kept] = windTreeTiles[i];
+            kept++;
+          }
+          nextVisibleWindTrees.length = kept;
+          windTreeTiles.length = kept;
+        } else {
+          nextVisibleWindTrees.length = 0;
+          windTreeTiles.length = 0;
+        }
+        const keptWindTrees = nextVisibleWindTrees.length;
         // Code-drawn Indian trees: one cached canvas per (variant, resolution tier)
         const treeArtTilePx = pickArtTilePx(TILE_WIDTH * zoom * getRenderDpr());
         
+        // Suspension towers and cables are interleaved by depth: above buildings behind the bridge,
+        // below buildings in front of it
+        let bridgeCursor = 0;
+        const drawBridgeTopsTo = (maxDepth: number) => {
+          for (; bridgeCursor < bridgeQueue.length && bridgeQueue[bridgeCursor].depth <= maxDepth; bridgeCursor++) {
+            const b = bridgeQueue[bridgeCursor];
+            if (b.tile.building.bridgeType !== 'suspension') continue;
+            drawSuspensionBridgeTowers(buildingsCtx, b.screenX, b.screenY, b.tile.building, zoom);
+            drawSuspensionBridgeOverlay(buildingsCtx, b.screenX, b.screenY, b.tile.building, zoom);
+          }
+        };
+
         // Draw buildings on the buildings canvas
         // PERF: Use for loop instead of forEach
         for (let i = 0; i < buildingQueue.length; i++) {
-          const { tile, screenX, screenY } = buildingQueue[i];
+          const { tile, screenX, screenY, depth } = buildingQueue[i];
+          drawBridgeTopsTo(depth - 1);
           // S1-T7: with tree sway off (quality preset) trees are drawn here once, like other sprites
           if (tile.building.type === 'tree' && treeSway) {
             try {
@@ -2540,7 +2866,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               );
 
               if (treeRenderItem) {
+                // The swaying tree is drawn on the cars canvas, UNDER this one. Cut its silhouette out of
+                // what is already here (the buildings behind it, lower depth) so the canopy shows through;
+                // buildings in front are drawn after this and still cover it.
+                cutWindTreeSilhouette(buildingsCtx, treeRenderItem);
                 nextVisibleWindTrees.push(treeRenderItem);
+                windTreeTiles.push({ key: tile.y * gridSize + tile.x, depth });
                 if (tile.building.onFire) {
                   drawTileFireEffect(buildingsCtx, screenX, screenY);
                 }
@@ -2553,23 +2884,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
           drawBuilding(buildingsCtx, screenX, screenY, tile);
         }
-        
-        // Draw suspension bridge towers ON TOP of buildings
-        // These need to appear above nearby buildings for proper visual layering
-        for (let i = 0; i < bridgeQueue.length; i++) {
-          const { tile, screenX, screenY } = bridgeQueue[i];
-          if (tile.building.bridgeType === 'suspension') {
-            drawSuspensionBridgeTowers(buildingsCtx, screenX, screenY, tile.building, zoom);
+        if (partialTiles && keptWindTrees > 0 && nextVisibleWindTrees.length > keptWindTrees) {
+          // Back into depth order (the wind layer draws them in list order)
+          const order = windTreeTiles.map((_, i) => i).sort((p, q) => windTreeTiles[p].depth - windTreeTiles[q].depth || p - q);
+          const trees = order.map((i) => nextVisibleWindTrees[i]);
+          const tiles = order.map((i) => windTreeTiles[i]);
+          for (let i = 0; i < order.length; i++) {
+            nextVisibleWindTrees[i] = trees[i];
+            windTreeTiles[i] = tiles[i];
           }
         }
-        
-        // Draw suspension bridge cables ON TOP of towers
-        for (let i = 0; i < bridgeQueue.length; i++) {
-          const { tile, screenX, screenY } = bridgeQueue[i];
-          if (tile.building.bridgeType === 'suspension') {
-            drawSuspensionBridgeOverlay(buildingsCtx, screenX, screenY, tile.building, zoom);
-          }
-        }
+
+        drawBridgeTopsTo(Infinity);
         
         // NOTE: Recreation pedestrians are now drawn in the animation loop on the air canvas
         // so their animations are smooth (the buildings canvas only updates when grid changes)
@@ -2607,6 +2933,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
           const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
           const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
+          const rangePath = new Path2D();
           
           // Find all service buildings of this type and draw their radii
           for (let y = 0; y < gridSize; y++) {
@@ -2643,15 +2970,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               const radiusX = range * halfTileWidth;
               const radiusY = range * halfTileHeight;
               
-              buildingsCtx.strokeStyle = circleColor;
-              buildingsCtx.lineWidth = 2 / zoom; // Keep line width consistent at different zoom levels
-              buildingsCtx.beginPath();
-              buildingsCtx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-              buildingsCtx.stroke();
-              
-              // Draw a subtle filled ellipse for better visibility
-              buildingsCtx.fillStyle = circleFillColor;
-              buildingsCtx.fill();
+              // Collect every range into one path, filled once below, so overlapping stations
+              // don't stack their tints into a wash that hides the uncovered-building warning
+              rangePath.moveTo(centerX + radiusX, centerY);
+              rangePath.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
               
               // Draw highlight glow around the service building
               buildingsCtx.strokeStyle = highlightColor;
@@ -2671,9 +2993,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               buildingsCtx.fill();
             }
           }
+          buildingsCtx.fillStyle = circleFillColor;
+          buildingsCtx.fill(rangePath);
+          buildingsCtx.strokeStyle = circleColor;
+          buildingsCtx.lineWidth = 2 / zoom; // Keep line width consistent at different zoom levels
+          buildingsCtx.stroke(rangePath);
         }
         
         buildingsCtx.setTransform(1, 0, 0, 1, 0, 0);
+        buildingsCtx.restore();
       }
     }
     
@@ -2688,12 +3016,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ctx.textBaseline = 'middle';
       
       // Use same viewport calculation as main rendering (accounting for DPR)
-      const viewWidth = canvasSize.width / (dpr * zoom);
-      const viewHeight = canvasSize.height / (dpr * zoom);
-      const viewLeft = -offset.x / zoom - TILE_WIDTH;
-      const viewTop = -offset.y / zoom - TILE_HEIGHT * 2;
-      const viewRight = viewWidth - offset.x / zoom + TILE_WIDTH;
-      const viewBottom = viewHeight - offset.y / zoom + TILE_HEIGHT * 2;
+      const viewWidth = canvas.width / (dpr * zoom);
+      const viewHeight = canvas.height / (dpr * zoom);
+      const viewLeft = -drawOffset.x / zoom - TILE_WIDTH;
+      const viewTop = -drawOffset.y / zoom - TILE_HEIGHT * 2;
+      const viewRight = viewWidth - drawOffset.x / zoom + TILE_WIDTH;
+      const viewBottom = viewHeight - drawOffset.y / zoom + TILE_HEIGHT * 2;
       
       for (const waterBody of waterBodies) {
         if (waterBody.tiles.length === 0) continue;
@@ -2748,7 +3076,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           }
           for (let i = 0; i < greenBaseTileQueue.length; i++) {
             const { tile, screenX, screenY } = greenBaseTileQueue[i];
-            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile));
+            drawGreenBaseTile(gpuMain, screenX, screenY, tile, zoom, floodplainSandScheme(tile), showsDragGrid);
           }
           for (let i = 0; i < roadQueue.length; i++) {
             const { tile, screenX, screenY } = roadQueue[i];
@@ -2805,21 +3133,39 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         gpuMain.redrawLayer('buildings', () => {
           gpuMain.save();
           applyWorld(gpuMain);
+          // Suspension towers and cables interleaved by depth, as on the Canvas2D path
+          // The wind trees the Canvas2D pass above built, by tile
+          const gpuTrees = new Map<number, WindTreeRenderItem>();
+          for (let i = 0; i < visibleWindTreeTilesRef.current.length; i++) {
+            gpuTrees.set(visibleWindTreeTilesRef.current[i].key, visibleWindTreesRef.current[i]);
+          }
+          let bridgeCursor = 0;
+          const drawBridgeTopsTo = (maxDepth: number) => {
+            for (; bridgeCursor < bridgeQueue.length && bridgeQueue[bridgeCursor].depth <= maxDepth; bridgeCursor++) {
+              const b = bridgeQueue[bridgeCursor];
+              if (b.tile.building.bridgeType !== 'suspension') continue;
+              drawSuspensionBridgeTowers(gpuMain, b.screenX, b.screenY, b.tile.building, zoom);
+              drawSuspensionBridgeOverlay(gpuMain, b.screenX, b.screenY, b.tile.building, zoom);
+            }
+          };
           for (let i = 0; i < buildingQueue.length; i++) {
-            const { tile, screenX, screenY } = buildingQueue[i];
+            const { tile, screenX, screenY, depth } = buildingQueue[i];
+            drawBridgeTopsTo(depth - 1);
             if (tile.building.type === 'tree' && treeSway) {
+              // Trees sit in this layer in depth order (buildings in front cover them) and sway by
+              // matrix in the effects loop; they are not drawn on the 'wind' layer under the buildings
+              const tree = gpuTrees.get(tile.y * gridSize + tile.x);
+              if (tree) {
+                const before = gpuMain.spriteCount();
+                drawWindTreeAtRest(gpuMain, tree);
+                gpuMain.markSway(before, tree.pivotX, tree.pivotY);
+              }
               if (tile.building.onFire) drawTileFireEffect(gpuMain, screenX, screenY);
               continue;
             }
             drawBuilding(gpuMain, screenX, screenY, tile);
           }
-          for (let i = 0; i < bridgeQueue.length; i++) {
-            const { tile, screenX, screenY } = bridgeQueue[i];
-            if (tile.building.bridgeType === 'suspension') {
-              drawSuspensionBridgeTowers(gpuMain, screenX, screenY, tile.building, zoom);
-              drawSuspensionBridgeOverlay(gpuMain, screenX, screenY, tile.building, zoom);
-            }
-          }
+          drawBridgeTopsTo(Infinity);
           for (let i = 0; i < overlayQueue.length; i++) {
             const { tile, screenX, screenY } = overlayQueue[i];
             const coverage = {
@@ -2845,6 +3191,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
             const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
             const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
+            const rangePath = new Path2D(); // one union path, filled once (see the canvas path above)
             for (let yy = 0; yy < gridSize; yy++) {
               for (let xx = 0; xx < gridSize; xx++) {
                 const tile = grid[yy][xx];
@@ -2858,13 +3205,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 const { screenX: bldgScreenX, screenY: bldgScreenY } = gridToScreen(xx, yy, 0, 0);
                 const centerX = bldgScreenX + halfTileWidth;
                 const centerY = bldgScreenY + halfTileHeight;
-                gpuMain.strokeStyle = circleColor;
-                gpuMain.lineWidth = 2 / zoom;
-                gpuMain.beginPath();
-                gpuMain.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
-                gpuMain.stroke();
-                gpuMain.fillStyle = circleFillColor;
-                gpuMain.fill();
+                rangePath.moveTo(centerX + range * halfTileWidth, centerY);
+                rangePath.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
                 gpuMain.strokeStyle = highlightColor;
                 gpuMain.lineWidth = 3 / zoom;
                 gpuMain.beginPath();
@@ -2880,6 +3222,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 gpuMain.fill();
               }
             }
+            gpuMain.fillStyle = circleFillColor;
+            gpuMain.fill(rangePath);
+            gpuMain.strokeStyle = circleColor;
+            gpuMain.lineWidth = 2 / zoom;
+            gpuMain.stroke(rangePath);
           }
           if (waterBodies && waterBodies.length > 0) {
             gpuMain.font = `${Math.max(10, 12 / zoom)}px sans-serif`;
@@ -2901,7 +3248,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
 
     ctx.restore();
-    }); // End requestAnimationFrame callback
+    ctx.restore(); // partial-region clip
+    }; // End renderFrame
+    staticRedrawRef.current = renderFrame;
+    renderPendingRef.current = requestAnimationFrame(() => renderFrame(false));
     
     // PERF: Cleanup - cancel pending render on unmount or deps change
     return () => {
@@ -2911,13 +3261,25 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning, staticOverscanDev, simRunning]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
+  // The tile a placement just succeeded on (mouse-up or tap). The hovered tile is now built, so the
+  // dry run would say "Already built here" in red right after a success: show no verdict instead.
+  const [justPlaced, setJustPlaced] = useState<{ x: number; y: number; tool: Tool } | null>(null);
+  const hoveredTileRef = useRef(hoveredTile);
+  // Did the preview say "ok" when the current press started? (A failed press must keep its reason.)
+  const pressWasValidRef = useRef(false);
   const placementPreview = useMemo(() => {
-    if (isMobile || isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
+    if (isDragging || !hoveredTile || selectedTool === 'select' || !TOOL_INFO[selectedTool]) return null;
+    if (justPlaced && justPlaced.tool === selectedTool && justPlaced.x === hoveredTile.x && justPlaced.y === hoveredTile.y) return null;
     return getHoverPlacementCheck(state, selectedTool, hoveredTile.x, hoveredTile.y);
-  }, [isMobile, isDragging, hoveredTile, selectedTool, state]);
+  }, [isDragging, hoveredTile, selectedTool, state, justPlaced]);
+  const placementPreviewRef = useRef(placementPreview);
+  useEffect(() => {
+    hoveredTileRef.current = hoveredTile;
+    placementPreviewRef.current = placementPreview;
+  }, [hoveredTile, placementPreview]);
 
   // C1: dry run of the zone rectangle being dragged (real total of the tiles that would change)
   const dragAreaCheck = useMemo(() => {
@@ -3252,44 +3614,30 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Animate decorative car traffic AND emergency vehicles on top of the base canvas
   useEffect(() => {
     const canvas = carsCanvasRef.current;
-    const windCanvas = windCanvasRef.current;
     const airCanvas = airCanvasRef.current;
-    const ambientCanvas = ambientCanvasRef.current;
-    const airHighCanvas = airHighCanvasRef.current;
-    if (!canvas || !windCanvas || !airCanvas || !ambientCanvas || !airHighCanvas) return;
+    if (!canvas || !airCanvas) return;
     const ctx = canvas.getContext('2d');
-    const windCtx = windCanvas.getContext('2d');
     const airCtx = airCanvas.getContext('2d');
-    const ambientCtx = ambientCanvas.getContext('2d');
-    const airHighCtx = airHighCanvas.getContext('2d');
-    if (!ctx || !windCtx || !airCtx || !ambientCtx || !airHighCtx) return;
+    if (!ctx || !airCtx) return;
+    // PERF: wind trees share the cars canvas; wind dust, clouds, airplanes and fireworks share the
+    // air canvas (see airCanvasRef). Draw order is unchanged, so the composited result is the same.
+    const windCtx = ctx;
+    const ambientCtx = airCtx;
+    const airHighCtx = airCtx;
     
     ctx.imageSmoothingEnabled = false;
-    windCtx.imageSmoothingEnabled = false;
     airCtx.imageSmoothingEnabled = false;
-    ambientCtx.imageSmoothingEnabled = false;
-    airHighCtx.imageSmoothingEnabled = false;
 
-    const clearWindCanvas = () => {
-      windCtx.setTransform(1, 0, 0, 1, 0, 0);
-      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+    // Each former layer started from a fresh identity state; keep that when they share a canvas.
+    const resetLayerState = (layerCtx: CanvasRenderingContext2D) => {
+      layerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      layerCtx.globalAlpha = 1;
+      layerCtx.imageSmoothingEnabled = false;
     };
 
     const clearAirCanvas = () => {
       airCtx.setTransform(1, 0, 0, 1, 0, 0);
       airCtx.clearRect(0, 0, airCanvas.width, airCanvas.height);
-    };
-
-    // Wind dust + clouds layer (dedicated canvas; future render-worker target)
-    const clearAmbientCanvas = () => {
-      ambientCtx.setTransform(1, 0, 0, 1, 0, 0);
-      ambientCtx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
-    };
-
-    // Airplanes + fireworks layer (above clouds)
-    const clearAirHighCanvas = () => {
-      airHighCtx.setTransform(1, 0, 0, 1, 0, 0);
-      airHighCtx.clearRect(0, 0, airHighCanvas.width, airHighCanvas.height);
     };
     
     const festivalInput = (): FestivalDrawInput => {
@@ -3423,10 +3771,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // In GPU mode Pixi owns animated entities; keep legacy CPU layers empty to avoid double work.
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        clearWindCanvas();
         clearAirCanvas();
-        clearAmbientCanvas();
-        clearAirHighCanvas();
+        // Trees are part of the scene (the buildings canvas has their silhouettes cut out): keep them
+        // while the vehicles are skipped during mobile pans/pinches
+        if (!gpuActive) {
+          resetLayerState(windCtx);
+          drawWindTrees(windCtx);
+        }
       } else {
         drawCars(ctx);
         drawBuses(ctx);
@@ -3435,16 +3786,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
         drawBarges(ctx); // Draw ocean barges (larger, keep visible)
         drawTrainsCallback(ctx); // Draw trains on rail network
-        if (!skipSmallElements) {
-          drawSmog(ctx); // Draw factory smog (skip when panning zoomed out on desktop)
-        }
         drawPedestrians(ctx); // Draw walking pedestrians (below buildings)
         drawEmergencyVehicles(ctx); // Draw emergency vehicles!
-        clearWindCanvas();
-        drawWindTrees(windCtx); // Draw swaying trees on their own lightweight layer
+        resetLayerState(windCtx);
+        drawWindTrees(windCtx); // Draw swaying trees above the vehicles (cars canvas)
         clearAirCanvas();
-        clearAmbientCanvas();
-        clearAirHighCanvas();
+        resetLayerState(airCtx);
         
         // Draw incident indicators on air canvas (above buildings so tooltips are visible)
         drawIncidentIndicators(airCtx, delta); // Draw fire/crime incident indicators!
@@ -3453,13 +3800,18 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         // Draw recreation pedestrians on air canvas (above parks, not other buildings)
         drawRecreationPedestrians(airCtx); // Draw recreation pedestrians (at parks, benches, etc.)
         festivalVisuals.draw(airCtx, festivalInput()); // S5-T3 festival lights and Holi colours
+        if (!skipSmallElements) {
+          drawSmog(airCtx); // Smog rises from rooftop chimneys, so it draws above buildings
+        }
         
         if (!skipSmallElements) {
           drawHelicopters(airCtx); // Draw helicopters (skip when panning zoomed out on desktop)
           drawSeaplanes(airCtx); // Draw seaplanes (skip when panning zoomed out on desktop)
         }
+        resetLayerState(ambientCtx);
         drawWindDust(ambientCtx); // Draw lightweight wind dust on the ambient layer
         drawClouds(ambientCtx, visualHour); // Draw atmospheric clouds on the ambient layer
+        resetLayerState(airHighCtx);
         drawAirplanes(airHighCtx); // Draw airplanes above clouds (air-high layer)
         drawFireworks(airHighCtx); // Draw fireworks above everything (air-high layer)
       }
@@ -3482,16 +3834,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         if (!skipSmallElements) drawBoats(pixi);
         drawBarges(pixi);
         drawTrainsCallback(pixi);
-        if (!skipSmallElements) drawSmog(pixi);
         drawPedestrians(pixi);
         drawEmergencyVehicles(pixi);
-        pixi.setLayer('wind');
-        drawWindTrees(pixi);
+        pixi.applySway(windSwayAngle(windStateRef.current)); // trees live on the buildings layer
         pixi.setLayer('air');
         drawIncidentIndicators(pixi, delta);
         drawProblemIcons(pixi, delta, time);
         drawRecreationPedestrians(pixi);
         festivalVisuals.draw(pixi, festivalInput());
+        if (!skipSmallElements) drawSmog(pixi);
         if (!skipSmallElements) {
           drawHelicopters(pixi);
           drawSeaplanes(pixi);
@@ -3609,7 +3960,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setRoadDrawDirection(null);
       setDragStartTile(null);
       setDragEndTile(null);
-      endPlacementStroke();
       setTool('select');
       return;
     }
@@ -3654,12 +4004,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           return;
         } else if (showsDragGrid) {
           panCandidateRef.current = null;
+          pressWasValidRef.current = !!placementPreviewRef.current?.ok;
           // Start drag rectangle selection for zoning tools
           setDragStartTile({ x: gridX, y: gridY });
           setDragEndTile({ x: gridX, y: gridY });
           setIsDragging(true);
         } else if (supportsDragPlace) {
           panCandidateRef.current = null;
+          pressWasValidRef.current = !!placementPreviewRef.current?.ok;
           // For roads, bulldoze, and other tools, start drag-to-place
           setDragStartTile({ x: gridX, y: gridY });
           setDragEndTile({ x: gridX, y: gridY });
@@ -3667,7 +4019,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           // Reset road drawing state for new drag
           setRoadDrawDirection(null);
           placedRoadTilesRef.current.clear();
-          // One undo stroke for the whole drag (closed on mouse up / cancel)
+          // Reset the stroke's running spend / out-of-money state
           startStroke();
           // Place immediately on first click
           placeInStroke(gridX, gridY, true);
@@ -3682,7 +4034,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeInStroke, startStroke, endPlacementStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
+  }, [offset, gridSize, selectedTool, placeInStroke, startStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -3828,6 +4180,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
         // Only update hovered tile if it actually changed to avoid unnecessary re-renders
         setHoveredTile(prev => (prev?.x === gridX && prev?.y === gridY) ? prev : { x: gridX, y: gridY });
+        setJustPlaced(prev => (prev && (prev.x !== gridX || prev.y !== gridY)) ? null : prev);
 
         // Check for fire or crime incidents at this tile for tooltip display
         const tile = grid[gridY]?.[gridX];
@@ -3953,7 +4306,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const minY = Math.min(dragStartTile.y, dragEndTile.y);
       const maxY = Math.max(dragStartTile.y, dragEndTile.y);
 
-      startStroke(); // the whole rectangle is one undo step
+      startStroke(); // the whole rectangle is one stroke (one spend total)
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
           placeInStroke(x, y, true);
@@ -3996,6 +4349,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }, 50);
     }
     
+    // The press placed something (valid at the start, or a drag over several tiles): the tile under
+    // the cursor is now built, so do not flag it red as "Already built here".
+    const hovered = hoveredTileRef.current;
+    if (isDragging && selectedTool !== 'select' && hovered) {
+      const draggedAcross = !!dragStartTile && !!dragEndTile && (dragStartTile.x !== dragEndTile.x || dragStartTile.y !== dragEndTile.y);
+      setJustPlaced(pressWasValidRef.current || draggedAcross ? { x: hovered.x, y: hovered.y, tool: selectedTool } : null);
+    }
+
     // Clear drag state
     setIsDragging(false);
     setDragStartTile(null);
@@ -4003,13 +4364,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     setIsPanning(false);
     setRoadDrawDirection(null);
     placedRoadTilesRef.current.clear();
-    endPlacementStroke();
 
     // Clear hovered tile when mouse leaves
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, startStroke, endPlacementStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, startStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
 
   // Mouse leaving the map: cancel an in-progress zone/line drag without committing it
   // (no rectangle fill, no bridges), drop a held single placement, and clear the hover ghost.
@@ -4021,7 +4381,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setDragEndTile(null);
       setRoadDrawDirection(null);
       placedRoadTilesRef.current.clear();
-      endPlacementStroke();
       panCandidateRef.current = null;
       rightClickRef.current = null;
       setIsPanning(false);
@@ -4029,9 +4388,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       handleMouseUp();
     }
     setHoveredTile(null);
-  }, [isDragging, endPlacementStroke, handleMouseUp]);
+  }, [isDragging, handleMouseUp]);
   
   const handleWheel = useCallback((e: WheelEvent) => {
+    // Scrollable panels laid over the canvas (tile info) take the wheel themselves
+    if (e.target instanceof Element && e.target.closest('[data-no-wheel-zoom]')) return;
     e.preventDefault();
     
     const rect = containerRef.current?.getBoundingClientRect();
@@ -4107,11 +4468,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     setRoadDrawDirection(null);
     placedRoadTilesRef.current.clear();
     releasePlaceRef.current = null;
-    endPlacementStroke();
     setHoveredTile(null);
-  }, [endPlacementStroke]);
+  }, []);
 
-  // Keyboard hooks (useKeyboardControls): Esc cancels an in-progress drag first; Ctrl/Cmd+Z undoes.
+  // Keyboard hook (useKeyboardControls): Esc cancels an in-progress drag first.
   useEffect(() => {
     const controls = controlsRef?.current;
     if (!controls) return;
@@ -4121,12 +4481,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       cancelToolDrag();
       return true;
     };
-    controls.undo = undoLastPlacement;
     return () => {
       controls.cancelDrag = null;
-      controls.undo = null;
     };
-  }, [controlsRef, cancelToolDrag, undoLastPlacement]);
+  }, [controlsRef, cancelToolDrag]);
 
   const startPinch = useCallback((g: TouchGesture, t1: React.Touch | Touch, t2: React.Touch | Touch) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -4170,25 +4528,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       return;
     }
     const check = getPlacementCheck(state, selectedTool, tile.x, tile.y);
-    if (!check.ok) {
-      // Say why (same reason text as the desktop hover label), next to the finger.
-      const rect = containerRef.current?.getBoundingClientRect();
-      setPendingPlacement(null);
-      if (check.reason) {
-        setTapRefusal({ left: clientX - (rect?.left ?? 0), top: clientY - (rect?.top ?? 0), reason: check.reason, key: Date.now() });
-      }
-      return;
-    }
-    setTapRefusal(null);
-    if (needsTapConfirm(check.cost, state.stats.money)) {
+    // The ghost follows the tap; a refused tap keeps its red ghost and reason, a placed one shows none.
+    setHoveredTile((prev) => (prev?.x === tile.x && prev?.y === tile.y ? prev : tile));
+    if (check.ok && needsTapConfirm(check.cost, state.stats.money)) {
+      setJustPlaced(null);
       setPendingPlacement({ x: tile.x, y: tile.y, tool: selectedTool, cost: check.cost });
       return;
     }
+    setJustPlaced(check.ok ? { x: tile.x, y: tile.y, tool: selectedTool } : null);
     placeAtTile(tile.x, tile.y);
   }, [activePendingPlacement, clientToTile, selectedTool, findBuildingOrigin, setSelectedTile, state, placeAtTile]);
 
   const confirmPendingPlacement = useCallback(() => {
-    if (activePendingPlacement) placeAtTile(activePendingPlacement.x, activePendingPlacement.y);
+    if (activePendingPlacement) {
+      setJustPlaced({ x: activePendingPlacement.x, y: activePendingPlacement.y, tool: activePendingPlacement.tool });
+      placeAtTile(activePendingPlacement.x, activePendingPlacement.y);
+    }
     setPendingPlacement(null);
   }, [activePendingPlacement, placeAtTile]);
 
@@ -4229,6 +4584,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   }, [isMapTouchTarget, smoothCamera, inspectTileAt, startPinch]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.target instanceof Element && e.target.closest('[data-no-wheel-zoom]')) return;
     e.preventDefault();
     const g = touchGestureRef.current;
     if (!g) return;
@@ -4353,6 +4709,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       ref={containerRef}
       className="overflow-hidden relative w-full h-full touch-none select-none"
       style={{ 
+        background: '#141c24', // shows in the strip uncovered while static layers are shifted during a pan
         cursor: isPanning ? 'grabbing' : isDragging ? 'crosshair' : 'default',
         WebkitTouchCallout: 'none', // no iOS callout on long-press (long-press inspects the tile)
       }}
@@ -4369,8 +4726,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     >
       <canvas
         ref={canvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
+        width={canvasSize.width + 2 * staticOverscanDev}
+        height={canvasSize.height + 2 * staticOverscanDev}
         className="absolute top-0 left-0"
       />
       {/* PERF: Separate canvas for hover/selection highlights - avoids full redraw on mouse move */}
@@ -4387,33 +4744,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         className="absolute top-0 left-0 pointer-events-none"
       />
       <canvas
-        ref={windCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      <canvas
         ref={buildingsCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
+        width={canvasSize.width + 2 * staticOverscanDev}
+        height={canvasSize.height + 2 * staticOverscanDev}
         className="absolute top-0 left-0 pointer-events-none"
       />
       <canvas
         ref={airCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      {/* Ambient layer: wind dust + clouds (dedicated canvas; future render-worker target) */}
-      <canvas
-        ref={ambientCanvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
-      {/* Air-high layer: airplanes + fireworks, above clouds */}
-      <canvas
-        ref={airHighCanvasRef}
         width={canvasSize.width}
         height={canvasSize.height}
         className="absolute top-0 left-0 pointer-events-none"
@@ -4461,35 +4798,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             onMouseMove={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 pl-3 shadow-lg backdrop-blur-sm">
-              <span className="text-xs font-medium text-foreground whitespace-nowrap">
+            <div className="flex items-center gap-1 rounded-none hud-panel p-1 pl-3">
+              <span className="text-xs font-medium text-chrome-text whitespace-nowrap">
                 {m(getToolDisplay(tool, TOOL_INFO[tool], state.mapId).name)}{' '}
-                <span className="font-mono text-amber-500">{formatINR(cost)}</span>
+                <span className="font-mono text-amber-800">{formatINR(cost)}</span>
               </span>
-              <Button size="icon" className="h-11 w-11 rounded-full" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
+              <Button size="icon" className="h-11 w-11 rounded-none" aria-label={gt('Build')} onClick={confirmPendingPlacement}>
                 <Check className="w-5 h-5" />
               </Button>
-              <Button size="icon" variant="secondary" className="h-11 w-11 rounded-full" aria-label={gt('Cancel')} onClick={() => setPendingPlacement(null)}>
+              <Button size="icon" variant="secondary" className="h-11 w-11 rounded-none" aria-label={gt('Cancel')} onClick={() => setPendingPlacement(null)}>
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <div className="w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-border" />
+            <div className="w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-chrome-border" />
           </div>
         );
       })()}
-
-      {/* B1: why a tap was refused (auto-hides after ~2.5 s) */}
-      {tapRefusal && (
-        <div
-          key={tapRefusal.key}
-          data-testid="tap-refusal"
-          role="status"
-          className="absolute z-30 -translate-x-1/2 -translate-y-full pointer-events-none max-w-[80vw] rounded-md border border-red-500/60 bg-card/95 px-3 py-1.5 text-sm font-medium text-red-500 shadow-lg backdrop-blur-sm text-center"
-          style={{ left: `clamp(100px, ${tapRefusal.left}px, calc(100% - 100px))`, top: `max(72px, ${tapRefusal.top - 24}px)` }}
-        >
-          {m(tapRefusal.reason)}
-        </div>
-      )}
 
       {/* City Connection Dialog (random map only; the fixed Varanasi map has no trade-route dialog) */}
       {cityConnectionDialog && state.mapId !== 'varanasi' && (() => {
@@ -4520,7 +4844,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </DialogHeader>
               <div className="flex flex-col gap-4 mt-4">
                 <T>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-chrome-muted">
                     Connecting to <Var>{city.name}</Var> will establish a trade route, providing:
                     <ul className="mt-2 space-y-1 list-disc list-inside">
                       <li>₹5,000 one-time bonus</li>
@@ -4568,12 +4892,13 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           key={moneyNotice.key}
           data-testid="money-notice"
           role="status"
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none rounded-md border border-red-500/60 bg-card/95 px-3 py-1.5 text-sm font-medium text-red-500 shadow-lg"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none rounded-none border border-red-800 bg-chrome-panel px-3 py-1.5 text-sm font-medium text-red-800"
         >
           {m(moneyNotice.reason)}
         </div>
       )}
 
+      {/* On phones the toolbar's tool strip names the tool and cost; this pill would sit on top of the floating column. */}
       {!isMobile && hoveredTile && selectedTool !== 'select' && TOOL_INFO[selectedTool] && (() => {
         // S1-T10 / C1: placement preview label (real cost, and the reason when the tile is red)
         const toolCost = TOOL_INFO[selectedTool].cost;
@@ -4588,10 +4913,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         const toolName = m(getToolDisplay(selectedTool, TOOL_INFO[selectedTool], state.mapId).name);
 
         return (
-          <div data-testid="placement-label" className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md text-sm ${
+          <div data-testid="placement-label" className={`pointer-events-none absolute bottom-[15.5rem] md:bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] md:left-[34rem] md:right-[12rem] md:mx-auto md:w-fit md:translate-x-0 text-center px-4 py-2 rounded-none text-sm z-10 ${
             isPlacementInvalid
-              ? 'border bg-destructive/90 border-destructive-foreground/30 text-destructive-foreground'
-              : 'border bg-card/90 border-border'
+              ? 'border border-red-800 bg-chrome-panel text-red-800 font-medium'
+              : 'hud-panel text-chrome-text'
           }`}>
             {area && dragStartTile && dragEndTile ? (
               <>
@@ -4621,10 +4946,10 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 {toolName}
                 {toolCost > 0 && ` - ${formatINR(toolCost)}`}
                 {placementPreview?.warning && (
-                  <span className="text-amber-500">{' - '}{m(placementPreview.warning)}</span>
+                  <span className="text-amber-800">{' - '}{m(placementPreview.warning)}</span>
                 )}
-                {showsDragGrid && gt(' - Drag to zone area')}
-                {supportsDragPlace && !showsDragGrid && gt(' - Drag to place')}
+                {showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to zone' : ' - Drag to zone area')}
+                {supportsDragPlace && !showsDragGrid && gt(isMobile && !touchDrawMode ? ' - Tap to place' : ' - Drag to place')}
               </>
             )}
           </div>
@@ -4649,15 +4974,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             className="fixed pointer-events-none z-[100]"
             style={{ left, top: hoveredIncident.screenY - 8 }}
           >
-            <div className="bg-sidebar border border-sidebar-border rounded-md shadow-lg px-3 py-2 w-[220px]">
+            <div className="bg-chrome-panel border border-chrome-border rounded-none shadow-[0_1px_2px_rgb(60_40_20/0.18)] px-3 py-2 w-[220px]">
               {/* Header */}
               <div className="flex gap-2 items-center mb-1">
                 {hoveredIncident.type === 'fire' ? (
-                  <FireIcon size={14} className="text-red-400" />
+                  <FireIcon size={14} className="text-red-800" />
                 ) : (
-                  <SafetyIcon size={14} className="text-blue-400" />
+                  <SafetyIcon size={14} className="text-blue-800" />
                 )}
-                <span className="text-xs font-semibold text-sidebar-foreground">
+                <span className="text-xs font-semibold text-chrome-text">
                   {hoveredIncident.type === 'fire'
                     ? getFireNameForTile(hoveredIncident.x, hoveredIncident.y)
                     : hoveredIncident.crimeType
@@ -4667,7 +4992,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </div>
               
               {/* Description */}
-              <p className="text-[11px] text-muted-foreground leading-tight">
+              <p className="text-[11px] text-chrome-muted leading-tight">
                 {hoveredIncident.type === 'fire'
                   ? getFireDescriptionForTile(hoveredIncident.x, hoveredIncident.y)
                   : hoveredIncident.crimeType
@@ -4676,8 +5001,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
               </p>
               
               {/* Location */}
-              <div className="mt-1.5 pt-1.5 border-t border-sidebar-border/50 text-[10px] text-muted-foreground/60 font-mono">
-                ({hoveredIncident.x}, {hoveredIncident.y})
+              <div className="mt-1.5 pt-1.5 border-t border-chrome-border text-[10px] text-chrome-muted">
+                {getNeighbourhoodName(hoveredIncident.x, hoveredIncident.y, gridSize)}
               </div>
             </div>
           </div>

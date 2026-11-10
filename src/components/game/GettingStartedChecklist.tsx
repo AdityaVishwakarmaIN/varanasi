@@ -103,7 +103,7 @@ export function GettingStartedChecklist({
   };
 
   return (
-    <div className={cn('hud-panel pointer-events-auto rounded-xl p-2.5 text-sm', className)}>
+    <div className={cn('hud-panel pointer-events-auto rounded-none p-2.5 text-sm', className)}>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -112,15 +112,15 @@ export function GettingStartedChecklist({
           aria-label={m(expanded ? LABELS.collapse : LABELS.expand)}
           className="flex-1 min-w-0 flex items-center gap-2 text-left min-h-8"
         >
-          <span className="font-semibold text-foreground truncate">{m(LABELS.title)}</span>
-          <span className="text-xs text-muted-foreground tabular-nums">{done}/{STEPS.length}</span>
-          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          <span className="font-semibold text-chrome-text truncate">{m(LABELS.title)}</span>
+          <span className="text-xs text-chrome-muted tabular-nums">{done}/{STEPS.length}</span>
+          {expanded ? <ChevronUp className="w-4 h-4 text-chrome-muted" /> : <ChevronDown className="w-4 h-4 text-chrome-muted" />}
         </button>
         <button
           type="button"
           onClick={dismiss}
           aria-label={m(LABELS.dismiss)}
-          className="text-muted-foreground hover:text-foreground -m-1 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-lg flex items-center justify-center"
+          className="text-chrome-muted hover:text-chrome-accent -m-1 min-w-11 min-h-11 md:min-w-8 md:min-h-8 rounded-none flex items-center justify-center"
         >
           <X className="w-4 h-4" />
         </button>
@@ -134,17 +134,17 @@ export function GettingStartedChecklist({
                 <button
                   type="button"
                   onClick={() => setTool(step.tool)}
-                  className="w-full flex items-center gap-2 rounded-lg px-1.5 py-1 min-h-8 text-left hover:bg-sandstone/[0.06]"
+                  className="w-full flex items-center gap-2 rounded-none px-1.5 py-1 min-h-8 text-left hover:bg-chrome-well"
                 >
                   <span
                     className={cn(
-                      'h-4 w-4 shrink-0 rounded-full ring-1 flex items-center justify-center',
-                      isDone ? 'bg-marigold/20 ring-marigold/60 text-marigold' : 'ring-sandstone/30'
+                      'h-4 w-4 shrink-0 rounded-none ring-1 flex items-center justify-center',
+                      isDone ? 'bg-marigold/20 ring-marigold/60 text-chrome-accent' : 'ring-chrome-border'
                     )}
                   >
                     {isDone && <Check className="w-3 h-3" />}
                   </span>
-                  <span className={cn('text-xs', isDone ? 'text-muted-foreground line-through' : 'text-foreground')}>
+                  <span className={cn('text-xs', isDone ? 'text-chrome-muted line-through' : 'text-chrome-text')}>
                     {m(step.label)}
                   </span>
                 </button>

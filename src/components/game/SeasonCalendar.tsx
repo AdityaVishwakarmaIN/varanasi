@@ -41,15 +41,23 @@ export interface CalendarEvent {
   title: string;
 }
 
+/** Label text colours with 4.5:1+ contrast on the sandstone chrome (SEASON_COLORS are swatch fills). */
+const SEASON_TEXT_CLASS: Record<Season, string> = {
+  summer: 'text-orange-800',
+  monsoon: 'text-slate-800',
+  postMonsoon: 'text-yellow-800',
+  winter: 'text-sky-800',
+};
+
 /** "Jul 2026 · Monsoon": the date with its season, for both top bars. */
-export function SeasonDateLabel({ month, year }: { month: number; year: number }) {
+export function SeasonDateLabel({ month, year, short = false }: { month: number; year: number; short?: boolean }) {
   const m = useMessages();
   const season = getSeason(month);
   return (
-    <span className="inline-flex items-center gap-1">
-      <span>{MONTH_ABBR[month - 1]} {year}</span>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <span>{MONTH_ABBR[month - 1]} {short ? `'${String(year % 100).padStart(2, '0')}` : year}</span>
       <span aria-hidden>·</span>
-      <span style={{ color: SEASON_COLORS[season] }}>{m(SEASON_NAMES[season])}</span>
+      <span className={SEASON_TEXT_CLASS[season]}>{m(SEASON_NAMES[season])}</span>
     </span>
   );
 }
@@ -86,7 +94,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
 
   return (
     <div className={`relative w-full ${className}`}>
-      <div className={`relative flex w-full overflow-hidden rounded-sm ${full ? 'h-6' : 'h-1.5'}`}>
+      <div className={`relative flex w-full overflow-hidden rounded-none ${full ? 'h-6' : 'h-1.5'}`}>
         {months.map((cm) => {
           const label = `${MONTH_ABBR[cm.month - 1]} ${cm.year} · ${m(SEASON_NAMES[cm.season])}`;
           return (
@@ -97,7 +105,7 @@ export const SeasonStrip = React.memo(function SeasonStrip({
               title={label}
             >
               {full && (
-                <span className="text-[10px] font-medium text-black/75 truncate px-1">
+                <span className="text-[10px] font-medium text-chrome-text truncate px-1">
                   {MONTH_ABBR[cm.month - 1]} · {m(SEASON_NAMES[cm.season])}
                 </span>
               )}
@@ -139,7 +147,7 @@ export function FogChip({ weather, hour, className = '' }: { weather: SimWeather
   if (!isFogActive(weather, hour)) return null;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-full bg-sandstone/10 ring-1 ring-sandstone/20 px-1.5 text-[10px] leading-4 text-sandstone ${className}`}
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap rounded-none border border-chrome-border bg-chrome-well px-1.5 text-[10px] font-medium leading-4 text-chrome-text ${className}`}
       title={m(FOG_TOOLTIP)}
     >
       ☁ {m(FOG_LABEL)}

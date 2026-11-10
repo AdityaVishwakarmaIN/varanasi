@@ -9,6 +9,7 @@ import {
   getHeatwaveCityHit,
   getOutbreakMask,
   runCollapseDay,
+  runDiseaseDay,
   runHeatwaveDay,
 } from '@/lib/crisisSim';
 import type { GameState } from '@/types/game';
@@ -41,7 +42,8 @@ describe('runHeatwaveDay', () => {
     expect(scheduled.notifications).toHaveLength(0);
 
     const start = runHeatwaveDay(scheduled.heatwave, scheduled.heatwave!.startDay, 'summer', () => 0);
-    expect(start.notifications[0]?.severity).toBe('crisis');
+    // The forecast warned three days ahead, so the first hot day is a warning, not a new crisis
+    expect(start.notifications[0]?.severity).toBe('warning');
   });
 
   it('never rolls outside summer or on non-check days', () => {
@@ -95,5 +97,52 @@ describe('runCollapseDay', () => {
     const result = runCollapseDay(state.grid, SIZE, fire, 'monsoon', null, () => 0);
     expect(result.collapsed).toEqual([{ x: 5, y: 5 }]);
     expect(result.notifications[0]).toMatchObject({ severity: 'crisis', x: 5, y: 5 });
+  });
+});
+
+describe('runDiseaseDay notices', () => {
+  function crowdedCity(): GameState {
+    const state = cityWithHouse();
+    for (const row of state.grid) for (const t of row) {
+      t.zone = 'residential';
+      t.building = { ...t.building, type: 'house_small', population: 10, constructionProgress: 100 };
+    }
+    return state;
+  }
+  const dayInput = (state: GameState, outbreaks: ReturnType<typeof startOutbreak>[] | undefined) => ({
+    grid: state.grid,
+    size: SIZE,
+    services: { water: grid(false), health: grid(0) },
+    mapId: state.mapId,
+    gangaHealth: 50,
+    season: 'summer' as const,
+    today: 700,
+    outbreaks,
+    recentFloodMask: null,
+  });
+
+  it('merges outbreaks that start on the same check into one crisis notice', () => {
+    const r = runDiseaseDay(dayInput(crowdedCity(), undefined), () => 0);
+    expect(r.outbreaks!.length).toBeGreaterThan(1);
+    expect(r.notifications).toHaveLength(1);
+    const n = r.notifications[0];
+    expect(n.severity).toBe('crisis');
+    expect(n.title).toMatch(new RegExp(`^Disease outbreaks in .+ and ${r.outbreaks!.length - 1} more `));
+    expect(n.x).toBeDefined();
+  });
+
+  it('is only a warning when an outbreak was already running', () => {
+    const state = crowdedCity();
+    const r = runDiseaseDay(dayInput(state, [startOutbreak(0, 690)]), () => 0);
+    expect(r.notifications.filter((n) => n.title.startsWith('Disease outbreak'))).toHaveLength(1);
+    expect(r.notifications.find((n) => n.title.startsWith('Disease outbreak'))!.severity).toBe('warning');
+  });
+
+  it('a single new outbreak keeps the plain title', () => {
+    const state = cityWithHouse();
+    const r = runDiseaseDay(dayInput(state, undefined), () => 0);
+    expect(r.notifications).toHaveLength(1);
+    expect(r.notifications[0].title).toMatch(/^Disease outbreak in [^,]+$/);
+    expect(r.notifications[0].title).not.toMatch(/outbreaks/);
   });
 });

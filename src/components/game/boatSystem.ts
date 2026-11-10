@@ -24,6 +24,7 @@ import {
   getDockRoute,
   getMaxGhatBoats,
   isRouteNavigable,
+  screenToTile,
   type GhatBoatNetwork,
 } from './ghatBoats';
 
@@ -573,6 +574,9 @@ export function createBoatSystem(
       if (boat.x < viewLeft || boat.x > viewRight || boat.y < viewTop || boat.y > viewBottom) {
         continue;
       }
+      // Bridges are drawn on the base layer, below boats: hide a boat while it passes under one
+      const under = screenToTile(boat.x, boat.y);
+      if (currentGrid[under.y]?.[under.x]?.building.type === 'bridge') continue;
       
       ctx.save();
       ctx.translate(boat.x, boat.y);

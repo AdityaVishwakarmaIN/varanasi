@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { ChevronDown, ChevronUp, MapPin, MessageCircle } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { absoluteDay } from '@/lib/seasons';
 import { createRng } from '@/lib/rng';
 import { computeProblemIconsForState } from '@/lib/problemIcons';
-import { isFeedDue, nextCitizenFeedEntry, pushFeedEntry, type CitizenFeedEntry } from '@/lib/citizenFeed';
+import { advanceCitizenFeed, normalizeFeedEntries, resolveFeedText, type CitizenFeedEntry } from '@/lib/citizenFeed';
 import { cn } from '@/lib/utils';
 
 const LABELS = {
@@ -16,6 +16,7 @@ const LABELS = {
   expand: msg('Show citizen voices'),
   collapse: msg('Hide citizen voices'),
   locate: msg('Show on map'),
+  resolved: msg('Resolved'),
 };
 
 const STORAGE_PREFIX = 'isocity-citizen-feed-';
@@ -32,14 +33,13 @@ function hashString(s: string): number {
 function loadEntries(cityId: string): CitizenFeedEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + cityId);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as CitizenFeedEntry[]) : [];
+    return normalizeFeedEntries(raw ? JSON.parse(raw) : []);
   } catch {
     return [];
   }
 }
 
-function saveEntries(cityId: string, entries: CitizenFeedEntry[]): void {
+function saveEntries(cityId: string, entries: readonly CitizenFeedEntry[]): void {
   try {
     localStorage.setItem(STORAGE_PREFIX + cityId, JSON.stringify(entries));
   } catch {
@@ -64,7 +64,7 @@ export function CitizenFeed({
   const { state } = useGame();
   const m = useMessages();
   const [open, setOpen] = useState(!compact);
-  const [feed, setFeed] = useState<{ cityId: string; entries: CitizenFeedEntry[] }>({ cityId: '', entries: [] });
+  const [feed, setFeed] = useState<{ cityId: string; entries: readonly CitizenFeedEntry[] }>({ cityId: '', entries: [] });
   const [unread, setUnread] = useState(0);
   const today = absoluteDay(state.year, state.month, state.day);
   const cityId = state.id;
@@ -74,16 +74,18 @@ export function CitizenFeed({
     setFeed({ cityId, entries: loadEntries(cityId) });
   }, [cityId]);
 
-  // Once per in-game day, post a message if a week has passed since the last one.
+  // Once per in-game day: expire old entries, mark solved problems as resolved, and post a message if a week has passed.
+  const lastRun = useRef('');
   useEffect(() => {
     if (feed.cityId !== cityId) return;
-    if (!isFeedDue(feed.entries[0]?.day, today)) return;
-    const entry = nextCitizenFeedEntry(feed.entries, state, computeProblemIconsForState(state), createRng(hashString(cityId) ^ today));
-    if (!entry) return;
-    const entries = pushFeedEntry(feed.entries, entry);
-    saveEntries(cityId, entries);
-    setFeed({ cityId, entries });
-    setUnread((u) => u + 1);
+    const key = `${cityId}|${today}`;
+    if (lastRun.current === key) return;
+    lastRun.current = key;
+    const next = advanceCitizenFeed(feed.entries, state, computeProblemIconsForState(state), createRng(hashString(cityId) ^ today));
+    if (next.entries === feed.entries) return;
+    saveEntries(cityId, next.entries);
+    setFeed({ cityId, entries: next.entries });
+    if (next.posted) setUnread((u) => u + 1);
     // `state` is read at the day boundary only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, cityId, feed]);
@@ -94,34 +96,57 @@ export function CitizenFeed({
     setUnread(0);
   };
 
-  return (
-    <div className={cn('pointer-events-auto', className)}>
-      <div className="hud-glass gold-hairline rounded-2xl overflow-hidden">
+  // Mobile, closed: just an icon chip (with the unread count) so it takes almost no map.
+  if (compact && !open) {
+    return (
+      <div className={cn('pointer-events-auto', className)}>
         <button
           type="button"
           onClick={toggle}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left min-h-11 hover:bg-sandstone/[0.05] transition-colors"
-          aria-expanded={open}
-          aria-label={m(open ? LABELS.collapse : LABELS.expand)}
+          className="hud-glass relative flex h-11 w-11 items-center justify-center rounded-none"
+          aria-expanded={false}
+          aria-label={m(LABELS.expand)}
+          title={m(LABELS.title)}
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-marigold/15 ring-1 ring-marigold/30" aria-hidden><MessageCircle className="h-3.5 w-3.5 text-marigold" /></span>
-          <span className="flex-1 hud-label">{m(LABELS.title)}</span>
-          {!open && unread > 0 && (
-            <span className="min-w-[16px] h-4 px-1 rounded-full hud-selected text-[10px] leading-4 text-center font-semibold">
+          <MessageCircle className="h-5 w-5 text-chrome-text" aria-hidden />
+          {unread > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-[16px] h-4 px-1 rounded-none hud-selected text-[10px] leading-4 text-center font-semibold">
               {unread}
             </span>
           )}
-          {open ? <ChevronDown className="h-3.5 w-3.5 text-sandstone/70" /> : <ChevronUp className="h-3.5 w-3.5 text-sandstone/70" />}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn('pointer-events-auto', compact && 'w-[min(18rem,calc(100vw-1.5rem))]', className)}>
+      <div className="hud-glass rounded-none overflow-hidden">
+        <button
+          type="button"
+          onClick={toggle}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left min-h-11 hover:bg-chrome-well transition-colors"
+          aria-expanded={open}
+          aria-label={m(open ? LABELS.collapse : LABELS.expand)}
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-none bg-chrome-well border border-chrome-border" aria-hidden><MessageCircle className="h-3.5 w-3.5 text-chrome-text" /></span>
+          <span className="flex-1 hud-label">{m(LABELS.title)}</span>
+          {!open && unread > 0 && (
+            <span className="min-w-[16px] h-4 px-1 rounded-none hud-selected text-[10px] leading-4 text-center font-semibold">
+              {unread}
+            </span>
+          )}
+          {open ? <ChevronDown className="h-3.5 w-3.5 text-chrome-muted" /> : <ChevronUp className="h-3.5 w-3.5 text-chrome-muted" />}
         </button>
         {open && (
-          <ul className={cn('border-t border-gold/15 overflow-y-auto', compact ? 'max-h-[32vh]' : 'max-h-56')}>
+          <ul className={cn('border-t border-chrome-border overflow-y-auto', compact ? 'max-h-[32vh]' : 'max-h-56')}>
             {entries.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-muted-foreground">{m(LABELS.empty)}</li>
+              <li className="px-3 py-2 text-xs text-chrome-muted">{m(LABELS.empty)}</li>
             ) : (
               entries.map((e) => {
                 const canLocate = e.x !== undefined && e.y !== undefined;
                 return (
-                  <li key={e.id} className="border-b border-gold/[0.08] last:border-b-0">
+                  <li key={e.id} className="border-b border-chrome-border last:border-b-0">
                     <button
                       type="button"
                       disabled={!canLocate}
@@ -129,12 +154,14 @@ export function CitizenFeed({
                       title={canLocate ? m(LABELS.locate) : undefined}
                       className={cn(
                         'flex w-full items-start gap-2 px-3 py-2 text-left text-xs leading-snug',
-                        canLocate ? 'hover:bg-sandstone/[0.06] cursor-pointer' : 'cursor-default',
+                        canLocate ? 'hover:bg-chrome-well cursor-pointer' : 'cursor-default',
+                        e.resolved && 'opacity-60',
                       )}
                     >
-                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.positive ? 'bg-emerald-300 shadow-[0_0_6px_rgb(110_231_183/0.7)]' : 'bg-saffron shadow-[0_0_6px_hsl(var(--saffron)/0.7)]')} />
-                      <span className="flex-1 text-sandstone/90">{e.text}</span>
-                      {canLocate && <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />}
+                      <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', e.resolved ? 'bg-chrome-muted' : e.positive ? 'bg-green-700' : 'bg-chrome-accent')} />
+                      <span className="flex-1 text-chrome-text">{resolveFeedText(e.text, state.cityName)}</span>
+                      {e.resolved && <span className="shrink-0 text-[10px] uppercase tracking-wide text-chrome-muted">{m(LABELS.resolved)}</span>}
+                      {canLocate && <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-chrome-muted" />}
                     </button>
                   </li>
                 );

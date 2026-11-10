@@ -92,7 +92,7 @@ export function ShareModal({ open, onOpenChange }: ShareModalProps) {
 
               {/* Copy Link */}
               <div className="space-y-2 overflow-hidden">
-                <div className="w-full bg-slate-800 rounded-lg px-4 py-3 text-sm text-slate-300 truncate">
+                <div className="w-full bg-slate-800 rounded-none px-4 py-3 text-sm text-slate-300 truncate">
                   {inviteUrl}
                 </div>
                 <Button

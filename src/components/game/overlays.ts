@@ -270,55 +270,33 @@ const GANGA_HURTS = 'rgba(220, 38, 38, 0.45)';
 /** Ganga overlay: riverside greenery and homes whose sewage is treated. */
 const GANGA_CLEANS = 'rgba(34, 197, 94, 0.4)';
 
-// ============================================================================
-// Overlay legend (E1): built from the same colours the overlay draws with
-// ============================================================================
+/** One legend stop for the on-map overlay chip: a swatch colour (null = untinted tile) and a short label. */
+export type OverlayLegendStop = { color: string | null; label: string };
 
-/** Label keys of legend entries (the legend component turns them into translated text). */
-export type OverlayLegendKey =
-  | 'uncovered'
-  | 'range'
-  | 'subway'
-  | 'noSubway'
-  | 'gangaHurts'
-  | 'gangaCleans'
-  | 'gangaPolluted'
-  | 'gangaClean'
-  | 'floodAny'
-  | 'floodNormal'
-  | 'floodHeavy';
-
-export interface OverlayLegend {
-  swatches: { color: string; key: OverlayLegendKey }[];
-  /** A colour ramp (left to right) with labels for its two ends. */
-  ramp?: { colors: string[]; from: OverlayLegendKey; to: OverlayLegendKey };
-}
-
-/** What the colours of an overlay mean, or null for no overlay. */
-export function getOverlayLegend(mode: OverlayMode): OverlayLegend | null {
-  switch (mode) {
-    case 'none':
-      return null;
-    case 'subway':
-      return { swatches: [{ color: SUBWAY_FILL, key: 'subway' }, { color: NO_SUBWAY_FILL, key: 'noSubway' }] };
-    case 'ganga':
-      return {
-        swatches: [{ color: GANGA_HURTS, key: 'gangaHurts' }, { color: GANGA_CLEANS, key: 'gangaCleans' }],
-        ramp: { colors: [0, 50, 100].map((h) => getGangaRiverColor(h, 1)), from: 'gangaPolluted', to: 'gangaClean' },
-      };
-    case 'flood':
-      return {
-        swatches: [
-          { color: FLOOD_RISK_FILL[1], key: 'floodAny' },
-          { color: FLOOD_RISK_FILL[2], key: 'floodNormal' },
-          { color: FLOOD_RISK_FILL[3], key: 'floodHeavy' },
-        ],
-      };
-    default:
-      // Service overlays: red tint on buildings without the service, circles for each building's range
-      return { swatches: [{ color: UNCOVERED_WARNING, key: 'uncovered' }, { color: OVERLAY_CIRCLE_COLORS[mode], key: 'range' }] };
-  }
-}
+/** Legend per overlay, ordered good, ok, bad. Colours match what `getOverlayFillStyle` paints. */
+export const OVERLAY_LEGEND: Record<OverlayMode, OverlayLegendStop[]> = {
+  none: [],
+  power: [{ color: null, label: 'Powered' }, { color: UNCOVERED_WARNING, label: 'No power' }],
+  water: [{ color: null, label: 'Has water' }, { color: UNCOVERED_WARNING, label: 'No water' }],
+  fire: [
+    { color: 'rgba(251, 146, 60, 0.45)', label: 'Fire station range' },
+    { color: UNCOVERED_WARNING, label: 'Building with no fire cover' },
+  ],
+  police: [{ color: 'rgba(147, 197, 253, 0.6)', label: 'Police range' }, { color: UNCOVERED_WARNING, label: 'No police cover' }],
+  health: [{ color: 'rgba(134, 239, 172, 0.6)', label: 'Clinic range' }, { color: UNCOVERED_WARNING, label: 'No clinic cover' }],
+  education: [{ color: 'rgba(196, 181, 253, 0.6)', label: 'School range' }, { color: UNCOVERED_WARNING, label: 'No school cover' }],
+  subway: [{ color: 'rgba(245, 158, 11, 0.7)', label: 'Subway' }, { color: 'rgba(40, 30, 20, 0.4)', label: 'None' }],
+  ganga: [
+    { color: GANGA_CLEANS, label: 'Cleans' },
+    { color: null, label: 'No effect' },
+    { color: GANGA_HURTS, label: 'Pollutes' },
+  ],
+  flood: [
+    { color: FLOOD_RISK_FILL[3], label: 'Heavy rain' },
+    { color: FLOOD_RISK_FILL[2], label: 'Normal' },
+    { color: FLOOD_RISK_FILL[1], label: 'Any monsoon' },
+  ],
+};
 
 /**
  * Get the overlay mode that should be shown for a given tool.
@@ -356,7 +334,7 @@ export const OVERLAY_CIRCLE_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 0.8)',    // Amber
   water: 'rgba(96, 165, 250, 0.8)',    // Blue
-  fire: 'rgba(248, 113, 113, 0.8)',    // Light red
+  fire: 'rgba(251, 146, 60, 0.85)',   // Orange: station range (red is kept for 'not covered')
   police: 'rgba(147, 197, 253, 0.8)',  // Light blue
   health: 'rgba(134, 239, 172, 0.8)',  // Light green
   education: 'rgba(196, 181, 253, 0.8)', // Light purple
@@ -370,7 +348,7 @@ export const OVERLAY_HIGHLIGHT_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 1)',      // Amber
   water: 'rgba(96, 165, 250, 1)',      // Blue  
-  fire: 'rgba(239, 68, 68, 1)',        // Red
+  fire: 'rgba(234, 88, 12, 1)',        // Deep orange
   police: 'rgba(59, 130, 246, 1)',     // Blue
   health: 'rgba(34, 197, 94, 1)',      // Green
   education: 'rgba(168, 85, 247, 1)',  // Purple
@@ -384,7 +362,7 @@ export const OVERLAY_CIRCLE_FILL_COLORS: Record<OverlayMode, string> = {
   none: 'transparent',
   power: 'rgba(251, 191, 36, 0.12)',
   water: 'rgba(96, 165, 250, 0.12)',
-  fire: 'rgba(248, 113, 113, 0.12)',
+  fire: 'rgba(251, 146, 60, 0.12)',
   police: 'rgba(147, 197, 253, 0.12)',
   health: 'rgba(134, 239, 172, 0.12)',
   education: 'rgba(196, 181, 253, 0.12)',

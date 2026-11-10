@@ -59,6 +59,19 @@ export function formatMonthlyNet(stats: { income: number; expenses: number }): s
   return `${net >= 0 ? '+' : ''}${formatINR(net)}`;
 }
 
+/** Money with an explicit sign: "+₹1,200", "-₹340". Zero is "+₹0". */
+export function formatINRSigned(n: number): string {
+  return `${n >= 0 ? '+' : ''}${formatINR(n)}`;
+}
+
+/**
+ * The ONE way to show a recurring amount: always per month ("₹1,200/mo"). The simulation books a quarter of the
+ * monthly net each week, so a month's deposits add up to this figure. Pass `signed` for a net (+/-).
+ */
+export function formatINRPerMonth(n: number, signed = false): string {
+  return `${signed ? formatINRSigned(n) : formatINR(n)}/mo`;
+}
+
 /** Takes the SIMULATION population, multiplies by POPULATION_DISPLAY_SCALE, then formats with lakh/crore words. */
 export function formatPopulation(simPopulation: number): string {
   if (!Number.isFinite(simPopulation)) return '0';

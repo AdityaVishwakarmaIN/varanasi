@@ -3,14 +3,17 @@ import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 import {
   createDefaultWindVisualState,
   buildWindTreeRenderItem,
+  cutWindTreeSilhouette,
+  drawWindTreeAtRest,
   drawWindDustFrame,
   drawWindTreesFrame,
   updateWindVisualState,
+  windSwayAngle,
   type WindTreeRenderItem,
   type WindVisualState,
 } from './windRenderer';
 
-export { createDefaultWindVisualState, buildWindTreeRenderItem };
+export { createDefaultWindVisualState, buildWindTreeRenderItem, cutWindTreeSilhouette, drawWindTreeAtRest, windSwayAngle };
 export type { WindDustParticle, WindTreeRenderItem, WindVisualState } from './windRenderer';
 
 export interface WindSystemRefs {

@@ -31,6 +31,8 @@ export type Car = {
   blockedSeconds?: number;
   /** True while a motorbike rides in the middle of the road to pass slower traffic. */
   overtaking?: boolean;
+  /** 0..1: how far the car has eased toward the kerb to let an emergency vehicle pass. */
+  yieldShift?: number;
 };
 
 export type Bus = {

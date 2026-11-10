@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI CSS And Touch Traps"
+  short_description: "House style, tap targets, z-index and touch traps."
+  default_prompt: "Use $ui-css-and-touch-traps to build this UI so it matches house style and works on desktop, tablet and phone."

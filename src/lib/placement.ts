@@ -12,6 +12,7 @@
 import { msg } from 'gt-next';
 import { BuildingType, GameState, TOOL_INFO, Tool, ZoneType } from '@/types/game';
 import { getBuildingDisplayName } from '@/games/isocity/maps/varanasiCatalog';
+import { getDistanceToGanga, getRiverZone } from '@/games/isocity/maps/riverZones';
 import {
   canBulldozeTile,
   canPlaceLandTerraform,
@@ -63,7 +64,9 @@ export const PLACEMENT_REASONS = {
   notWater: msg('Only works on water'),
   outsideMap: msg('Outside the map'),
   needsRoad: msg('Needs road access to grow'),
-  ghatWestBank: msg("Ghats must be on the Ganga's west bank"),
+  industrialByRiver: msg('Industry here pollutes the Ganga. Zone it inland, away from the river and floodplain'),
+  ghatWestBank: msg("Ghats must be on the Ganga's west bank, the side with the city"),
+  ghatWaterEdge: msg("Ghats must go right at the river's edge"),
   waterWorksNearGanga: msg('Jal Sansthan Water Works must be within 3 tiles of the Ganga'),
   embankmentNearGanga: msg('Embankments must be on land within 4 tiles of the Ganga'),
   embankmentOnGhat: msg("Embankments can't be built on ghats"),
@@ -243,8 +246,11 @@ function explainRefusal(
       return PLACEMENT_REASONS.settlementResidentialOnly;
     case 'nothingToDezone':
       return PLACEMENT_REASONS.nothingToRemove;
-    case 'ghat':
-      return PLACEMENT_REASONS.ghatWestBank;
+    case 'ghat': {
+      // On the west bank but not at the water's edge is a different mistake from being on the wrong bank
+      const riverZone = getRiverZone(x, y, state.gridSize, state.mapId);
+      return riverZone === 'westRiverfront' || riverZone === 'westBank' ? PLACEMENT_REASONS.ghatWaterEdge : PLACEMENT_REASONS.ghatWestBank;
+    }
     case 'waterWorks':
       return footprintTiles(state, x, y, size.width, size.height).some((t) => t?.building.type === 'water')
         ? PLACEMENT_REASONS.water
@@ -332,6 +338,13 @@ export function getBuildingName(type: BuildingType, state: Pick<GameState, 'mapI
 
 /** Zones can be painted anywhere, but only grow with road access: warn (not block) when missing. */
 function getZoneWarning(state: GameState, x: number, y: number, zone: ZoneType): string | undefined {
+  // Factories on the riverbank or floodplain load the Ganga (and flood): hint only, never block
+  if (zone === 'industrial' && state.mapId === 'varanasi') {
+    const riverZone = getRiverZone(x, y, state.gridSize, state.mapId);
+    if (riverZone === 'westRiverfront' || riverZone === 'eastFloodplain' || getDistanceToGanga(x, y, state.gridSize, state.mapId) <= 4) {
+      return PLACEMENT_REASONS.industrialByRiver;
+    }
+  }
   // Evaluate the existing development rules on a copy where only this tile is zoned.
   const row = state.grid[y].slice();
   row[x] = { ...row[x], zone };

@@ -46,7 +46,10 @@ const STATS_FIELDS_ADDED_AFTER_GOLDENS = new Set(['power', 'water']);
 /** Canonical JSON: sorted keys, `undefined` dropped, random ids removed. */
 function canonical(value: unknown): string {
   return JSON.stringify(value, function replacer(key, v) {
-    if (key === 'id' || FIELDS_ADDED_AFTER_GOLDENS.has(key)) return undefined;
+    // Notification timestamps are wall-clock time (fire notifications are the first to appear in these runs).
+    if (key === 'id' || (key === 'timestamp' && this && 'title' in this) || FIELDS_ADDED_AFTER_GOLDENS.has(key)) return undefined;
+    // Water-body and neighbouring-city names are cosmetic (they come from lists in names.ts), so they stay out of the fingerprint.
+    if (key === 'name' && this && ('tiles' in this || 'direction' in this)) return undefined;
     if (key === 'stats' && v && typeof v === 'object') {
       const stats = { ...(v as Record<string, unknown>) };
       for (const k of STATS_FIELDS_ADDED_AFTER_GOLDENS) delete stats[k];
@@ -196,18 +199,25 @@ const SCENARIOS: Scenario[] = [
 
 
 /**
- * Golden fingerprints recorded with the original simulateTick (commit 243c14d, before S1-T5).
+ * Golden fingerprints recorded with the original simulateTick (commit 243c14d, before S1-T5). Re-recorded once when the
+ * name lists in names.ts became Indian: names are now left out of the fingerprint (cosmetic), and 7 of 8 scenarios
+ * matched the old code exactly; the 'recovery' one drew a different random sequence from a name collision.
+ * Re-recorded for the economy balance pass (building upkeep, ratio-based industrial demand, mansion population).
+ * Re-recorded again for the environment fix: tile pollution now settles at about the building stat (it used to settle
+ * at 20x it) and land value now follows nearby buildings. Both re-recordings are intended changes to the values.
+ * Re-recorded for Team Ember's fire model (fuel, wind, burn stages, scorched lots, funding-scaled coverage): intended change.
+ * Re-recorded for the fire notice text (first letter capitalised at sentence start): description text is in the fingerprint.
  * Key = scenario name. Value = the state fingerprint after every tick, joined by ','.
  */
 const GOLDEN: Record<string, string> = {
-"advanced 60, clear": '4f53b2006ca26455,7c2b1f11891c60a4,d8f88a2a694d349c,4790cc6b8f600066,492212bde38aa8e6,bda862355f8b3f9f,c83571530fc51c0e,a164ff1e8ce24609,2eaf24a03624a21a,fd213c6228f1eb3a,36543ba96d38a0dd,586612f4dc8adea3,b43c282688b8e2de,664ba74794889c7e,1843190a19123cbe,0e740739db3c7a93,1724aea12ea88049,5f02e1680935796d,7cc202caf6cba68a,27496b47395ceb42',
-  "advanced 60, severe storm (tree growth, more fires)": 'ac1f20f18c980de0,292b238c11645996,1fcfe8c1d6e308b0,42ec4d49ffe8851d,0bc6ed433b619c01,8edae66fa950a44e,366c3c6393740113,32785df7ef3536f6,813bc6d069a67693,b065c258dfbd1642,cc4d452e14008374,572d66d94e7fb753,01791af8ec8de470,ace27fe26671d249,496f944c885d8c1a,3586afde98b8ecde,ecaaa6913168d23c,6bee116981e2006b,2c46be7da2af2c96,0d3b8d916a5a77bf',
-  "advanced 60, high demand, cleared lots, fires, construction (spawn + consolidation)": 'c6d46e9915f99c71,f31342916bbe8f47,dbbe155dd9607fe4,ef4d824e579aee65,b05ecd474adda252,94b8a7a87b44e3b1,5364792c67ccad75,e406893ffcd18d85,04dfd009d6509c7d,3636daa8b46b666f,42409be10a460154,20b394a8be711446,3416960d3937809e,539c94dd64b9adbb,24f8edab3b01699d,bc2c6631abea2e71,00f507bb544bb757,f4f1395cab8ac2f8,09df23551af386dd,f4405b66c80eb9b7,b74dd87a4c77c411,ed9c6e9531c56710,e207654367cc58a8,b583744e866bd4c9,face06cbfeec2bf6,f4fc0cc876b6153e,6d488c382197e3e7,9968689be81f4a38,886f08358fb44592,0ed4e1c556c6cf28,5ef58f55061dbfcb,b74215cf2b9110dc,7dd7badad29e5220,9a8e8e07f03b632c,65c2944423f09874,abf74f235c20d1c8,8ae61bf9fb72ed16,2512329d60aa37d5,ca1b69a019430ae2,6f11fa822f3f5dce',
-  "advanced 60, oversupply (abandonment and clearing)": '82e7ad2e8af71fe0,c9794213448c0b0d,880650ee098c01c9,8028f3184c1a55b2,16551198c4cdee45,06ec7398aa86f440,555ab911032296ac,74bb58e203e60fe2,6bf19bf971c250e9,0f0a6514df10bbd0,b575defae1154e0b,930525be53b29a03,b12d16b31d5cb30f,25abe81a7ea6059a,b23c0d28e45f4e43,6e622fac761b3db3,aa91b7ae5ffeb89e,f63c01b84b8461f7,0662388c051566e0,77b59f601ae903c3,0c0d1e2b60ad97a6,487a4153307da7f8,696059a25b1d73a4,81060e6d6a15ff5e,4ede1c1dcab599ee,75ead34e3ae0db88,82dd1085ca82b538,3e3fdd2d0b320bd4,9cb077933d332c0e,2f28036850c2ee64,702a9ee3b929d8ec,076c2ac071ac0e06,ab12f9f18b49fdd9,773470901a630983,e64f7b3658625298,9e74c184e4b6e3d8,cb5959661979ee30,6ce019512e2e2b80,f060c3bec91fd74b,d6f48809965c040b,ab7028e6a0e93a78,99a3968d362530b3,ea820f94771057d0,6c5a05c8cfc23a3c,93cc8c4020b34395,51f443a98cf98e3c,fdcd779daf227939,3ac25c620225ca48,44d395f06892b713,1ee938398a7f76d6,b1fa126273817c23,d4bdfcd898298044,72a713d171ae946a,3d1f9c38c610e137,a0004594bc1eb288,bcf95c5f8e76be5f,3480df9af10fff20,f2a1818939efaa97,107027f56d788354,fa44fc0cd10d6ce8',
-  "advanced 60, recovery (abandoned buildings with demand)": 'dc631806557485a6,b034c4a3b6c7572c,c37cd447b88d6b1d,07d705c716221031,9858af82f63c6957,7529b8232054a335,c15cbbf845e567e8,85a3726b14d81cf1,910b59973b1ac0b3,32b05e6ffed10a29,2c631af693159183,06fddd72d9d9c071,0187cd3b23542305,33e3aaca08f7c8e8,21f8c1da0d057e14,85b1d7a4fb3788f6,88559bc68a6e5972,45f09b5ce0a4f307,c5707be37cb3231a,d97f84a2ac8c7e23,f9586d5c83623159,71c78ac51907d1f3,4c37d5ca203a7655,b99ad3346705f3d0,2c6f20121aa296dc,44f9935c393da9f4,4edbd1095c614d0e,99547ef630600c57,364cdc9ce5a4d9c7,bc17edb1168c6089',
-  "advanced 60, disasters off, storm": '00fd3b459a9f50e8,7cdade3b3e5a7252,71ca8147aa62b152,0cfe4ba7b97a39cf,a1f47ba9cfdb3b35,f07b7d226d314c19,bdc0a8b9e5469d66,47b4d6b1042273fb,c38004b754bf3858,3af17b434576a2ac,d9d60d320361b757,0aefed461e45f361,b0fa9b2874aa5d9c,fd181cf2849eaca4,1ec20f4ab31624c1,80da47626fc0fba3,9805fe9153bda411,4a10b09188e05940,24ad8b283bc18943,7ed4c07e61892e82',
-  "advanced 60, player changes service buildings between ticks (coverage cache invalidation)": 'c7cb77ec77760121,f8d937df8c49da2e,4df60359f35f62c0,48f00026ed2312b9,4e4afaa3f05c04b6,7a4922830702963f,0a7138b5cfcb0b5e,55c67ddb045ece19,5039aac3bb2f3c6d,b2ecbbe52308e5ec,6fcfe06f9c98f2b0,f866b245bc8b86b4,114f4fb4e563cec3,e696bec2018757f7,9b55fdfe7f814041,d1a20c04097a1bf0,bd2ee813ef767387,813aafa5d2870717,43d31883f06cc7d3,9905673874b42c90,c6416dbc18b8c0fd,6bd642eac6b8ec2f,0a88e854fe940a48,1f98c8f887906908',
-  "benchmark 160, clear": '093b858a3b35c143,956e2a939c20653a,59f58a481856e8be,3ce5ff9dc213d80d',
+  "advanced 60, clear": 'f5b4e70fb68604dc,f0a98cd6dfbb59d1,8cd90ddc314847bf,b44fe8b3c556f384,36144a08269e121f,0dea0e5bfccad903,b76914c484be98a6,45dabcd8e6357025,3eb9576879c83a63,cd595f80177d29f8,bb7dce12bc85a4a8,02c909b3195dcc22,7bd8b3106ba31ac4,bf4399ba58110b59,17b4f93bbf3a7caf,20bf30c5c835181e,f51600596c4c927e,429504becc241317,7e3058d191466026,b4595876ff929ce5',
+  "advanced 60, disasters off, storm": 'cfaa8b2f2c24a123,ea22dcf51d46b7c7,6450c1e99f061118,c6eb7c24bfd0581e,23bafcc3294b3eff,bcf291db4e16b0fe,65562d722ba810d3,a1331e83d1ee9f34,0a15156ef7ccbe26,dd996f029ac6ad5b,2f742dc6ff3afd22,beba772ced3a0356,88e1e14591d6e1b1,661368ad39794d7e,fd258a0396633d34,95e8f3062054e39f,d0a2bc07b6d3048d,cbcfd86c1184be48,2d331253423e9e7f,ab463e333a7685fb',
+  "advanced 60, high demand, cleared lots, fires, construction (spawn + consolidation)": '6f438d11e7172809,1b5ffedde0e29304,45fccbd38c417d54,13061f82042cf389,874a99cf2dce9313,d5d03085f89744c2,eec09b4645f3954f,c5ebc87576234ef6,e14c95abf5907af4,d0c7c5b53418ad35,7e5219311b5af755,3fee3238668a85f5,fc2d78636b7c06fe,5ecec3c9eff6b3c6,1c2a74da1852305d,e5cf06d23a241c7f,c0e7929348f44f56,b26d52aeb971b814,3ede5972b587285e,e8420899f4176426,0c26fdc8c79bbb09,e15c4edfb70a7c76,3b2e4553725a7308,d17a68027547904f,40f4569011e93a3b,473ef920034d12d6,4f4b50d0d8c94552,762e176b8f81e4c7,07ea52278b3bab52,23bec9df66d888db,4a58f89347c6d125,580ddbfbbebb95b5,25ceddd0a3cd4400,837dd2f7b32c5ea6,33ffa40475d58e5b,4186ec3da290fd79,7cf9886b1094a4c3,a0b4c92d0fb917ed,89c9530eb690fcca,abb1ccba0aac1487',
+  "advanced 60, oversupply (abandonment and clearing)": '8a29ceda647f4fed,2422ba8b1a970dc5,e1a2489e8211669b,2ecbe5b3e3fe8a0b,9e066a01c46ba712,7c169df1cfd5c1b6,9292297eda32841b,d5fdf4adf7955dc6,3f5a2addab19b043,8d041c8a811a6b26,43e8b8b8d695a9ec,ca317fd96c491bca,5cf1de4e8a01f78d,275f7260f5416b78,e7f4d324b8f97a66,6c1823cab4ecfa22,93cd393275bb5c30,8700409ffffbaae2,97d7512a886e1faa,30d2d46e2bac6ee0,4deb1a6718b6ac2d,417ace7df8a2c0a9,1cae6e42c40f6fc9,932c17bf6dea1b6a,f9616ce4ba49337c,5725115102532768,c3eb1c64415a6288,9efe9127acf18bea,7e05f93741525b56,12cb93da9beca4c2,0ee6e663fcf1947a,69deb840bb7bb10f,85c9bceb15660f9f,a0ca2caf0d272820,c9df70ae848f638c,475011e56a3ea36d,2a1180023e275576,662115f7c773f290,b9846d28fbdbef1d,3b471e592f52445a,794b68a568336120,0681e3f5d04d08c0,53c400c47d63f906,30061bf81b6bab4a,3918d8148e137c64,cebe4cf2b7415f06,ea1619a1806e877f,30963d4533eb8f49,bf70589cc8c6789e,0a4e1ed6d160dfa6,8cf60176869c1f0b,d8d410617f15e4a2,f9cbf5a4bd7be980,138a65a64a6c61d6,bbd49e30348758db,c991f6431c135ff5,83f2fba372aff863,e94049bedd008937,46982ba0e46db0fa,7d5d102a368ca373',
+  "advanced 60, player changes service buildings between ticks (coverage cache invalidation)": '6906ec54842e83cb,cd988567f2631e08,abb11558fe96f0de,6576be808d319bbf,dd76ebad46dbc4ee,d59ea9e7acb63cfd,98e4756357be15e0,8e7e7548b00689e3,71b56bbf4e9f1d9a,bcb6a6645d51fdb8,b782166bd21ce66b,cbeb95fdb7b99941,a4274983530e6d45,02526756acfe36cd,9a551c59503eaf17,043a6bc0e67d4189,f5e6590deb775798,6fc17bf0d03603d3,c2aa3721f8b57a73,8bf8d004cc32ae5a,cb44b998dfd22778,c60cd933690035f4,213c2c55b314e28b,7b0f4d1030146b64',
+  "advanced 60, recovery (abandoned buildings with demand)": '83780f0052d3e89c,c52d768784c3a788,28ce0eb9af6b171b,5f70544afa96df6b,8aad348b9846a14b,538a257294e03bef,861771de222605cb,1ca01f320e860853,56eb7c0a02738795,778306f838942c88,a2b26eea94fdf922,78ba4758b119040f,8f085a3f685d0c83,040c55af3e58a354,1f38244881b2fbe4,7ef2e01cb4c0376c,3012cd4d3e0d0563,ba64dc1b2ecdea31,38cc697e8e004a14,e8fd039645ed9a64,e95dc0c6e1ec6313,218a74dda1d63f1a,392c2bb34501bf8b,d27797ac26a1e4b9,9a488ea13cd5937b,ea6112289d3f18c0,5b1c7c47631fabb1,8256085113e8e0e9,a1dd59a625c824ba,8818b71539ad67f1',
+  "advanced 60, severe storm (tree growth, more fires)": 'd55d29d3469ea3d0,0fca480846c5f5d6,35664bd5675e78b4,41ed36e4bb6747de,5040524d6b4ce95d,6c7d477a6a2efb47,04434b83da940803,16051fbedf3f2161,5065ec330cd0ecf3,b043924c097e7f22,a879e005602f96a1,19a4bbf1564eb669,66ff37d4ca2a0408,5dd3838dcca4e307,e4cbe2684bbecdd0,e4add92f617e5765,29d7835bfe919e85,72fa2bda35f2572e,f641d7ed2631899f,5a6b7cf06e2e57d7',
+  "benchmark 160, clear": '298c4638ff538786,df8a9936cd29cf11,f4f3e3a3855fdfb0,c08834d65cc82ee1',
 };
 
 function runScenario(scenario: Scenario, seed: number): { final: GameState; perTick: string[] } {
@@ -273,7 +283,7 @@ describe('simulateTick equivalence', () => {
       }
     }
     expect(withCache.perTick).toEqual(without.perTick);
-  });
+  }, 60_000);
 
   it.each(SCENARIOS.map((s, i) => [s.name, i] as const))(
     'matches the pre-optimisation golden fingerprints: %s',

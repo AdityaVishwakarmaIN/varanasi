@@ -20,3 +20,6 @@ Next.js 16 + React 19 isometric city-builder game with canvas rendering.
 - React functional components with 'use client' directive
 - shadcn/ui + Radix UI + Tailwind CSS for styling
 - ESLint with eslint-config-next
+
+## Skills
+Project skills live in `skills/`; start with `skills/README.md` and `skills/varanasi-world-model`.

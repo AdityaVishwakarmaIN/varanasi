@@ -1,13 +1,12 @@
 'use client';
 
 /**
- * Live crisis status (monsoon/river, heatwave, outbreaks, festival event) as small chips, and the
- * "Paused: <crisis>" banner shown after a crisis auto-pauses the game. Shown only while relevant.
+ * Live crisis status (monsoon/river, heatwave, outbreaks, festival event) as small chips. Shown only while relevant.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
-import { Biohazard, PartyPopper, Pause, Play, Thermometer, Waves, type LucideIcon } from 'lucide-react';
-import type { GameState, Notification } from '@/types/game';
+import { Biohazard, PartyPopper, Thermometer, Waves, type LucideIcon } from 'lucide-react';
+import type { GameState } from '@/types/game';
 import type { OverlayMode } from '@/components/game/types';
 import type { FestivalId } from '@/lib/festivals';
 import { FESTIVALS } from '@/lib/festivals';
@@ -21,7 +20,6 @@ const LABELS = {
   weak: msg('weak'),
   normal: msg('normal'),
   heavy: msg('heavy'),
-  resume: msg('Resume'),
 };
 
 /** Monsoon is rolled on 1 June; the chip shows from then to the end of the flood season. */
@@ -34,9 +32,9 @@ type StatusState = Pick<
 
 function Chip({ icon: Icon, label, tone, onClick }: { icon: LucideIcon; label: string; tone: string; onClick?: () => void }) {
   const className = cn(
-    'hud-panel pointer-events-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap',
+    'hud-panel pointer-events-auto inline-flex items-center gap-1.5 rounded-none px-2.5 py-1 text-xs font-medium whitespace-nowrap',
     tone,
-    onClick && 'hover:brightness-125 cursor-pointer'
+    onClick && 'press hover:!bg-chrome-well cursor-pointer'
   );
   const content = (
     <>
@@ -83,7 +81,7 @@ export function CityStatusChips({
       {showMonsoon && state.monsoonStrength && (
         <Chip
           icon={Waves}
-          tone={riverLevel > 0 ? 'text-sky-300 !border-sky-400/50' : 'text-sky-200/80'}
+          tone={riverLevel > 0 ? 'text-sky-800 !border-sky-600/60' : 'text-sky-800/80'}
           label={gt('Monsoon: {strength} · river {level}/{max}', {
             strength: m(LABELS[state.monsoonStrength]),
             level: riverLevel,
@@ -95,14 +93,14 @@ export function CityStatusChips({
       {heatDaysLeft > 0 && (
         <Chip
           icon={Thermometer}
-          tone="text-orange-300 !border-orange-400/50"
+          tone="text-orange-800 !border-orange-500/60"
           label={gt('Heatwave: {days} days left', { days: heatDaysLeft })}
         />
       )}
       {outbreaks.length > 0 && (
         <Chip
           icon={Biohazard}
-          tone="text-lime-300 !border-lime-400/50"
+          tone="text-lime-800 !border-lime-600/60"
           label={gt('Outbreak: {count} areas', { count: outbreaks.length })}
           onClick={() => {
             const b = getFeederBounds(outbreaks[0].feeder, state.gridSize);
@@ -113,69 +111,11 @@ export function CityStatusChips({
       {activeEvent && (
         <Chip
           icon={PartyPopper}
-          tone="text-marigold !border-marigold/50"
+          tone="text-chrome-accent !border-marigold/60"
           label={FESTIVALS[activeEvent.id]?.name ?? activeEvent.id}
           onClick={() => onOpenFestival(activeEvent.id)}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * "Paused: <crisis title>" after a crisis pauses the game (speed drops to 0 in the same update that adds a
- * crisis notification). Stays until the player resumes.
- */
-export function CrisisPauseBanner({
-  speed,
-  notifications,
-  onResume,
-  className,
-}: {
-  speed: GameState['speed'];
-  notifications: readonly Notification[];
-  onResume: () => void;
-  className?: string;
-}) {
-  const gt = useGT();
-  const m = useMessages();
-  const [crisisTitle, setCrisisTitle] = useState<string | null>(null);
-  const prevRef = useRef({ speed, topId: notifications[0]?.id });
-
-  useEffect(() => {
-    const prev = prevRef.current;
-    prevRef.current = { speed, topId: notifications[0]?.id };
-    if (speed !== 0) {
-      setCrisisTitle(null);
-      return;
-    }
-    if (prev.speed === 0) return;
-    // Just paused: was it a crisis that arrived with this update?
-    const firstOld = prev.topId === undefined ? -1 : notifications.findIndex((n) => n.id === prev.topId);
-    const fresh = firstOld === -1 ? notifications : notifications.slice(0, firstOld);
-    const crisis = fresh.find((n) => n.severity === 'crisis');
-    if (crisis) setCrisisTitle(crisis.title);
-  }, [speed, notifications]);
-
-  if (crisisTitle === null || speed !== 0) return null;
-  return (
-    <div
-      role="status"
-      className={cn(
-        'hud-panel pointer-events-auto flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm !border-red-400/60',
-        className
-      )}
-    >
-      <Pause className="w-4 h-4 shrink-0 text-red-400" aria-hidden />
-      <p className="flex-1 min-w-0 truncate text-red-200">{gt('Paused: {title}', { title: crisisTitle })}</p>
-      <button
-        type="button"
-        onClick={onResume}
-        className="inline-flex items-center gap-1 rounded-lg px-2 min-h-8 text-xs font-medium text-marigold hover:bg-marigold/10"
-      >
-        <Play className="w-3.5 h-3.5" aria-hidden />
-        {m(LABELS.resume)}
-      </button>
     </div>
   );
 }

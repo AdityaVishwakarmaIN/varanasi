@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
 import { useAdvisorNotes } from '@/hooks/useAdvisorNotes';
+import { useScrollFade } from '@/hooks/useScrollFade';
 import { Tool, TOOL_INFO } from '@/types/game';
 
 // Translatable category labels
@@ -12,7 +14,7 @@ const CATEGORY_LABELS: Record<string, unknown> = {
   ZONES: msg('Zones'),
   tools: msg('Tools'),
   zones: msg('Zones'),
-  zoning: msg('Zoning'),
+  zoning: msg('Land tools'),
   expandCity: msg('Expand City'),
   services: msg('Services'),
   parks: msg('Parks'),
@@ -41,7 +43,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { openCommandMenu } from '@/components/ui/CommandMenu';
-import { Users } from 'lucide-react';
+import { ChevronRight, Lock, LogOut, Search, Users } from 'lucide-react';
 import { ShareModal } from '@/components/multiplayer/ShareModal';
 import { FEATURES } from '@/lib/features';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
@@ -55,21 +57,28 @@ import {
 } from '@/components/ui/dialog';
 import { formatIndianNumber, formatINR } from '@/lib/format';
 import { getToolDisplay, LANDMARK_TOOLS } from '@/games/isocity/maps/varanasiCatalog';
-import { getCategoryTools, getMapToolCategories, type ToolCategoryKey } from '@/components/game/toolCategories';
-
-/** Desktop hover-submenu order (Riverfront and Landmarks only exist on Varanasi). */
-const SIDEBAR_SUBMENU_ORDER: readonly ToolCategoryKey[] = [
-  'riverfront', 'landmarks', 'services', 'parks', 'sports', 'waterfront', 'community', 'utilities', 'special',
-];
+import { BUILDING_CATEGORY_ORDER, getCategoryTools, getMapToolCategories } from '@/components/game/toolCategories';
 import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS, type LandmarkMenuStatus } from '@/lib/landmarks';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
+import { formatKeyLabel } from '@/lib/controlsConfig';
+
+/** Keyboard shortcut of a sidebar tool (see KEY_BINDINGS), shown in its tooltip. */
+const TOOL_KEY_HINTS: Partial<Record<Tool, string>> = {
+  zone_residential: 'R',
+  zone_commercial: 'C',
+  zone_industrial: 'I',
+  road: 'X',
+  bulldoze: 'B',
+};
 
 /** Shared look for a sidebar category row. */
-const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg';
-const CATEGORY_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sandstone/[0.06] ring-1 ring-gold/15 text-gold';
-const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-xl overflow-hidden animate-submenu-in';
-const FLYOUT_SHADOW = '0 18px 44px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 hsl(40 90% 88% / 0.07)';
+// On short screens (768 px laptops) rows shrink to 36 px so Tools, Zones and the first building groups all fit.
+const CATEGORY_ROW = 'press w-full justify-between gap-2.5 pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none focus-visible:ring-chrome-text';
+const CATEGORY_ICON = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-chrome-well border border-chrome-border text-chrome-text';
+const FLYOUT_TOP_INSET = 64; // TopBar is h-14 (56px) + 8px gap
+const FLYOUT_EDGE = 8;
+const FLYOUT_CLASS = 'fixed w-72 hud-panel rounded-none overflow-hidden animate-submenu-in';
 
 // Hover Submenu Component for collapsible tool categories
 // Implements triangle-rule safe zone for forgiving cursor navigation
@@ -104,6 +113,8 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, buttonHeight: 0, openUpward: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
+  const bridgeRef = useRef<HTMLDivElement>(null);
+  const [setScrollEl, scrollFadeStyle] = useScrollFade<HTMLDivElement>();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const m = useMessages();
@@ -189,6 +200,45 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
     }, 100);
   }, [clearCloseTimeout]);
   
+  // Place the flyout from its real height: keep it below the TopBar and inside the viewport,
+  // and stretch the hover bridge so it spans both the button and the flyout.
+  useLayoutEffect(() => {
+    const el = submenuRef.current;
+    if (!isOpen || !el) return;
+    const place = () => {
+      const h = el.offsetHeight;
+      const wanted = menuPosition.openUpward ? menuPosition.top - h : menuPosition.top;
+      const maxTop = window.innerHeight - h - FLYOUT_EDGE;
+      const top = Math.max(FLYOUT_TOP_INSET, Math.min(wanted, maxTop));
+      el.style.top = `${top}px`;
+      const bridge = bridgeRef.current;
+      if (bridge) {
+        const buttonTop = menuPosition.openUpward ? menuPosition.top - menuPosition.buttonHeight : menuPosition.top;
+        const bridgeTop = Math.min(buttonTop, top);
+        bridge.style.top = `${bridgeTop}px`;
+        bridge.style.height = `${Math.max(buttonTop + menuPosition.buttonHeight, top + h) - bridgeTop}px`;
+      }
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    window.addEventListener('resize', place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', place);
+    };
+  }, [isOpen, menuPosition]);
+
+  // Esc closes the open flyout
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
+
   // Clean up timeout on unmount
   useEffect(() => {
     return () => {
@@ -212,60 +262,54 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={`${CATEGORY_ROW} group ${
-          hasSelectedTool ? 'hud-selected hover:text-primary-foreground' : isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'
-        } ${glow ? 'ring-2 ring-marigold/80 animate-pulse' : ''}`}
+          hasSelectedTool ? 'hud-selected hover:text-chrome-accentText' : isOpen ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'
+        }`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
-          {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-black/10 text-primary-foreground ring-black/10' : ''}`} aria-hidden>{icon}</span>}
+          {icon && <span className={`${CATEGORY_ICON} ${hasSelectedTool ? 'bg-transparent border-transparent text-chrome-accentText' : ''}`} aria-hidden>{icon}</span>}
           <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
+          {glow && <span className="shrink-0 border border-chrome-text px-1 text-[10px] font-semibold uppercase leading-[14px] tracking-[0.04em] text-chrome-text">New</span>}
         </span>
-        <svg 
-          className={`w-4 h-4 shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
-          fill="none" 
-          viewBox="0 0 24 24" 
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
       </Button>
       
       {/* Invisible bridge/safe-zone between button and submenu for triangle rule */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={bridgeRef}
           className="fixed"
           style={{
+            // Top and height are set in the layout effect to span the button and the flyout.
             top: `${menuPosition.top}px`,
             left: `${menuPosition.left - SUBMENU_GAP}px`,
             width: `${SUBMENU_GAP + 8}px`, // Overlap slightly with submenu
             height: `${Math.max(menuPosition.buttonHeight, 200)}px`, // Tall enough to cover path
-            zIndex: 9998,
+            zIndex: 44, // above the z-40 sidebar and TopBar, below z-50 dialogs
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
-        />
+        />,
+        document.body
       )}
       
       {/* Flyout Submenu - uses fixed positioning to escape all parent containers */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div 
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: FLYOUT_SHADOW,
-            zIndex: 9999,
-            ...(menuPosition.openUpward 
-              ? { bottom: `${window.innerHeight - menuPosition.top}px` }
-              : { top: `${menuPosition.top}px` }),
+            zIndex: 45,
+            // Final top is set in the layout effect, once the real height is known.
+            top: `${menuPosition.openUpward ? menuPosition.top - SUBMENU_MAX_HEIGHT : menuPosition.top}px`,
             left: `${menuPosition.left}px`,
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
-            <span className="ornament text-gold/80" aria-hidden />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
-          <div className="p-1.5 flex flex-col gap-0.5 max-h-[min(340px,60vh)] overflow-y-auto" role="menu">
+          <div ref={setScrollEl} style={scrollFadeStyle} className="p-1.5 flex flex-col gap-0.5 max-h-[min(460px,65vh)] overflow-y-auto overscroll-contain" role="menu">
             {tools.map(tool => {
               if (!TOOL_INFO[tool]) return null;
               const info = getToolDisplay(tool, TOOL_INFO[tool], mapId);
@@ -284,24 +328,26 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
                   variant="ghost"
                   role="menuitem"
                   aria-current={isSelected || undefined}
-                  className={`w-full justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-lg ${
-                    isSelected ? 'hud-selected hover:text-primary-foreground' : 'hover:bg-sandstone/[0.07]'
+                  className={`w-full shrink-0 justify-start gap-3 pl-1.5 pr-2.5 py-1.5 min-h-11 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
+                    isSelected ? 'hud-selected hover:text-chrome-accentText' : 'hover:bg-chrome-well'
                   }`}
                   title={`${m(info.description)} - Cost: ${formatINR(info.cost)}`}
                 >
-                  <ToolGlyph tool={tool} size={40} className={isSelected ? 'ring-black/20' : ''} />
+                  <ToolGlyph tool={tool} size={32} selected={isSelected} />
                   <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
-                    <span className="w-full truncate text-left font-medium">
-                      {status?.locked && <span aria-hidden className="mr-1 text-xs">🔒</span>}
+                    <span className="w-full line-clamp-2 text-left font-medium leading-tight">
+                      {status?.locked && <Lock size={12} strokeWidth={1.75} aria-hidden className="mr-1 inline align-[-1px]" />}
                       {m(info.name)}
                     </span>
-                    <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : status?.locked || status?.built ? 'text-muted-foreground' : canAfford ? 'text-marigold/85' : 'text-red-400/90'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                    <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : status?.locked || status?.built ? 'text-chrome-muted' : canAfford ? 'text-chrome-text' : 'text-red-700'}`}>{statusNote ?? formatINR(info.cost)}</span>
+                    <span className={`w-full whitespace-normal text-left text-[11px] font-normal leading-snug ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{m(info.description)}</span>
                   </span>
                 </Button>
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -413,23 +459,16 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
         variant="ghost"
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        className={`${CATEGORY_ROW} group ${isOpen ? 'bg-sandstone/[0.08] text-foreground' : 'text-sidebar-foreground/90'}`}
+        className={`${CATEGORY_ROW} group ${isOpen ? 'bg-chrome-well text-chrome-text' : 'text-chrome-text'}`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
           {icon && <span className={CATEGORY_ICON} aria-hidden>{icon}</span>}
           <span className="font-medium truncate">{m(label as Parameters<typeof m>[0])}</span>
         </span>
-        <svg 
-          className={`w-4 h-4 shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
-          fill="none" 
-          viewBox="0 0 24 24" 
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
       </Button>
       
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           className="fixed"
           style={{
@@ -437,20 +476,20 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
             left: `${menuPosition.left - SUBMENU_GAP}px`,
             width: `${SUBMENU_GAP + 8}px`,
             height: `${Math.max(menuPosition.buttonHeight, 200)}px`,
-            zIndex: 9998,
+            zIndex: 44,
           }}
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
-        />
+        />,
+        document.body
       )}
       
-      {isOpen && (
+      {isOpen && createPortal(
         <div 
           ref={submenuRef}
           className={FLYOUT_CLASS}
           style={{ 
-            boxShadow: FLYOUT_SHADOW,
-            zIndex: 9999,
+            zIndex: 45,
             ...(menuPosition.openUpward 
               ? { bottom: `${window.innerHeight - menuPosition.top}px` }
               : { top: `${menuPosition.top}px` }),
@@ -459,8 +498,7 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
           onMouseEnter={handleSubmenuEnter}
           onMouseLeave={handleSubmenuLeave}
         >
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-gold/15 jaali-bg">
-            <span className="ornament text-gold/80" aria-hidden />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-chrome-border">
             <span className="hud-label">{m(label as Parameters<typeof m>[0])}</span>
           </div>
           <div className="p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
@@ -469,14 +507,15 @@ const ActionSubmenu = React.memo(function ActionSubmenu({
                 key={action.key}
                 onClick={action.onClick}
                 variant="ghost"
-                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-lg hover:bg-sandstone/[0.07]"
+                className="w-full justify-start gap-2 px-3 min-h-11 h-auto text-sm rounded-none hover:bg-chrome-well"
                 title={action.description}
               >
                 <span className="flex-1 text-left truncate">{m(action.name as Parameters<typeof m>[0])}</span>
               </Button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -505,6 +544,13 @@ function ExitDialog({
         </DialogHeader>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="w-full sm:w-auto"
+          >
+            Cancel
+          </Button>
+          <Button
             variant="outline"
             onClick={onExitWithoutSaving}
             className="w-full sm:w-auto"
@@ -525,7 +571,7 @@ function ExitDialog({
 
 // Memoized Sidebar Component
 export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => void }) {
-  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity, markLandmarksSeen } = useGame();
+  const { state, setTool, setActivePanel, saveCity, expandCity, shrinkCity, markLandmarksSeen, discardUnsavedChanges } = useGame();
   // S5-T6: badge with the count of high and critical advisor messages
   const { urgent: urgentAdvisorCount } = useAdvisorNotes(state);
   const { selectedTool, stats, activePanel } = state;
@@ -552,22 +598,17 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   }, [saveCity, onExit]);
   
   const handleExitWithoutSaving = useCallback(() => {
+    discardUnsavedChanges(); // no autosave on the way out, so Continue restores the last save
     setShowExitDialog(false);
     onExit?.();
-  }, [onExit]);
+  }, [discardUnsavedChanges, onExit]);
   
-  // Command menu shortcut hint: ⌘K on Mac, Ctrl K elsewhere (read after mount to avoid a hydration mismatch).
-  const [searchLabel, setSearchLabel] = useState('Search (Ctrl K)');
-  useEffect(() => {
-    if (/Mac|iPhone|iPad/i.test(navigator.userAgent)) setSearchLabel('Search (⌘K)');
-  }, []);
-
   // Direct tool categories (shown inline)
   const directCategories = useMemo(() => ({
     'TOOLS': getCategoryTools('tools', state.mapId),
     'ZONES': getCategoryTools('zones', state.mapId),
   }), [state.mapId]);
-
+  
   // Zoning submenu (shown under ZONES section, before BUILDINGS)
   const zoningSubmenu = useMemo(() => ({
     key: 'zoning',
@@ -594,11 +635,11 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   // Submenu categories (hover to expand) - includes all new assets from main
   const mapId = state.mapId;
   // Tools per category come from the shared list (toolCategories.ts), also used by MobileToolbar.
-  const submenuCategories = useMemo(() => getMapToolCategories(SIDEBAR_SUBMENU_ORDER, mapId).map(([key, tools]) => ({
+  const submenuCategories = useMemo(() => getMapToolCategories(BUILDING_CATEGORY_ORDER, mapId).map(([key, tools]) => ({
     key,
     label: CATEGORY_LABELS[key],
     tools,
-    forceOpenUpward: key === 'utilities' || key === 'special',
+    forceOpenUpward: key === 'special',
   })), [mapId]);
 
   // Landmarks (S5-T1): lock/built status per tool, and a glow while an unlocked landmark is unseen.
@@ -612,33 +653,23 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   
   return (
     <div
-      className="w-56 border-r border-gold/20 flex flex-col h-screen fixed left-0 top-0 z-40"
-      style={{ background: 'linear-gradient(180deg, hsl(233 40% 12%) 0%, hsl(234 42% 8%) 60%, hsl(236 44% 7%) 100%)', boxShadow: 'inset -1px 0 0 hsl(40 90% 88% / 0.04), 8px 0 24px -12px rgb(0 0 0 / 0.6)' }}
+      className="w-56 bg-chrome-panel border-r border-chrome-border flex flex-col h-screen fixed left-0 top-0 z-40"
     >
-      <div className="relative px-3 pt-3 pb-2.5 border-b border-gold/15 jaali-bg">
+      <div className="relative px-3 pt-3 pb-2.5 border-b border-chrome-border">
         <div className="flex items-center justify-between gap-1">
           <span className="flex items-center gap-1.5 pl-1 min-w-0">
-            <span className="ornament text-marigold animate-diya" aria-hidden />
-            <span className="font-display text-[22px] leading-none tracking-wide text-saffron-gradient">Varanasi</span>
+            <span className="font-sans font-semibold text-[22px] leading-none text-chrome-text">Varanasi</span>
           </span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={openCommandMenu}
-              title={searchLabel}
-              aria-label={searchLabel}
-              className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+              title={`Search (${formatKeyLabel('Ctrl+K')})`}
+              aria-label={`Search (${formatKeyLabel('Ctrl+K')})`}
+              className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
             >
-              <svg 
-                className="w-4 h-4" 
-                aria-hidden
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search size={16} strokeWidth={1.75} aria-hidden />
             </Button>
             {/* Invite button - only show if in multiplayer context */}
             {FEATURES.coop && multiplayer && (
@@ -648,9 +679,9 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowShareModal(true)}
                 title="Invite Players"
                 aria-label="Invite Players"
-                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+                className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
-                <Users className="w-4 h-4" />
+                <Users size={16} strokeWidth={1.75} aria-hidden />
               </Button>
             )}
             {onExit && (
@@ -660,30 +691,20 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                 onClick={() => setShowExitDialog(true)}
                 title="Exit to Main Menu"
                 aria-label="Exit to Main Menu"
-                className="h-9 w-9 rounded-lg text-muted-foreground hover:text-marigold hover:bg-sandstone/[0.07]"
+                className="h-9 w-9 rounded-none text-chrome-muted hover:text-chrome-text hover:bg-chrome-well"
               >
-                <svg 
-                  className="w-4 h-4 -scale-x-100" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
+                <LogOut size={16} strokeWidth={1.75} aria-hidden className="-scale-x-100" />
               </Button>
             )}
           </div>
         </div>
       </div>
       
-      <ScrollArea className="flex-1 py-2">
+      {/* type="always": a visible scrollbar tells players there are more groups below. */}
+      <ScrollArea type="always" className="flex-1 py-2">
         {/* Direct categories (TOOLS, ZONES) */}
         {Object.entries(directCategories).map(([category, tools]) => (
           <div key={category} className="mb-1">
-            {/* Separator above ZONES */}
-            {category === 'ZONES' && (
-              <div className="ornament-divider mx-5 my-2" aria-hidden />
-            )}
             <div className="px-4 pt-2 pb-1.5 hud-label">
               {m((CATEGORY_LABELS[category] || category) as Parameters<typeof m>[0])}
             </div>
@@ -701,15 +722,15 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
                     disabled={!canAfford && info.cost > 0}
                     variant="ghost"
                     aria-pressed={isSelected}
-                    className={`press w-full justify-start gap-2.5 pl-2 pr-2.5 min-h-11 h-auto text-sm rounded-lg ${
-                      isSelected ? 'hud-selected hover:text-primary-foreground' : 'text-sidebar-foreground/90 hover:bg-sandstone/[0.07]'
+                    className={`press w-full justify-start gap-2.5 whitespace-normal pl-2 pr-2.5 min-h-11 [@media(max-height:800px)]:min-h-9 [@media(max-height:800px)]:py-1 h-auto text-sm rounded-none focus-visible:ring-chrome-text ${
+                      isSelected ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-text hover:bg-chrome-well'
                     }`}
-                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}`}
+                    title={`${m(info.description)}${info.cost > 0 ? ` - Cost: ${formatINR(info.cost)}` : ''}${TOOL_KEY_HINTS[tool] ? ` (${TOOL_KEY_HINTS[tool]})` : ''}`}
                   >
-                    <ToolGlyph tool={tool} size={28} className={isSelected ? 'bg-black/10 text-primary-foreground ring-black/10' : 'text-gold'} />
-                    <span className="flex-1 text-left truncate font-medium">{m(info.name)}</span>
+                    <ToolGlyph tool={tool} size={32} selected={isSelected} />
+                    <span className="flex-1 text-left line-clamp-2 font-medium leading-tight">{m(info.name)}</span>
                     {info.cost > 0 && (
-                      <span className={`text-[11px] font-mono ${isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{formatINR(info.cost)}</span>
+                      <span className={`text-[11px] font-mono ${isSelected ? 'text-chrome-accentText' : 'text-chrome-muted'}`}>{formatINR(info.cost)}</span>
                     )}
                   </Button>
                 );
@@ -740,9 +761,6 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
           </div>
         ))}
         
-        {/* Separator */}
-        <div className="ornament-divider mx-5 my-2" aria-hidden />
-        
         {/* Buildings header */}
         <div className="px-4 pt-2 pb-1.5 hud-label">
           BUILDINGS
@@ -769,13 +787,13 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
         </div>
       </ScrollArea>
       
-      <div className="border-t border-gold/15 p-2 gold-hairline">
-        <div className="grid grid-cols-4 gap-1 hud-well rounded-xl p-1">
+      <div className="border-t border-chrome-border p-2">
+        <div className="grid grid-cols-4 gap-1 hud-well rounded-none p-1">
           {[
-            { panel: 'budget' as const, icon: <BudgetIcon size={16} />, labelKey: 'budget' as const },
-            { panel: 'statistics' as const, icon: <ChartIcon size={16} />, labelKey: 'statistics' as const },
-            { panel: 'advisors' as const, icon: <AdvisorIcon size={16} />, labelKey: 'advisors' as const },
-            { panel: 'settings' as const, icon: <SettingsIcon size={16} />, labelKey: 'settings' as const },
+            { panel: 'budget' as const, icon: <BudgetIcon size={20} />, labelKey: 'budget' as const },
+            { panel: 'statistics' as const, icon: <ChartIcon size={20} />, labelKey: 'statistics' as const },
+            { panel: 'advisors' as const, icon: <AdvisorIcon size={20} />, labelKey: 'advisors' as const },
+            { panel: 'settings' as const, icon: <SettingsIcon size={20} />, labelKey: 'settings' as const },
           ].map(({ panel, icon, labelKey }) => (
             <Button
               key={panel}
@@ -784,13 +802,13 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
               size="icon-sm"
               aria-pressed={activePanel === panel}
               aria-label={String(m(UI_LABELS[labelKey]))}
-              className={`press w-full h-11 relative rounded-lg ${activePanel === panel ? 'hud-selected hover:text-primary-foreground' : 'text-sandstone/75 hover:text-marigold hover:bg-sandstone/[0.07]'}`}
+              className={`press w-full h-11 relative rounded-none focus-visible:ring-chrome-text ${activePanel === panel ? 'hud-selected hover:text-chrome-accentText' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'}`}
               title={String(m(UI_LABELS[labelKey]))}
             >
               {icon}
               {panel === 'advisors' && urgentAdvisorCount > 0 && (
                 <span
-                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full ring-2 ring-[hsl(234_42%_8%)] bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
+                  className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-none bg-destructive text-destructive-foreground text-[10px] leading-4 font-semibold text-center"
                   aria-label={`${urgentAdvisorCount}`}
                 >
                   {urgentAdvisorCount > 9 ? '9+' : urgentAdvisorCount}

@@ -26,6 +26,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { TitleBackdrop } from '@/components/TitleBackdrop';
 import { SavedCityMeta, GameState } from '@/types/game';
 import { compressToUTF16 } from 'lz-string';
+import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { T, Var } from 'gt-next';
 import { Users, X } from 'lucide-react';
 import {
@@ -44,6 +45,7 @@ import { Input } from '@/components/ui/input';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 import { DEFAULT_CITY_NAMES } from '@/lib/mapConfig';
 import type { NewGameOptions } from '@/lib/newGame';
+import { localizeExampleState } from '@/lib/exampleCity';
 
 // Save a city to the saved cities index (for multiplayer cities)
 async function saveCityToIndex(state: GameState, roomCode?: string): Promise<void> {
@@ -91,7 +93,7 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
     <div className="relative group">
       <button
         onClick={onLoad}
-        className="press hud-well w-full text-left p-3 pr-11 rounded-xl hover:!border-gold/40 hover:bg-[hsl(233_40%_14%/0.8)]"
+        className="press title-well w-full text-left p-3 pr-11 rounded-xl hover:!border-gold/40 hover:bg-[hsl(233_40%_14%/0.8)]"
       >
         <div className="flex items-center gap-2">
           <h3 className="text-foreground font-semibold truncate text-sm flex-1">
@@ -123,17 +125,6 @@ function SavedCityCard({ city, onLoad, onDelete }: { city: SavedCityMeta; onLoad
         </button>
       )}
     </div>
-  );
-}
-
-function NewGameResetButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="min-h-11 py-2 text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
-    >
-      <T>New Game</T>
-    </button>
   );
 }
 
@@ -169,9 +160,15 @@ function NewGameDialog({
           placeholder={DEFAULT_CITY_NAMES[mapId]}
           aria-label="City name"
           maxLength={40}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              onConfirm({ mapId, name });
+            }
+          }}
         />
         {hasSaved && (
-          <p className="text-xs text-amber-300/90">
+          <p className="text-xs text-amber-900">
             <T>This replaces your current autosave. Cities saved from Settings are kept.</T>
           </p>
         )}
@@ -208,9 +205,9 @@ export default function HomePage() {
   const [startFreshGame, setStartFreshGame] = useState(false);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
   const [cityToDelete, setCityToDelete] = useState<SavedCityMeta | null>(null);
-  const { isMobileDevice, isSmallScreen } = useMobile();
-  const isMobile = isMobileDevice || isSmallScreen;
-  const hasResettableProgress = hasSaved;
+  const { isMobileDevice, isSmallScreen, isTouchDevice, screenHeight } = useMobile();
+  // A phone held sideways is wide but short: it gets the phone layout too (as in Game.tsx).
+  const isMobile = isMobileDevice || isSmallScreen || (isTouchDevice && screenHeight > 0 && screenHeight < 600);
   // Co-op cities live in a remote room; hide them while co-op is off (the index entries are kept).
   const visibleSavedCities = FEATURES.coop ? savedCities : savedCities.filter(c => !c.roomCode);
 
@@ -377,9 +374,9 @@ export default function HomePage() {
 
   if (isChecking) {
     return (
-      <main className="min-h-screen bg-background jaali-bg flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sandstone/70">
-          <span className="ornament text-marigold animate-diya" aria-hidden />
+      <main className="theme-dark min-h-screen bg-background title-jaali flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sandstone/90">
+          <span className="title-lotus text-marigold animate-diya" aria-hidden />
           <T>Loading...</T>
         </div>
       </main>
@@ -425,7 +422,7 @@ export default function HomePage() {
       setPendingRoomCode(null);
     }
     const response = await fetch('/example-states/example_state_9.json');
-    const exampleState = await response.json();
+    const exampleState = localizeExampleState(await response.json());
     try {
       const compressed = compressToUTF16(JSON.stringify(exampleState));
       await writeIsoCityAutosaveRaw(compressed);
@@ -444,6 +441,16 @@ export default function HomePage() {
       >
         {hasSaved ? <T>Continue</T> : <T>New Game</T>}
       </Button>
+
+      {hasSaved && (
+        <Button
+          onClick={() => setShowResetDialog(true)}
+          variant="outline"
+          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_11%/0.78)] border-gold/35 text-sandstone hover:bg-[hsl(233_40%_15%/0.9)] hover:text-foreground"
+        >
+          <T>New Game</T>
+        </Button>
+      )}
 
       {FEATURES.coop && (
         <Button
@@ -466,32 +473,33 @@ export default function HomePage() {
           <T>Load Example</T>
         </Button>
       )}
+    </div>
+  );
 
-      <div className="mt-1 grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
-        <div className="flex flex-col">
+  const footer = (
+    <div className="flex w-full flex-col gap-1">
+      <div className="flex w-full items-center justify-between gap-3 text-sm tracking-wide">
+        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
           <a
             href="https://github.com/amilich/isometric-city"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-11 items-center text-left text-sm tracking-wide text-sandstone/60 hover:text-marigold transition-colors duration-200"
+            className="flex min-h-11 items-center text-sandstone/60 hover:text-marigold transition-colors duration-200"
           >
-            <T>Built on IsoCity (MIT licence)</T>
+            <T>Built on IsoCity</T>
           </a>
-          <CreditsButton variant="ghost" className="justify-start h-auto min-h-11 px-0 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
+          <span className="text-sandstone/30" aria-hidden>·</span>
+          <CreditsButton variant="ghost" className="h-auto min-h-11 px-1 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
         </div>
-        <div className="flex h-full min-h-[88px] flex-col items-end justify-between">
-          {hasResettableProgress && (
-            <NewGameResetButton onClick={() => setShowResetDialog(true)} />
-          )}
-        </div>
+        <LanguageSelector variant="ghost" className="shrink-0 text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
       </div>
     </div>
   );
 
   const savedList = visibleSavedCities.length > 0 && (
     <>
-      <h2 className="hud-label mb-2.5 flex items-center gap-1.5 flex-shrink-0">
-        <span className="ornament text-gold/80 !w-2.5 !h-2.5" aria-hidden />
+      <h2 className="title-label mb-2.5 flex items-center gap-1.5 flex-shrink-0">
+        <span className="title-lotus text-gold/80 !w-2.5 !h-2.5" aria-hidden />
         <T>Saved Cities</T>
       </h2>
       <div
@@ -556,20 +564,20 @@ export default function HomePage() {
   if (isMobile) {
     return (
       <MultiplayerContextProvider>
-        <main className="relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
+        <main className="theme-dark relative h-[100dvh] max-h-[100dvh] bg-background overflow-hidden">
           <TitleBackdrop compact />
-          <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto">
-            <div className="flex-shrink-0 h-2 sm:h-6" />
-            <TitleMark compact />
-            <div className="mt-6 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
+          <div className="relative z-10 h-full flex flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto short:grid short:grid-cols-2 short:content-center short:items-start short:gap-x-8 short:px-8">
+            <div className="flex-shrink-0 h-2 sm:h-6 short:hidden" />
+            <div className="short:row-span-3 short:justify-self-center short:self-start"><TitleMark compact /></div>
+            <div className="mt-6 short:mt-0 w-full max-w-xs flex-shrink-0 animate-rise-in [animation-delay:120ms]">
               {menu}
             </div>
             {visibleSavedCities.length > 0 && (
-              <div className="hud-panel gold-hairline w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] flex flex-col animate-rise-in [animation-delay:200ms]">
+              <div className="title-panel w-full max-w-xs mt-4 rounded-2xl p-3 flex-shrink min-h-[8rem] max-h-[40dvh] short:mt-2 short:min-h-0 short:max-h-24 flex flex-col animate-rise-in [animation-delay:200ms]">
                 {savedList}
               </div>
             )}
-            <div className="flex-shrink-0 h-2" />
+            <div className="mt-auto short:mt-0 w-full max-w-xs flex-shrink-0 pt-3 short:pt-1">{footer}</div>
           </div>
           {dialogs}
         </main>
@@ -580,20 +588,20 @@ export default function HomePage() {
   // Desktop landing page
   return (
     <MultiplayerContextProvider>
-      <main className="relative min-h-screen bg-background overflow-hidden">
+      <main className="theme-dark relative min-h-screen bg-background overflow-hidden">
         <TitleBackdrop />
-        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-8">
+        <div className="relative z-10 min-h-screen flex flex-col items-center px-8 pt-[max(2.5rem,7vh)] pb-[calc(21vh+9rem)]">
           <TitleMark />
           <div className="mt-8 w-72 animate-rise-in [animation-delay:120ms]">
             {menu}
           </div>
+          {visibleSavedCities.length > 0 && (
+            <aside className="title-panel mt-5 w-72 max-h-[min(18rem,32vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
+              {savedList}
+            </aside>
+          )}
+          <div className="absolute bottom-5 left-1/2 z-10 w-72 -translate-x-1/2">{footer}</div>
         </div>
-
-        {visibleSavedCities.length > 0 && (
-          <aside className="hud-panel gold-hairline absolute z-10 top-8 right-8 w-72 max-h-[min(24rem,45vh)] rounded-2xl p-3.5 flex flex-col animate-rise-in [animation-delay:200ms]">
-            {savedList}
-          </aside>
-        )}
 
         {dialogs}
       </main>
@@ -619,7 +627,7 @@ function TitleMark({ compact = false }: { compact?: boolean }) {
       </h1>
       <div className={`flex items-center gap-3 ${compact ? 'mt-2 w-56' : 'mt-3 w-80'}`} aria-hidden>
         <span className="h-px flex-1 bg-gradient-to-r from-transparent to-gold/70" />
-        <span className="ornament text-marigold animate-diya !w-4 !h-4" />
+        <span className="title-lotus text-marigold animate-diya !w-4 !h-4" />
         <span className="h-px flex-1 bg-gradient-to-l from-transparent to-gold/70" />
       </div>
       <p className={`mt-2 tracking-[0.18em] uppercase text-sandstone/85 ${compact ? 'text-xs' : 'text-sm'}`}>

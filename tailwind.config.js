@@ -47,6 +47,16 @@ module.exports = {
         ganga: "hsl(var(--ganga))",
         gold: "hsl(var(--gold))",
         sandstone: "hsl(var(--sandstone))",
+        chrome: {
+          bg: "hsl(var(--chrome-bg))",
+          panel: "hsl(var(--chrome-panel))",
+          well: "hsl(var(--chrome-well))",
+          border: "hsl(var(--chrome-border))",
+          text: "hsl(var(--chrome-text))",
+          muted: "hsl(var(--chrome-muted))",
+          accent: "hsl(var(--chrome-accent))",
+          accentText: "hsl(var(--chrome-accentText))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -80,7 +90,11 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // Phones held sideways: wide enough for md, too short for roomy cards. (A `screens` entry would break max-*.)
+    ({ addVariant }) => addVariant("short", "@media (max-height: 500px)"),
+  ],
 }
 
 

@@ -8,6 +8,8 @@ import type { OverlayMode } from '@/components/game/types';
 import type { ForecastInput } from '@/lib/notifications';
 import { addForecast } from '@/lib/notifications';
 import { formatINR } from '@/lib/format';
+import { LANDMARKS, getPeakDisplayedPopulation } from '@/lib/landmarks';
+import { formatIndianNumber } from '@/lib/format';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import {
   EVENT_CONFIG,
@@ -17,6 +19,7 @@ import {
   getFestivalCrowdMultipliers,
   getFestivalHappinessModifier,
   getUpcomingFestivals,
+  readinessLabelList,
   resolveEvent,
   scaleEventMultiplier,
   type FestivalDef,
@@ -30,7 +33,7 @@ type Added = Omit<Notification, 'id' | 'timestamp'>;
 
 /** What the festival wiring reads from the city. */
 export type FestivalCity = Pick<GameState, 'grid' | 'gridSize' | 'mapId' | 'services' | 'stats' | 'festival'> &
-  Partial<Pick<GameState, 'structureVersion'>>;
+  Partial<Pick<GameState, 'structureVersion' | 'peakPopulation'>>;
 
 export const FESTIVAL_SIM_CONFIG = {
   /** Buildings that count as ghats for event areas and the Ganga Aarti. */
@@ -159,9 +162,20 @@ export function getEventArea(city: FestivalCity, festivalId: FestivalId): EventA
       center = origin;
     }
   } else {
-    // Only the player's ghats host the crowds: with no ghats the area is empty and the festival passes quietly
+    // The player's ghats host the crowds. With no ghats the riverfront stands in for the area (so the
+    // Event panel has something to show); canHostEvent then lets the festival pass quietly.
     for (const g of ghats) markDisk(mask, size, g.x, g.y, EVENT_CONFIG.devDeepawaliGhatRadius);
-    center = cluster?.center ?? null;
+    let riverfront: { x: number; y: number } | null = null;
+    if (ghats.length === 0) {
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (getRiverZone(x, y, size, mapId) !== 'westRiverfront') continue;
+          mask[y * size + x] = 1;
+          if (!riverfront || Math.abs(y - size / 2) < Math.abs(riverfront.y - size / 2)) riverfront = { x, y };
+        }
+      }
+    }
+    center = cluster?.center ?? riverfront;
   }
   const list: number[] = [];
   for (let i = 0; i < mask.length; i++) {
@@ -262,6 +276,20 @@ export function getFestivalTourismPayout(monthlyTourismIncome: number, days: num
   return Math.floor((monthlyTourismIncome / 30) * days * (multiplier - 1));
 }
 
+/** Whether the city has something to host the event: a ghat, or for Maha Shivratri the temple too. */
+export function canHostEvent(city: Pick<FestivalCity, 'grid' | 'gridSize'>, festivalId: FestivalId): boolean {
+  if (findGhatTiles(city.grid, city.gridSize).length > 0) return true;
+  return festivalId === 'maha_shivratri' && !!findBuildingTile(city.grid, city.gridSize, FESTIVAL_SIM_CONFIG.shivratriLandmark);
+}
+
+function fullScaleHint(city: FestivalCity): string {
+  const kv = LANDMARKS.landmark_kashi_vishwanath;
+  if (getPeakDisplayedPopulation({ peakPopulation: city.peakPopulation, stats: city.stats }) < kv.unlockPopulation) {
+    return `Kashi Vishwanath Temple unlocks at ${formatIndianNumber(kv.unlockPopulation)} people and brings a full-scale Maha Shivratri.`;
+  }
+  return 'Build Kashi Vishwanath Temple for a full-scale Maha Shivratri.';
+}
+
 function chipIcon(f: FestivalDef): string {
   return f.chip.split(' ')[0];
 }
@@ -290,13 +318,14 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
       const state = edit();
       state.announced = { ...state.announced, [f.id]: occurrence };
       const center = management ? getEventArea(city, f.id).center : null;
+      // Only a city that can host the event gets the toast; the calendar strip still shows it
       result.forecasts.push({
-        notify: management,
+        notify: management && canHostEvent(city, f.id),
         input: {
           id: `festival-${f.id}`,
           title: management ? `${f.name} in ${daysUntil} days` : f.name,
           description: management
-            ? `Huge crowds are expected. Open the Event panel to check readiness: police, fire and medical, access, sanitation and power.`
+            ? `Huge crowds are expected. Open the Event panel to check readiness: ${readinessLabelList()}. Sanitation needs a clean Ganga.`
             : `${f.name} is coming in ${daysUntil} days.`,
           daysAhead: daysUntil,
           icon: chipIcon(f),
@@ -308,7 +337,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
 
     const readiness = getEventReadiness(city, f.id);
     const center = readiness.area.center;
-    if (!center) {
+    if (!center || !canHostEvent(city, f.id)) {
       result.notifications.push({
         title: `${f.name} passed quietly`,
         description: 'Build ghats on the riverfront to host the festival crowds.',
@@ -335,7 +364,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
     const payout = getFestivalTourismPayout(city.stats.tourismIncome ?? 0, days, tourismMultiplier);
     result.tourismPayout += payout;
     const payoutText = payout > 0 ? ` Festival visitors brought ${formatINR(payout)} in tourism.` : '';
-    const halfScale = scale < 1 ? ' Build Kashi Vishwanath Temple for a full-scale Maha Shivratri.' : '';
+    const halfScale = scale < 1 ? ` ${fullScaleHint(city)}` : '';
     const overlay = failed.length > 0 ? readinessOverlay(failed[0]) : undefined;
     result.notifications.push({
       title: outcome.kind === 'triumph' ? `${f.name}: a triumph` : outcome.kind === 'success' ? `${f.name}: a success` : `${f.name}: overwhelmed`,

@@ -45,9 +45,7 @@ export function NotificationLog({
 
   // While open, everything shown is read
   const newest = newestTimestamp(entries);
-  useEffect(() => {
-    if (open) setLastSeen((prev) => Math.max(prev, newest));
-  }, [open, newest]);
+  if (open && newest > lastSeen) setLastSeen(newest);
 
   useEffect(() => {
     if (!open) return;
@@ -72,11 +70,11 @@ export function NotificationLog({
         onClick={() => setOpen((v) => !v)}
         aria-label={m(LABELS.open)}
         aria-expanded={open}
-        className="hud-panel relative h-9 w-9 min-h-11 min-w-11 md:min-h-9 md:min-w-9 rounded-xl flex items-center justify-center text-sandstone/80 hover:text-foreground"
+        className="hud-panel press relative h-9 w-9 min-h-11 min-w-11 md:min-h-9 md:min-w-9 rounded-none flex items-center justify-center text-chrome-muted hover:text-chrome-text"
       >
         <Bell className="w-4 h-4" aria-hidden />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-[10px] font-semibold text-white flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-none bg-red-700 text-[10px] font-semibold text-white flex items-center justify-center">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -86,42 +84,42 @@ export function NotificationLog({
           role="dialog"
           aria-label={m(LABELS.title)}
           className={cn(
-            'hud-panel absolute z-40 mt-2 w-[min(22rem,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto rounded-xl p-2 text-sm',
+            'hud-panel absolute z-40 mt-2 w-[min(22rem,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto rounded-none p-2 text-sm',
             'animate-in fade-in slide-in-from-top-2 duration-150',
             panelClassName
           )}
         >
           <div className="flex items-center justify-between px-1 pb-1.5">
-            <p className="font-semibold text-foreground">{m(LABELS.title)}</p>
+            <p className="font-semibold text-chrome-text">{m(LABELS.title)}</p>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label={m(LABELS.close)}
-              className="text-muted-foreground hover:text-foreground min-w-8 min-h-8 rounded-lg flex items-center justify-center"
+              className="text-chrome-muted hover:text-chrome-accent min-w-8 min-h-8 rounded-none flex items-center justify-center"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
           {entries.length === 0 ? (
-            <p className="px-1 pb-1 text-xs text-muted-foreground">{m(LABELS.empty)}</p>
+            <p className="px-1 pb-1 text-xs text-chrome-muted">{m(LABELS.empty)}</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {entries.map((n) => {
                 const isCrisis = n.severity === 'crisis';
                 return (
-                  <li key={n.id} className="flex items-start gap-2 rounded-lg p-1.5 hover:bg-sandstone/[0.04]">
+                  <li key={n.id} className="flex items-start gap-2 rounded-none p-1.5 hover:bg-chrome-well">
                     <NotificationIcon
                       icon={n.icon}
-                      className={cn('mt-0.5 shrink-0', isCrisis ? 'text-red-400' : n.severity === 'warning' ? 'text-amber-400' : 'text-sandstone/70')}
+                      className={cn('mt-0.5 shrink-0', isCrisis ? 'text-red-800' : n.severity === 'warning' ? 'text-amber-700' : 'text-chrome-muted')}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2">
-                        <p className={cn('font-medium truncate flex-1', isCrisis ? 'text-red-300' : 'text-foreground')}>{n.title}</p>
-                        <time className="shrink-0 text-[10px] text-muted-foreground tabular-nums" dateTime={new Date(n.timestamp).toISOString()}>
+                        <p className={cn('font-medium truncate flex-1', isCrisis ? 'text-red-800' : 'text-chrome-text')}>{n.title}</p>
+                        <time className="shrink-0 text-[10px] text-chrome-muted tabular-nums" dateTime={new Date(n.timestamp).toISOString()}>
                           {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </time>
                       </div>
-                      {n.description && <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>}
+                      {n.description && <p className="text-xs text-chrome-muted line-clamp-2">{n.description}</p>}
                       {canLocateNotification(n) && (
                         <button
                           type="button"
@@ -129,7 +127,7 @@ export function NotificationLog({
                             onLocate(n);
                             setOpen(false);
                           }}
-                          className="mt-0.5 inline-flex items-center gap-1 text-xs text-marigold hover:underline"
+                          className="mt-0.5 inline-flex items-center gap-1 text-xs text-chrome-accent hover:underline"
                         >
                           <MapPin className="w-3 h-3" />
                           {m(LABELS.locate)}

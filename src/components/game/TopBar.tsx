@@ -1,72 +1,39 @@
-// The Options dropdown holds the overlay/minimap toggles (the game is English-only, so no language picker).
+// CHANGE SUMMARY: Decluttered the metrics ribbon into four grouped chips (People, Money, Services, River; see TopBarGroups.tsx)
+// plus a calendar panel behind the date. The second row of rating bars, the demand bars and the tax slider moved into those panels.
+// Earlier state: ~14 separate stats, a tax slider, a time-of-year bar and a second row of five rating bars.
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { msg, useMessages } from 'gt-next';
+import { useLocale, useSetLocale } from 'gt-next/client';
 import { useGame } from '@/context/GameContext';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import {
   PlayIcon,
   PauseIcon,
-  HappyIcon,
-  HealthIcon,
-  EducationIcon,
-  SafetyIcon,
-  EnvironmentIcon,
-  PopulationIcon,
-  JobsIcon,
 } from '@/components/ui/Icons';
-import { HudStat } from '@/components/game/HudStat';
-import { formatINR, formatMonthlyNet, formatPopulation, getMonthlyNet } from '@/lib/format';
-import { GangaHealthChip } from '@/components/game/GangaHealthChip';
-import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
+import { LANGUAGE_OPTIONS } from '@/components/ui/LanguageSelector';
+import { CalendarPanelBody, TopBarGroups, TopBarPanelShell, type TopBarPanelId } from '@/components/game/TopBarGroups';
 import type { OverlayMode } from '@/components/game/types';
-import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
+import { FogChip, SeasonDateLabel } from '@/components/game/SeasonCalendar';
 import { FestivalChip } from '@/components/game/FestivalPanel';
 
 // Translatable UI labels
 const UI_LABELS = {
-  population: msg('Population'),
-  jobs: msg('Jobs'),
-  funds: msg('Funds'),
-  monthly: msg('Monthly'),
-  tax: msg('Tax'),
-  happiness: msg('Happiness'),
-  health: msg('Health'),
-  education: msg('Education'),
-  safety: msg('Safety'),
-  environment: msg('Environment'),
   viewOverlay: msg('View Overlay'),
   minimap: msg('Minimap'),
-};
-
-/** HUD hover text (E2): what each stat is and what moves it. */
-const HUD_TIPS = {
-  population: msg('People living in the city. Grows when homes have power, water, road access and nearby jobs.'),
-  jobs: msg('Jobs at shops, offices and factories. Zone commercial and industrial land to add more.'),
-  funds: msg('Money in the treasury. Taxes and tourism add to it each month; building and upkeep spend it.'),
-  monthly: msg('Income minus expenses each month. Raise taxes or cut budgets to improve it.'),
-  happiness: msg('How content residents are. Services, parks and jobs raise it; high taxes, pollution and crime lower it.'),
-  health: msg('Hospital coverage of homes. Build hospitals near where people live.'),
-  education: msg('School and university coverage of homes.'),
-  safety: msg('Police coverage. Crime and uncovered areas lower it.'),
-  environment: msg('Trees, parks and water raise it; pollution and heavy industry lower it.'),
-  tax: msg('Tax rate. Higher taxes bring more income but lower demand and happiness; changes take effect slowly.'),
-  demandR: msg('More jobs than residents: people want to move in.'),
-  demandRLow: msg('Too few jobs for residents, or taxes are high.'),
-  demandC: msg('Residents want more shops and offices.'),
-  demandCLow: msg('More shop jobs than residents can support.'),
-  demandI: msg('The workforce needs more factory jobs.'),
-  demandILow: msg('Plenty of industry for the workforce.'),
+  languageSwitcher: msg('Language'),
+  calendar: msg('Calendar'),
 };
 
 // ============================================================================
@@ -85,148 +52,26 @@ export const TimeOfDayIcon = ({ hour }: TimeOfDayIconProps) => {
   if (isNight) {
     // Moon icon
     return (
-      <svg className="w-4 h-4 text-blue-300" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-blue-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
       </svg>
     );
   } else if (isDawn || isDusk) {
     // Sunrise/sunset icon
     return (
-      <svg className="w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-orange-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
       </svg>
     );
   } else {
     // Sun icon
     return (
-      <svg className="w-4 h-4 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="w-4 h-4 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
       </svg>
     );
   }
 };
-
-// ============================================================================
-// STAT BADGE
-// ============================================================================
-
-interface StatBadgeProps {
-  value: string;
-  label: string;
-  variant?: 'default' | 'success' | 'warning' | 'destructive';
-}
-
-export function StatBadge({ value, label, variant = 'default' }: StatBadgeProps) {
-  const colorClass = variant === 'success' ? 'text-green-500' : 
-                     variant === 'warning' ? 'text-amber-500' : 
-                     variant === 'destructive' ? 'text-red-500' : 'text-foreground';
-  
-  return (
-    <div className="flex flex-col items-start min-w-[70px]">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-0.5">{label}</div>
-      <div className={`whitespace-nowrap text-sm font-mono tabular-nums font-semibold ${colorClass}`}>{value}</div>
-    </div>
-  );
-}
-
-// ============================================================================
-// DEMAND INDICATOR
-// ============================================================================
-
-interface DemandIndicatorProps {
-  label: string;
-  demand: number;
-  color: string;
-  /** One line on what drives this demand (shown on hover with the value). */
-  cause?: React.ReactNode;
-}
-
-export function DemandIndicator({ label, demand, color, cause }: DemandIndicatorProps) {
-  const height = Math.abs(demand) / 2;
-  const isPositive = demand >= 0;
-  const value = `${isPositive ? '+' : ''}${Math.round(demand)}`;
-
-  const bar = (
-    <div className="flex flex-col items-center gap-1" tabIndex={cause ? 0 : undefined} aria-label={`${label} ${value}`}>
-      <span className={`text-[9px] font-bold leading-none ${color}`}>{label}</span>
-      <div className="w-2.5 h-7 bg-black/40 ring-1 ring-gold/15 relative rounded-full overflow-hidden">
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-gold/30" />
-        <div
-          className={`absolute left-0 right-0 rounded-full ${color.replace('text-', 'bg-')}`}
-          style={{
-            height: `${height}%`,
-            top: isPositive ? `${50 - height}%` : '50%',
-          }}
-        />
-      </div>
-    </div>
-  );
-  if (!cause) return bar;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{bar}</TooltipTrigger>
-      <TooltipContent className="max-w-64">
-        <p className="font-mono font-semibold">{label} {value}</p>
-        <p className="text-xs text-muted-foreground">{cause}</p>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ============================================================================
-// MINI STAT (for StatsPanel)
-// ============================================================================
-
-interface MiniStatProps {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  /** Hover text: what the stat is and what moves it. */
-  tooltip?: React.ReactNode;
-}
-
-export function MiniStat({ icon, label, value, tooltip }: MiniStatProps) {
-  const pct = Math.max(0, Math.min(100, Math.round(value)));
-  const color = value >= 70 ? 'text-emerald-300' : value >= 40 ? 'text-amber-300' : 'text-red-400';
-  const bar = value >= 70 ? 'bg-emerald-400' : value >= 40 ? 'bg-amber-400' : 'bg-red-400';
-  const stat = (
-    <div className="flex items-center gap-2" role="group" aria-label={`${label} ${pct}%`} tabIndex={tooltip ? 0 : undefined}>
-      <span className="text-gold/80">{icon}</span>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="relative h-1 w-12 overflow-hidden rounded-full bg-white/10" aria-hidden>
-        <span className={`absolute inset-y-0 left-0 rounded-full ${bar}`} style={{ width: `${pct}%` }} />
-      </span>
-      <span className={`font-mono font-semibold w-8 ${color}`}>{pct}%</span>
-    </div>
-  );
-  if (!tooltip) return stat;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{stat}</TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-64">{tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ============================================================================
-// STATS PANEL
-// ============================================================================
-
-export const StatsPanel = React.memo(function StatsPanel() {
-  const { state } = useGame();
-  const { stats } = state;
-  const m = useMessages();
-  
-  return (
-    <div className="relative z-10 h-8 flex items-center justify-center gap-7 text-xs border-b border-gold/15 bg-gradient-to-b from-[hsl(234_40%_10%)] to-[hsl(234_42%_8%)]">
-      <MiniStat icon={<HappyIcon size={12} />} label={String(m(UI_LABELS.happiness))} value={stats.happiness} tooltip={m(HUD_TIPS.happiness)} />
-      <MiniStat icon={<HealthIcon size={12} />} label={String(m(UI_LABELS.health))} value={stats.health} tooltip={m(HUD_TIPS.health)} />
-      <MiniStat icon={<EducationIcon size={12} />} label={String(m(UI_LABELS.education))} value={stats.education} tooltip={m(HUD_TIPS.education)} />
-      <MiniStat icon={<SafetyIcon size={12} />} label={String(m(UI_LABELS.safety))} value={stats.safety} tooltip={m(HUD_TIPS.safety)} />
-      <MiniStat icon={<EnvironmentIcon size={12} />} label={String(m(UI_LABELS.environment))} value={stats.environment} tooltip={m(HUD_TIPS.environment)} />
-    </div>
-  );
-});
 
 // ============================================================================
 // TOP BAR
@@ -246,6 +91,8 @@ interface TopBarProps {
   onToggleWaterOverlay?: () => void;
   /** Calendar-strip event clicked (festivals open the Event panel, S5-T4). */
   onCalendarEventClick?: (id: string) => void;
+  /** Fires when a detail popover opens or closes, so passive toasts can step aside. */
+  onPanelOpenChange?: (open: boolean) => void;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -259,52 +106,68 @@ export const TopBar = React.memo(function TopBar({
   onTogglePowerOverlay,
   onToggleWaterOverlay,
   onCalendarEventClick,
+  onPanelOpenChange,
 }: TopBarProps) {
-  const { state, setSpeed, setTaxRate, visualHour } = useGame();
-  const { stats, year, month, day, speed, taxRate, cityName } = state;
-  const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
+  const { state, setSpeed, visualHour } = useGame();
+  const { year, month, day, speed, cityName } = state;
   const m = useMessages();
+  const locale = useLocale();
+  const setLocale = useSetLocale();
+  // One panel open at a time: a group chip's details or the calendar.
+  const [openId, setOpenId] = useState<TopBarPanelId | null>(null);
+  const panelOpen = openId !== null;
+  useEffect(() => { onPanelOpenChange?.(panelOpen); }, [panelOpen, onPanelOpenChange]);
 
-  // Indian date order: DD-MM-YYYY
-  const formattedDate = `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`;
-  
-  const monthly = getMonthlyNet(stats);
+  const formattedDate = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}-${year}`;
   const speedLabels = ['Pause', 'Normal', 'Fast', 'Very Fast'];
+  const handleCalendarEvent = useCallback((id: string) => {
+    setOpenId(null);
+    onCalendarEventClick?.(id);
+  }, [onCalendarEventClick]);
 
   return (
-    <div className="relative z-20 h-16 flex items-center justify-between gap-3 px-4 border-b border-gold/25 bg-gradient-to-b from-[hsl(var(--hud-top))] to-[hsl(var(--hud-bottom))] shadow-[inset_0_1px_0_hsl(var(--hud-highlight)/0.06),0_6px_20px_-8px_rgb(0_0_0/0.7)]">
-      {/* Gold hairline along the bottom edge */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="min-w-0 shrink-0">
+    <div className="relative z-40 h-14 flex items-center gap-2 px-3 min-[1440px]:gap-3 min-[1440px]:px-4 border-b border-chrome-border bg-chrome-panel">
+      <div className="flex shrink-0 items-center gap-3 min-[1440px]:gap-4">
+        {/* Bounded slot: it grows to fit a festival / fog chip, up to a cap, instead of pushing the speed
+            buttons sideways; past the cap a long city name truncates, never the chip.
+            The date line opens the calendar panel (the season strip lives there now). */}
+        <div className="relative min-w-48 max-w-60 min-[1440px]:min-w-56 min-[1440px]:max-w-72 shrink-0">
           <div className="flex items-center gap-1.5">
-            <span className="ornament text-marigold" aria-hidden />
-            <h1 className="font-display text-[19px] leading-none text-sandstone truncate max-w-[180px]">{cityName}</h1>
+            <h1 className="min-w-0 shrink font-sans font-semibold text-chrome-text text-[19px] leading-none truncate" title={cityName}>{cityName}</h1>
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+              <FogChip weather={state.weather} hour={visualHour} />
+              <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
+            </span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-[11px] font-mono">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span><SeasonDateLabel month={month} year={year} /></span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{formattedDate}</p>
-              </TooltipContent>
-            </Tooltip>
+          <button
+            id="topbar-trigger-calendar"
+            type="button"
+            onClick={() => setOpenId(openId === 'calendar' ? null : 'calendar')}
+            aria-expanded={openId === 'calendar'}
+            aria-controls="topbar-panel-calendar"
+            aria-label={`${String(m(UI_LABELS.calendar))}: ${formattedDate}`}
+            title={formattedDate}
+            className="press -ml-1 mt-1 flex max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-none px-1 py-0.5 text-chrome-muted text-[11px] font-mono hover:bg-chrome-well"
+          >
+            <SeasonDateLabel month={month} year={year} />
             <TimeOfDayIcon hour={visualHour} />
-            <FogChip weather={state.weather} hour={visualHour} />
-            <FestivalChip month={month} day={day} hour={visualHour} mapId={state.mapId} />
-          </div>
-          <SeasonStrip month={month} year={year} day={day} events={state.forecasts} onEventClick={onCalendarEventClick} className="mt-1 max-w-[160px]" />
+          </button>
+          <TopBarPanelShell id="calendar" openId={openId} onOpenChange={setOpenId} variant="desktop" label={String(m(UI_LABELS.calendar))}>
+            <CalendarPanelBody onEventClick={handleCalendarEvent} />
+          </TopBarPanelShell>
         </div>
-        
-        <div className="hud-well flex items-center gap-0.5 rounded-xl p-1" role="group" aria-label="Game speed">
+      </div>
+
+      {/* Everything but the city name sits on the right; the gap in the middle keeps the name readable. */}
+      <div className="ml-auto flex min-w-0 items-center gap-2 min-[1440px]:gap-3">
+        <div className="hud-well flex shrink-0 items-center gap-0.5 rounded-none p-1" role="group" aria-label="Game speed">
           {[0, 1, 2, 3].map(s => (
             <button
               key={s}
               type="button"
               onClick={() => setSpeed(s as 0 | 1 | 2 | 3)}
-              className={`press h-8 w-8 rounded-lg flex items-center justify-center ${
-                speed === s ? 'hud-selected' : 'text-muted-foreground hover:text-foreground hover:bg-sandstone/10'
+              className={`press h-8 w-8 rounded-none flex items-center justify-center ${
+                speed === s ? 'hud-selected' : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-well'
               }`}
               title={speedLabels[s]}
               aria-label={speedLabels[s]}
@@ -326,119 +189,60 @@ export const TopBar = React.memo(function TopBar({
             </button>
           ))}
         </div>
-      </div>
-      
-      <div className="flex items-center gap-1.5 min-w-0">
-        <HudStat
-          icon={<PopulationIcon size={16} />}
-          tint="sandstone"
-          value={formatPopulation(stats.population)}
-          label={String(m(UI_LABELS.population))}
-          tooltip={m(HUD_TIPS.population)}
-        />
-        <HudStat
-          icon={<JobsIcon size={16} />}
-          tint="sandstone"
-          value={formatPopulation(stats.jobs)}
-          label={String(m(UI_LABELS.jobs))}
-          tooltip={m(HUD_TIPS.jobs)}
-        />
-        <HudStat
-          icon={<span className="text-[15px] font-bold leading-none">₹</span>}
-          tint="marigold"
-          value={formatINR(stats.money)}
-          label={String(m(UI_LABELS.funds))}
-          tooltip={m(HUD_TIPS.funds)}
-          tone={stats.money < 0 ? 'destructive' : stats.money < 1000 ? 'warning' : 'default'}
-        />
-        <HudStat
-          icon={<span className="text-sm font-bold leading-none">{monthly >= 0 ? '▲' : '▼'}</span>}
-          tint={monthly >= 0 ? 'good' : 'bad'}
-          value={formatMonthlyNet(stats)}
-          label={String(m(UI_LABELS.monthly))}
-          tooltip={
-            <>
-              <p>{m(HUD_TIPS.monthly)}</p>
-              <p className="mt-1 font-mono text-xs text-muted-foreground">{formatINR(stats.income)} − {formatINR(stats.expenses)}</p>
-            </>
-          }
-          tone={monthly >= 0 ? 'success' : 'destructive'}
-        />
-        {gangaHealth !== undefined && onToggleGangaOverlay && (
-          <GangaHealthChip
-            variant="desktop"
-            gangaHealth={gangaHealth}
-            gangaHealthTarget={stats.gangaHealthTarget}
-            active={gangaOverlayActive}
-            onClick={onToggleGangaOverlay}
-          />
-        )}
-        {(['power', 'water'] as const).map((kind) => {
-          const supply = stats[kind];
-          const onToggle = kind === 'power' ? onTogglePowerOverlay : onToggleWaterOverlay;
-          if (!onToggle || !shouldShowUtilityChip(supply, 'desktop')) return null;
-          return (
-            <UtilityChip
-              key={kind}
-              kind={kind}
-              variant="desktop"
-              stats={supply}
-              active={overlayMode === kind}
-              onClick={onToggle}
-            />
-          );
-        })}
-      </div>
-      
-      <div className="flex items-center gap-2.5 shrink-0">
-        <div className="flex items-center gap-1.5" role="group" aria-label="Zone demand">
-          <DemandIndicator label="R" demand={stats.demand.residential} color="text-green-500" cause={m(stats.demand.residential >= 0 ? HUD_TIPS.demandR : HUD_TIPS.demandRLow)} />
-          <DemandIndicator label="C" demand={stats.demand.commercial} color="text-blue-500" cause={m(stats.demand.commercial >= 0 ? HUD_TIPS.demandC : HUD_TIPS.demandCLow)} />
-          <DemandIndicator label="I" demand={stats.demand.industrial} color="text-amber-500" cause={m(stats.demand.industrial >= 0 ? HUD_TIPS.demandI : HUD_TIPS.demandILow)} />
-        </div>
-        
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="hud-well flex items-center gap-2 rounded-xl h-11 px-3">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{m(UI_LABELS.tax)}</span>
-              {/* E2: wide enough for 1% steps over 0-20% */}
-              <Slider
-                value={[taxRate]}
-                onValueChange={(value) => setTaxRate(value[0])}
-                min={0}
-                max={20}
-                step={1}
-                className="w-32"
-                aria-label={String(m(UI_LABELS.tax))}
-              />
-              <span className="text-foreground text-xs font-mono font-semibold w-8 text-right tabular-nums">{taxRate}%</span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-64">{m(HUD_TIPS.tax)}</TooltipContent>
-        </Tooltip>
-        
+
+        <TopBarGroups
+        variant="desktop"
+        openId={openId}
+        onOpenChange={setOpenId}
+        gangaOverlayActive={gangaOverlayActive}
+        onToggleGangaOverlay={onToggleGangaOverlay}
+        overlayMode={overlayMode}
+        onTogglePowerOverlay={onTogglePowerOverlay}
+        onToggleWaterOverlay={onToggleWaterOverlay}
+      />
+
+        <div className="flex shrink-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-3 rounded-xl border border-gold/15 hover:border-gold/40">
+            <Button variant="ghost" size="sm" className="press gap-1 h-11 px-2.5 min-[1440px]:px-3 rounded-none border border-chrome-border text-chrome-text hover:bg-chrome-well">
               <span className="text-xs">Options</span>
-              <span className="text-xs text-gold/80" aria-hidden>▾</span>
+              <ChevronDown size={14} strokeWidth={1.75} className="text-chrome-muted" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 p-2">
             <div className="px-2 py-2">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.viewOverlay))}</span>
+                  <span className="text-xs text-chrome-muted">{String(m(UI_LABELS.viewOverlay))}</span>
                   <Switch checked={showOverlayPanel} onCheckedChange={onToggleOverlayPanel} />
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{String(m(UI_LABELS.minimap))}</span>
+                  <span className="text-xs text-chrome-muted">{String(m(UI_LABELS.minimap))}</span>
                   <Switch checked={showMinimap} onCheckedChange={onToggleMinimap} />
                 </div>
               </div>
             </div>
+            <Separator className="my-1" />
+            <div className="px-2 py-1.5 text-xs uppercase tracking-wide text-chrome-muted">
+              {String(m(UI_LABELS.languageSwitcher))}
+            </div>
+            {LANGUAGE_OPTIONS.map((language) => (
+              <DropdownMenuItem
+                key={language.code}
+                onClick={() => setLocale(language.code)}
+                className="flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <span className="text-xs">{language.name}</span>
+                {language.code === locale ? (
+                  <span className="text-xs text-chrome-text">✓</span>
+                ) : (
+                  <span className="w-3 h-3" />
+                )}
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
     </div>
   );
