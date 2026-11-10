@@ -10,6 +10,10 @@
  * These are NOT switched off by the "Crises" (disastersEnabled) setting.
  */
 
+import { SCORING_CONFIG } from '@/lib/scoring';
+
+const HAPPINESS_TAX_PENALTY_PER_POINT = SCORING_CONFIG.happiness.taxRatePenaltyPerPoint;
+
 export const FAILURE_CONFIG = {
   /** Consecutive months with money < 0 before the one-time emergency loan is offered. */
   loanOfferAfterDebtMonths: 3,
@@ -24,8 +28,10 @@ export const FAILURE_CONFIG = {
   criticalHappiness: 30,
   /** Consecutive critical months before people start leaving. */
   exodusAfterMonths: 12,
-  /** Share of residential buildings abandoned each month during an exodus. */
+  /** Share of residential buildings abandoned in the first exodus month; grows by this much each further month. */
   exodusAbandonmentShare: 0.02,
+  /** Cap on the monthly abandonment share during a long exodus. */
+  exodusAbandonmentMaxShare: 0.2,
   /** During an exodus, the game ends when displayed population < this share of its all-time peak. */
   exodusGameOverPeakShare: 0.2,
 } as const;
@@ -56,6 +62,11 @@ export interface FailureState {
   /** Consecutive month-ends with happiness below `criticalHappiness`. */
   lowHappinessMonths: number;
   exodusActive: boolean;
+  /** Months the current exodus has lasted (drives the escalating abandonment share). Missing in old saves. */
+  exodusMonths?: number;
+  /** Running sum / count of daily happiness samples this month; the monthly check uses their average. */
+  monthHappinessSum?: number;
+  monthHappinessDays?: number;
   peakDisplayedPopulation: number;
   peakGangaHealth?: number;
   gameOver?: GameOverReason;
@@ -143,19 +154,25 @@ export function advanceFailureState(
     }
   }
 
-  // --- Happiness / exodus ---
-  if (input.happiness < c.criticalHappiness) {
+  // --- Happiness / exodus --- (an empty city has nobody to be unhappy: the counter does not advance)
+  if (input.displayedPopulation <= 0) {
+    // no-op
+  } else if (input.happiness < c.criticalHappiness) {
     s.lowHappinessMonths++;
     events.push({ type: 'happinessCritical', months: s.lowHappinessMonths });
     if (s.lowHappinessMonths >= c.exodusAfterMonths) {
       if (!s.exodusActive) events.push({ type: 'exodusStarted' });
       s.exodusActive = true;
-      events.push({ type: 'exodusAbandonment', share: c.exodusAbandonmentShare });
+      // Escalates 2%, 4%, 6%… of homes per month, capped at 20%
+      s.exodusMonths = (s.exodusMonths ?? 0) + 1;
+      const share = Math.min(c.exodusAbandonmentMaxShare, c.exodusAbandonmentShare * s.exodusMonths);
+      events.push({ type: 'exodusAbandonment', share: Math.round(share * 1000) / 1000 });
     }
   } else {
     s.lowHappinessMonths = 0;
     if (s.exodusActive) events.push({ type: 'exodusEnded' });
     s.exodusActive = false;
+    s.exodusMonths = 0;
   }
 
   if (s.exodusActive && s.peakDisplayedPopulation > 0 && input.displayedPopulation < c.exodusGameOverPeakShare * s.peakDisplayedPopulation) {
@@ -232,9 +249,14 @@ export interface FailingStatInput {
   safety: number;
   environment: number;
   gangaHealth?: number;
+  /** 0–100: jobs vs population. */
+  jobSatisfaction?: number;
+  /** Tax rate in percent; turned into the 0–100 tax score used by Happiness. */
+  taxRate?: number;
 }
 
-export type FailingStat = 'money' | 'happiness' | 'health' | 'education' | 'safety' | 'environment' | 'gangaHealth';
+export type FailingStat =
+  | 'money' | 'happiness' | 'health' | 'education' | 'safety' | 'environment' | 'gangaHealth' | 'jobs' | 'taxes';
 
 /** "What went wrong" lines for the game-over screen. Wrap in `msg()` in UI code. */
 export const FAILING_STAT_LINES: Record<FailingStat, string> = {
@@ -245,19 +267,32 @@ export const FAILING_STAT_LINES: Record<FailingStat, string> = {
   safety: 'Crime and fires made people feel unsafe.',
   environment: 'Pollution choked the city.',
   gangaHealth: 'The Ganga became too polluted.',
+  jobs: 'There were not enough jobs.',
+  taxes: 'Taxes were too high.',
 };
 
 /**
  * The stat most to blame. Negative money always wins (bankruptcy); otherwise the lowest 0–100 rating,
- * ties going to the earlier entry in: happiness, health, gangaHealth, safety, education, environment.
+ * ties going to the earlier entry in: happiness, health, gangaHealth, jobs, taxes, safety, education, environment.
  */
 export function getTopFailingStat(stats: FailingStatInput): { stat: FailingStat; value: number; line: string } {
   if (stats.money < 0) return { stat: 'money', value: stats.money, line: FAILING_STAT_LINES.money };
-  const order = ['happiness', 'health', 'gangaHealth', 'safety', 'education', 'environment'] as const;
+  const taxes = stats.taxRate === undefined ? undefined : Math.max(0, 100 - stats.taxRate * HAPPINESS_TAX_PENALTY_PER_POINT);
+  const values: Partial<Record<FailingStat, number>> = {
+    happiness: stats.happiness,
+    health: stats.health,
+    gangaHealth: stats.gangaHealth,
+    jobs: stats.jobSatisfaction,
+    taxes,
+    safety: stats.safety,
+    education: stats.education,
+    environment: stats.environment,
+  };
+  const order = ['happiness', 'health', 'gangaHealth', 'jobs', 'taxes', 'safety', 'education', 'environment'] as const;
   let best: FailingStat = 'happiness';
   let bestValue = stats.happiness;
   for (const k of order) {
-    const v = stats[k];
+    const v = values[k];
     if (v === undefined) continue;
     if (v < bestValue) {
       best = k;

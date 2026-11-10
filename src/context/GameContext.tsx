@@ -52,13 +52,14 @@ import {
   deleteIsoCitySavedCityData,
   flushPendingSaves,
   loadIsoCitySavedCities,
+  backupIsoCityToSavedCities,
   readIsoCityAutosaveRaw,
-  readIsoCityLastMonthRaw,
+  readIsoCityMonthlyBackupsRaw,
   readIsoCitySavedCityRaw,
+  rotateIsoCityMonthlyBackups,
   trackPendingSave,
   updateIsoCitySavedCities,
   writeIsoCityAutosaveRaw,
-  writeIsoCityLastMonthRaw,
   writeIsoCitySavedCityRaw,
 } from '@/lib/isocityStorage';
 import { AUTOSAVE_CONFIG } from '@/lib/storage/saveConfig';
@@ -113,6 +114,11 @@ type GameContextValue = {
   setBudgetFunding: (key: keyof Budget, funding: number) => void;
   upgradeServiceBuilding: (x: number, y: number) => boolean; // Returns true if upgrade succeeded
   placeAtTile: (x: number, y: number, isRemote?: boolean) => void;
+  /** Undo strokes: the canvas opens one on pointer down and closes it on release (one click or one drag). */
+  beginPlacementStroke: () => void;
+  endPlacementStroke: () => void;
+  /** One-step undo of the last stroke (within 20 s, before the next stroke); refunds its cost. */
+  undoLastPlacement: () => void;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
   finishTrackDrag: (pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote?: boolean) => void; // Create bridges after road/rail drag
   setBridgeCallback: (callback: ((args: { pathTiles: { x: number; y: number }[]; trackType: 'road' | 'rail' }) => void) | null) => void;
@@ -138,8 +144,10 @@ type GameContextValue = {
   /** Emergency loan dialog buttons (S4-T11). */
   acceptEmergencyLoan: () => void;
   declineEmergencyLoan: () => void;
-  /** Loads the extra autosave copy from about a month before game over (S4-T11). Resolves false if there is none. */
+  /** Loads the oldest of the rolling monthly autosave copies of this city (S4-T11). Resolves false if there is none. */
   loadLastAutosave: () => Promise<boolean>;
+  /** How many months back the copy `loadLastAutosave` would load is (0 = none). */
+  getLastAutosaveMonthsBack: () => Promise<number>;
   /** S5-T1: the player opened the Landmarks menu, so its glow stops. */
   markLandmarksSeen: () => void;
   /** S5-T1: a landmark the player tried to bulldoze, waiting for the confirm dialog. */
@@ -340,6 +348,9 @@ async function loadGameState(): Promise<GameState | null> {
         if (parsed.effectiveTaxRate === undefined) {
           parsed.effectiveTaxRate = parsed.taxRate ?? 9; // Start at current tax rate
         }
+        // Tax is capped at 0-20% (older saves allowed up to 100)
+        parsed.taxRate = Math.min(20, Math.max(0, parsed.taxRate ?? 9));
+        parsed.effectiveTaxRate = Math.min(20, Math.max(0, parsed.effectiveTaxRate));
         // Migrate constructionProgress for existing buildings (they're already built)
         if (parsed.grid) {
           for (let y = 0; y < parsed.grid.length; y++) {
@@ -625,6 +636,63 @@ function deleteCityState(cityId: string): void {
   deleteIsoCitySavedCityData(cityId).catch((e) => {
     console.error('Failed to delete city state:', e);
   });
+}
+
+// ---- One-step placement undo (see placeAtTile / undoLastPlacement) ----
+type UndoTile = GameState['grid'][number][number];
+/** One placement stroke (one click or one drag): pre-stroke tiles by index (y * size + x) and money spent per call. */
+type UndoStroke = { gridSize: number; tiles: Map<number, UndoTile>; costs: Map<number, number>; lastAt: number };
+const UNDO_WINDOW_MS = 20_000;
+/** Footprint margin scanned around a placed tile (multi-tile buildings and their bulldoze). */
+const UNDO_SCAN_RADIUS = 6;
+
+function newUndoStroke(gridSize: number): UndoStroke {
+  return { gridSize, tiles: new Map(), costs: new Map(), lastAt: Date.now() };
+}
+
+/** Placement code clones every tile, so compare values (tile fields + building fields), not references. */
+function undoTileDiffers(a: UndoTile, b: UndoTile): boolean {
+  if (a === b) return false;
+  const ar = a as unknown as Record<string, unknown>;
+  const br = b as unknown as Record<string, unknown>;
+  for (const k in ar) if (k !== 'building' && ar[k] !== br[k]) return true;
+  for (const k in br) if (!(k in ar)) return true;
+  const ab = a.building as unknown as Record<string, unknown>;
+  const bb = b.building as unknown as Record<string, unknown>;
+  if (ab === bb) return false;
+  for (const k in ab) if (ab[k] !== bb[k]) return true;
+  for (const k in bb) if (!(k in ab)) return true;
+  return false;
+}
+
+/**
+ * Remember the pre-stroke value of every tile `prev → next` changed inside the box (whole grid when
+ * `box` is null), plus the money this call spent. Idempotent per `callId` (StrictMode double updaters).
+ */
+function recordUndoChange(
+  stroke: UndoStroke,
+  prev: GameState,
+  next: GameState,
+  callId: number,
+  box: { minX: number; maxX: number; minY: number; maxY: number } | null,
+): void {
+  const size = prev.gridSize;
+  if (size !== stroke.gridSize || next.gridSize !== size) return;
+  const minX = Math.max(0, box?.minX ?? 0);
+  const maxX = Math.min(size - 1, box?.maxX ?? size - 1);
+  const minY = Math.max(0, box?.minY ?? 0);
+  const maxY = Math.min(size - 1, box?.maxY ?? size - 1);
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const a = prev.grid[y]?.[x];
+      const b = next.grid[y]?.[x];
+      if (!a || !b || !undoTileDiffers(a, b)) continue;
+      const key = y * size + x;
+      if (!stroke.tiles.has(key)) stroke.tiles.set(key, a);
+    }
+  }
+  stroke.costs.set(callId, Math.max(0, prev.stats.money - next.stats.money));
+  stroke.lastAt = Date.now();
 }
 
 export function GameProvider({
@@ -925,10 +993,10 @@ export function GameProvider({
       recordTick(performance.now() - now);
       latestStateRef.current = newState;
       stateChangedRef.current = true;
-      // Extra autosave copy once per in-game month, never of a finished city (S4-T11)
+      // Three rolling autosave copies, rotated once per in-game month, never of a finished city (S4-T11)
       if (newState.month !== prevMonth && !newState.gameOver && !isBenchmarkState(newState)) {
         trackPendingSave(
-          serializeAndCompressInSlicesAsync(optimizeStateForSave(newState), { onSlice: recordSave }).then(writeIsoCityLastMonthRaw)
+          serializeAndCompressInSlicesAsync(optimizeStateForSave(newState), { onSlice: recordSave }).then(rotateIsoCityMonthlyBackups)
         ).catch((e) => console.error('Failed to save the monthly autosave copy:', e));
       }
 
@@ -968,7 +1036,7 @@ export function GameProvider({
   }, []);
 
   const setTaxRate = useCallback((rate: number) => {
-    setState((prev) => ({ ...prev, taxRate: clamp(rate, 0, 100) }));
+    setState((prev) => ({ ...prev, taxRate: clamp(rate, 0, 20) }));
   }, []);
 
   const setActivePanel = useCallback(
@@ -992,6 +1060,57 @@ export function GameProvider({
     [],
   );
 
+  // One-step undo (ISSUE 6c). The canvas opens a stroke on pointer down and closes it on release;
+  // a placeAtTile call outside an open stroke is its own one-call stroke. A new stroke replaces the old.
+  const undoStrokeRef = useRef<UndoStroke | null>(null);
+  const strokeOpenRef = useRef(false);
+  const placeCallIdRef = useRef(0);
+
+  const beginPlacementStroke = useCallback(() => {
+    strokeOpenRef.current = true;
+    undoStrokeRef.current = newUndoStroke(latestStateRef.current.gridSize);
+  }, []);
+
+  const endPlacementStroke = useCallback(() => {
+    strokeOpenRef.current = false;
+  }, []);
+
+  /** Restores the last stroke's tiles and refunds its cost, if within 20 s. Applied on the latest simulation state. */
+  const undoLastPlacement = useCallback(() => {
+    const stroke = undoStrokeRef.current;
+    if (!stroke || strokeOpenRef.current) return;
+    undoStrokeRef.current = null;
+    if (stroke.tiles.size === 0 || Date.now() - stroke.lastAt > UNDO_WINDOW_MS) return;
+    let refund = 0;
+    stroke.costs.forEach((c) => { refund += c; });
+    setState(() => {
+      const base = latestStateRef.current;
+      if (base.gridSize !== stroke.gridSize) return base;
+      const size = base.gridSize;
+      const grid = base.grid.slice();
+      const copiedRows = new Set<number>();
+      stroke.tiles.forEach((tile, key) => {
+        const ty = Math.floor(key / size);
+        const tx = key % size;
+        if (!grid[ty]) return;
+        if (!copiedRows.has(ty)) {
+          grid[ty] = grid[ty].slice();
+          copiedRows.add(ty);
+        }
+        grid[ty][tx] = tile;
+      });
+      const note = { id: `undo-${Date.now()}`, title: 'Undone', description: '', icon: '↩️', timestamp: Date.now() };
+      return recalculateDerivedState({
+        ...base,
+        grid,
+        structureVersion: (base.structureVersion ?? 0) + 1,
+        roadNetworkVersion: (base.roadNetworkVersion ?? 0) + 1,
+        stats: { ...base.stats, money: base.stats.money + refund },
+        notifications: pushNotifications(base.notifications, [note]),
+      });
+    });
+  }, []);
+
   const placeAtTile = useCallback((x: number, y: number, isRemote = false) => {
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
@@ -1007,8 +1126,22 @@ export function GameProvider({
         return;
       }
     }
-    
-    setState((prev) => {
+
+    // Undo recording (local placements only; terraform is not undoable and drops the undo step)
+    let undoStroke: UndoStroke | null = null;
+    const undoCallId = ++placeCallIdRef.current;
+    if (!isRemote && currentTool !== 'select') {
+      if (currentTool === 'zone_water' || currentTool === 'zone_land') {
+        undoStrokeRef.current = null;
+      } else {
+        if (!strokeOpenRef.current || !undoStrokeRef.current) {
+          undoStrokeRef.current = newUndoStroke(latestStateRef.current.gridSize);
+        }
+        undoStroke = undoStrokeRef.current;
+      }
+    }
+
+    const applyPlacement = (prev: GameState): GameState => {
       const tool = prev.selectedTool;
       if (tool === 'select') return prev;
 
@@ -1098,8 +1231,17 @@ export function GameProvider({
       }
 
       return recalculateDerivedState(nextState);
+    };
+
+    setState((prev) => {
+      const next = applyPlacement(prev);
+      if (undoStroke && next !== prev) {
+        const r = UNDO_SCAN_RADIUS;
+        recordUndoChange(undoStroke, prev, next, undoCallId, { minX: x - r, maxX: x + r, minY: y - r, maxY: y + r });
+      }
+      return next;
     });
-    
+
     // S5-T9: sound for a local build/road/bulldoze that actually changed the tile.
     const sfx = isRemote ? null : sfxForTool(currentTool);
     if (sfx) {
@@ -1131,8 +1273,16 @@ export function GameProvider({
 
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
-    setState((prev) => recalculateDerivedState(createBridgesOnPath(prev, pathTiles, trackType)));
-    
+    // Bridges belong to the drag's undo stroke (full-grid diff: only runs when a bridge was built)
+    const undoStroke = !isRemote ? undoStrokeRef.current : null;
+    const undoCallId = ++placeCallIdRef.current;
+    setState((prev) => {
+      const bridged = createBridgesOnPath(prev, pathTiles, trackType);
+      if (bridged === prev) return prev;
+      if (undoStroke) recordUndoChange(undoStroke, prev, bridged, undoCallId, null);
+      return recalculateDerivedState(bridged);
+    });
+
     // Broadcast to multiplayer if this is a local action (not remote)
     if (!isRemote && bridgeCallbackRef.current) {
       bridgeCallbackRef.current({ pathTiles, trackType });
@@ -1323,24 +1473,60 @@ export function GameProvider({
     setState(city);
   }, []);
 
+  /**
+   * Before the live city is replaced by a different one, keep it in the saved-cities list as
+   * "<name> (auto-backup)" (see `backupIsoCityToSavedCities`). Captures the state synchronously.
+   */
+  const backupLiveCity = useCallback((targetCityId?: string): Promise<void> => {
+    const current = latestStateRef.current;
+    if (!current?.id || !(current.stats?.population > 0) || isBenchmarkState(current)) return Promise.resolve();
+    if (targetCityId === current.id) return Promise.resolve();
+    return trackPendingSave((async () => {
+      const compressed = await serializeAndCompressInSlicesAsync(optimizeStateForSave(current), { onSlice: recordSave });
+      const cities = await backupIsoCityToSavedCities(current, compressed, targetCityId);
+      if (cities) setSavedCities(cities);
+    })()).catch((e) => console.error('Failed to back up the city:', e));
+  }, []);
+
   const newGame = useCallback((options?: NewGameOptions) => {
+    void backupLiveCity();
     clearGameState(); // Clear saved state when starting fresh
     replaceCity(createNewGameState(options, isMobile), latestStateRef.current);
-  }, [replaceCity]);
+  }, [replaceCity, backupLiveCity]);
+
+  /** The oldest of the rolling monthly copies of this city that is not game over, and how many months back it is. */
+  const findOldestMonthlyBackup = useCallback(async (): Promise<{ city: GameState; monthsBack: number } | null> => {
+    await flushPendingSaves();
+    const raws = await readIsoCityMonthlyBackupsRaw();
+    for (let i = raws.length - 1; i >= 0; i--) {
+      const raw = raws[i];
+      const parsed = raw ? await decompressAndParseAsync<GameState>(raw).catch(() => null) : null;
+      if (parsed?.grid && parsed.id === latestStateRef.current.id && !parsed.gameOver) {
+        return { city: parsed, monthsBack: i + 1 };
+      }
+    }
+    return null;
+  }, []);
+
+  const getLastAutosaveMonthsBack = useCallback(async (): Promise<number> => {
+    try {
+      return (await findOldestMonthlyBackup())?.monthsBack ?? 0;
+    } catch {
+      return 0;
+    }
+  }, [findOldestMonthlyBackup]);
 
   const loadLastAutosave = useCallback(async (): Promise<boolean> => {
     try {
-      await flushPendingSaves();
-      const raw = await readIsoCityLastMonthRaw();
-      const parsed = raw ? await decompressAndParseAsync<GameState>(raw) : null;
-      if (!parsed?.grid || parsed.id !== latestStateRef.current.id || parsed.gameOver) return false;
-      replaceCity({ ...normalizeGameStateVersions(parsed), speed: 0 }, latestStateRef.current);
+      const found = await findOldestMonthlyBackup();
+      if (!found) return false;
+      replaceCity({ ...normalizeGameStateVersions(found.city), speed: 0 }, latestStateRef.current);
       return true;
     } catch (e) {
       console.error('Failed to load the last autosave:', e);
       return false;
     }
-  }, [replaceCity]);
+  }, [replaceCity, findOldestMonthlyBackup]);
 
   const loadState = useCallback((stateString: string): boolean => {
     try {
@@ -1353,7 +1539,12 @@ export function GameProvider({
           typeof parsed.gridSize === 'number' &&
           parsed.stats &&
           parsed.stats.money !== undefined &&
-          parsed.stats.population !== undefined) {
+          parsed.stats.population !== undefined &&
+          // The grid must be gridSize x gridSize, or the renderer and simulation read past it
+          parsed.grid.length === parsed.gridSize &&
+          parsed.grid.every((row: unknown) => Array.isArray(row) && row.length === parsed.gridSize)) {
+        // Keep the city being replaced as a saved-city backup (5b)
+        void backupLiveCity(typeof parsed.id === 'string' ? parsed.id : undefined);
         // Ensure new fields exist for backward compatibility
         if (!parsed.adjacentCities) {
           parsed.adjacentCities = [];
@@ -1394,6 +1585,9 @@ export function GameProvider({
         if (parsed.effectiveTaxRate === undefined) {
           parsed.effectiveTaxRate = parsed.taxRate ?? 9;
         }
+        // Tax is capped at 0-20% (older saves allowed up to 100)
+        parsed.taxRate = Math.min(20, Math.max(0, parsed.taxRate ?? 9));
+        parsed.effectiveTaxRate = Math.min(20, Math.max(0, parsed.effectiveTaxRate));
         // Migrate constructionProgress for existing buildings (they're already built)
         if (parsed.grid) {
           for (let y = 0; y < parsed.grid.length; y++) {
@@ -1417,7 +1611,7 @@ export function GameProvider({
     } catch {
       return false;
     }
-  }, [replaceCity]);
+  }, [replaceCity, backupLiveCity]);
 
   const exportState = useCallback((): string => {
     return JSON.stringify(state);
@@ -1739,11 +1933,13 @@ export function GameProvider({
   const loadSavedCity = useCallback(async (cityId: string): Promise<boolean> => {
     const cityState = await loadCityState(cityId);
     if (!cityState) return false;
-    
+
     // Ensure the loaded state has an ID
     if (!cityState.id) {
       cityState.id = cityId;
     }
+    // Keep the city being replaced as a saved-city backup (5b)
+    void backupLiveCity(cityState.id === latestStateRef.current.id ? cityState.id : cityId);
     
     // Perform migrations for backward compatibility
     if (!cityState.adjacentCities) {
@@ -1782,6 +1978,9 @@ export function GameProvider({
     if (cityState.effectiveTaxRate === undefined) {
       cityState.effectiveTaxRate = cityState.taxRate ?? 9;
     }
+    // Tax is capped at 0-20% (older saves allowed up to 100)
+    cityState.taxRate = Math.min(20, Math.max(0, cityState.taxRate ?? 9));
+    cityState.effectiveTaxRate = Math.min(20, Math.max(0, cityState.effectiveTaxRate));
     if (cityState.grid) {
       for (let y = 0; y < cityState.grid.length; y++) {
         for (let x = 0; x < cityState.grid[y].length; x++) {
@@ -1808,7 +2007,7 @@ export function GameProvider({
     saveGameState(normalizedCityState, reportSaveResult);
 
     return true;
-  }, [reportSaveResult]);
+  }, [reportSaveResult, backupLiveCity]);
 
   // Delete a saved city from the multi-save system
   const deleteSavedCity = useCallback((cityId: string) => {
@@ -1860,6 +2059,9 @@ export function GameProvider({
     setActivePanel,
     setBudgetFunding,
     placeAtTile,
+    beginPlacementStroke,
+    endPlacementStroke,
+    undoLastPlacement,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,
     finishTrackDrag,
@@ -1884,6 +2086,7 @@ export function GameProvider({
     acceptEmergencyLoan,
     declineEmergencyLoan,
     loadLastAutosave,
+    getLastAutosaveMonthsBack,
     markLandmarksSeen,
     pendingLandmarkBulldoze,
     resolveLandmarkBulldoze,

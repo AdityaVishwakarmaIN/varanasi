@@ -9,6 +9,7 @@ import type { ServiceCoverage } from '@/games/isocity/types/services';
 import type { Rng } from '@/lib/rng';
 import type { ForecastInput } from '@/lib/notifications';
 import { getLandmarkLandValueBonus } from '@/lib/landmarks';
+import { formatINR } from '@/lib/format';
 import {
   computeFloodMask,
   FLOOD_CONFIG,
@@ -205,6 +206,32 @@ export interface FloodDayResult {
   notifications: Omit<Notification, 'id' | 'timestamp'>[];
   /** Flooded buildings that became abandoned today. */
   damaged: TilePos[];
+  /** Unzoned service/utility buildings flooded today for the first time this season (set `floodedThisSeason`). */
+  flooded: TilePos[];
+  /** Buildings with `floodedThisSeason` to repair now that the water has gone down (clear the flag, charge the repair). */
+  repairs: TilePos[];
+}
+
+/** Share of the build cost charged to repair a flooded service/utility building. */
+export const FLOOD_REPAIR_SHARE = 0.2;
+
+/**
+ * Unzoned service/utility buildings (hospital, power plant, water works…) never fall to permanent flood ruin: they
+ * only go offline while flooded and are repaired when the water recedes. Zoned buildings and informal housing still
+ * roll for ruin (they recover by themselves).
+ */
+export function isFloodRepairable(tile: Tile): boolean {
+  return tile.zone === 'none' && tile.building.type !== 'informal_housing';
+}
+
+/** The once-a-season notice for the automatic flood repairs (charged when the water goes down). */
+export function getFloodRepairNotification(count: number, total: number): Omit<Notification, 'id' | 'timestamp'> {
+  return {
+    title: `Flood repairs: ${count} building${count === 1 ? '' : 's'}, ${formatINR(total)}`,
+    description: 'Flooded services and utilities were repaired automatically now that the water has gone down.',
+    icon: 'flood',
+    severity: 'info',
+  };
 }
 
 /**
@@ -228,6 +255,8 @@ export function runFloodDay(
     },
     notifications: [],
     damaged: [],
+    flooded: [],
+    repairs: [],
   };
   if (state.mapId !== 'varanasi') return result;
   const size = state.gridSize;
@@ -297,6 +326,11 @@ export function runFloodDay(
         icon: 'flood',
         severity: 'info',
       });
+      // The water has fully gone: repair every service/utility building that flooded this season
+      for (let y = 0; y < size; y++) {
+        const row = state.grid[y];
+        for (let x = 0; x < size; x++) if (row[x].building.floodedThisSeason) result.repairs.push({ x, y });
+      }
     }
   }
 
@@ -306,10 +340,17 @@ export function runFloodDay(
     for (const i of getFloodedIndices(mask)) {
       const x = i % size;
       const y = (i / size) | 0;
-      const b = state.grid[y][x].building;
+      const tile = state.grid[y][x];
+      const b = tile.building;
       if (b.abandoned) continue;
       const chance = getFloodDamageChance(b.type);
-      if (chance > 0 && rng() < chance) result.damaged.push({ x, y });
+      if (chance <= 0) continue;
+      if (isFloodRepairable(tile)) {
+        // Offline while flooded (no power/water); repaired when the water goes down, never ruined
+        if (!b.floodedThisSeason) result.flooded.push({ x, y });
+        continue;
+      }
+      if (rng() < chance) result.damaged.push({ x, y });
     }
   }
 

@@ -11,10 +11,14 @@
  * requesting frames and the paused time is never owed, so no ticks catch up on resume.
  */
 
-/** Simulation tick interval in ms for game speeds 1, 2 and 3. */
+/**
+ * Simulation tick interval in ms for game speeds 1, 2 and 3. A month is 900 ticks, so on desktop
+ * a year takes ~90 min at speed 1, ~36 min at speed 2 and ~14 min at speed 3. Speed 3 (80 ms) is
+ * well under one tick per 60 fps frame, so `maxTicksPerFrame` never limits it.
+ */
 export const TICK_INTERVAL_MS = {
-  desktop: [500, 300, 200],
-  mobile: [750, 450, 300],
+  desktop: [500, 200, 80],
+  mobile: [750, 300, 120],
 } as const;
 
 export const GAME_LOOP_CONFIG = {

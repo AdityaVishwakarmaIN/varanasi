@@ -27,9 +27,10 @@ import { TitleBackdrop } from '@/components/TitleBackdrop';
 import { SavedCityMeta, GameState } from '@/types/game';
 import { compressToUTF16 } from 'lz-string';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
-import { T } from 'gt-next';
+import { T, Var } from 'gt-next';
 import { Users, X } from 'lucide-react';
 import {
+  backupIsoCityAutosave,
   clearIsoCityAutosave,
   copyIsoCitySavedCityToAutosave,
   deleteIsoCitySavedCityData,
@@ -207,6 +208,7 @@ export default function HomePage() {
   const [, setIsMultiplayer] = useState(false);
   const [startFreshGame, setStartFreshGame] = useState(false);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
+  const [cityToDelete, setCityToDelete] = useState<SavedCityMeta | null>(null);
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
   const hasResettableProgress = hasSaved;
@@ -298,8 +300,11 @@ export default function HomePage() {
       return;
     }
     
-    // Otherwise copy it into the autosave slot, which GameProvider loads
-    copyIsoCitySavedCityToAutosave(city.id)
+    // Otherwise copy it into the autosave slot, which GameProvider loads.
+    // First keep the current autosave city as "<name> (auto-backup)" (5b).
+    backupIsoCityAutosave(city.id)
+      .catch((e) => console.error('Failed to back up the current city:', e))
+      .then(() => copyIsoCitySavedCityToAutosave(city.id))
       .then((found) => {
         if (found) {
           setStartFreshGame(false);
@@ -452,13 +457,16 @@ export default function HomePage() {
         </Button>
       )}
 
-      <Button
-        onClick={handleLoadExample}
-        variant="outline"
-        className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_9%/0.6)] border-sandstone/15 text-sandstone/80 hover:bg-[hsl(233_40%_13%/0.85)] hover:text-sandstone"
-      >
-        <T>Load Example</T>
-      </Button>
+      {/* Developer tool (?dev=1): it writes an example city over the autosave */}
+      {isDevMode() && (
+        <Button
+          onClick={handleLoadExample}
+          variant="outline"
+          className="press h-12 w-full rounded-xl text-base bg-[hsl(233_40%_9%/0.6)] border-sandstone/15 text-sandstone/80 hover:bg-[hsl(233_40%_13%/0.85)] hover:text-sandstone"
+        >
+          <T>Load Example</T>
+        </Button>
+      )}
 
       <div className="mt-1 grid w-full grid-cols-[1fr_auto] items-start gap-x-4">
         <div className="flex flex-col">
@@ -492,12 +500,35 @@ export default function HomePage() {
         className="flex flex-col gap-2 min-h-0 overflow-y-auto overscroll-y-contain"
         style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
       >
-        {visibleSavedCities.slice(0, 5).map((city) => (
+        {visibleSavedCities.slice(0, 5).map((city) => cityToDelete?.id === city.id ? (
+          // Same two-step confirm as the Settings saved-cities list
+          <div key={city.id} className="hud-well rounded-xl p-3 space-y-2">
+            <p className="text-xs text-sandstone/80 text-center">
+              <T>Delete <span className="font-semibold"><Var>{city.cityName}</Var></span>? This cannot be undone.</T>
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1 min-h-11" onClick={() => setCityToDelete(null)}>
+                <T>Cancel</T>
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="flex-1 min-h-11"
+                onClick={() => {
+                  deleteSavedCity(city);
+                  setCityToDelete(null);
+                }}
+              >
+                <T>Delete</T>
+              </Button>
+            </div>
+          </div>
+        ) : (
           <SavedCityCard
             key={city.id}
             city={city}
             onLoad={() => loadSavedCity(city)}
-            onDelete={() => deleteSavedCity(city)}
+            onDelete={() => setCityToDelete(city)}
           />
         ))}
       </div>

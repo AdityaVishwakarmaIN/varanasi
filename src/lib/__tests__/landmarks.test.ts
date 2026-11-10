@@ -216,7 +216,7 @@ describe('landmark effects', () => {
     expect(b.commercialDemand).toBe(10);
     expect(b.extraGhats).toHaveLength(4);
     expect(new Set(b.extraGhats).size).toBe(4);
-    expect(b.tourismIncome).toBeCloseTo(150 * riverFactor(64) + 200);
+    expect(b.tourismIncome).toBeCloseTo(1200 * riverFactor(64) + 1600);
   });
 
   it('Ramnagar Fort raises land value within 6 tiles of its footprint', () => {

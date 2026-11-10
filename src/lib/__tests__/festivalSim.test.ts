@@ -67,15 +67,16 @@ describe('event areas', () => {
     expect(getLargestGhatCluster([], 10)).toBeNull();
   });
 
-  it('Dev Deepawali covers the riverfront and land near ghats; Shivratri falls back to the ghats at half scale', () => {
+  it('Dev Deepawali covers only land near the ghats; Shivratri falls back to the ghats at half scale', () => {
     const s = newVaranasi();
-    const riverfront = riverfrontTiles(s).length;
     const bare = getEventArea(s, 'dev_deepawali');
-    expect(bare.indices.length).toBe(riverfront);
+    expect(bare.indices.length).toBe(0);
+    expect(bare.center).toBeNull();
     expect(getEventArea(s, 'maha_shivratri').center).toBeNull();
     const ghats = addGhats(s, 3);
     const withGhats = getEventArea(s, 'dev_deepawali');
-    expect(withGhats.indices.length).toBeGreaterThan(riverfront);
+    expect(withGhats.indices.length).toBeGreaterThan(0);
+    expect(withGhats.indices.length).toBeLessThan(riverfrontTiles(s).length + 3 * 121);
     expect(withGhats.center).toEqual(ghats[1]);
     const shiv = getEventArea(s, 'maha_shivratri');
     expect(shiv.scale).toBe(0.5);
@@ -123,21 +124,26 @@ describe('daily festival step', () => {
     expect(n.description).not.toMatch(/injur|death|died/i);
   });
 
-  it('a prepared city triumphs: tourism × 3 on the day and happiness +5 for 60 days', () => {
+  it('a prepared city triumphs: tourism × 3 paid as a lump sum and happiness +5 for 60 days', () => {
     const s = newVaranasi();
     addGhats(s, 3);
     fullServices(s);
     addRoadsInArea(s);
+    s.stats = { ...s.stats, tourismIncome: 3000 };
     const readiness = getEventReadiness(s, 'dev_deepawali');
     expect(readiness.checklist.filter((c) => !c.passed).map((c) => c.requirement)).toEqual([]);
     const today = absoluteDay(s.year, 11, 15);
     const r = runFestivalDay(s, today, 11, 15);
     expect(r.festival?.event?.outcome).toBe('triumph');
     expect(r.notifications[0].severity).toBe('info');
+    // (3000 / 30) × 1 day × (3 − 1) = 200
+    expect(r.tourismPayout).toBe(200);
+    expect(r.notifications[0].description).toMatch(/₹200/);
 
+    // Per tick only the mood applies; tourism is not multiplied again
     const stats = { ...s.stats, tourismIncome: 100, income: 500, happiness: 50 };
     applyFestivalStats(stats, r.festival, today);
-    expect(stats).toMatchObject({ tourismIncome: 300, income: 700, happiness: 55 });
+    expect(stats).toMatchObject({ tourismIncome: 100, income: 500, happiness: 55 });
     const later = { ...s.stats, tourismIncome: 100, income: 500, happiness: 50 };
     applyFestivalStats(later, r.festival, today + 10);
     expect(later).toMatchObject({ tourismIncome: 100, happiness: 55 });
@@ -169,6 +175,13 @@ describe('daily festival step', () => {
     const r = runFestivalDay(s, today, 2, 26);
     expect(r.festival?.event).toBeUndefined();
     expect(r.notifications[0].title).toMatch(/passed quietly/);
+    // Dev Deepawali too: no penalty without ghats
+    const dd = absoluteDay(s.year, 11, 15);
+    const d = runFestivalDay(s, dd, 11, 15);
+    expect(d.festival?.event).toBeUndefined();
+    expect(d.festival?.mood).toBeUndefined();
+    expect(d.notifications[0]).toMatchObject({ severity: 'info' });
+    expect(d.notifications[0].title).toMatch(/passed quietly/);
   });
 });
 

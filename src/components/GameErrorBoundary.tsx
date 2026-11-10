@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * Crash safety (S5-T12). A React error boundary around the game: on a crash it autosaves the
- * last good city state (if it can) and shows "Something went wrong. Your city was saved." with a
- * reload button.
+ * Crash safety (S5-T12). A React error boundary around the game: on a crash it saves the city
+ * state to a separate crash slot (the autosave is kept, so it cannot crash-loop) and shows
+ * reload and back-to-menu buttons.
  *
  * The boundary sits outside GameProvider (so a crash in the provider is caught too); the state
  * getter is registered by <CrashSaveRegistrar/>, rendered inside the provider.
@@ -14,7 +14,7 @@ import { compressToUTF16 } from 'lz-string';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
 import { isBenchmarkState } from '@/lib/benchmark';
-import { flushPendingSaves, writeIsoCityAutosaveRaw } from '@/lib/isocityStorage';
+import { flushPendingSaves, writeIsoCityCrashRaw } from '@/lib/isocityStorage';
 import type { GameState } from '@/types/game';
 
 let getCrashState: (() => GameState | null) | null = null;
@@ -32,7 +32,11 @@ export function CrashSaveRegistrar() {
   return null;
 }
 
-/** Saves the registered state into the autosave slot. Resolves true when the city is on disk. */
+/**
+ * Saves the registered state into a separate crash slot, never the autosave: the crashing state
+ * could crash again on load, so "Continue" keeps loading the last good autosave.
+ * Resolves true when the city is on disk.
+ */
 export async function saveCityAfterCrash(): Promise<boolean> {
   try {
     const state = getCrashState?.();
@@ -43,7 +47,7 @@ export async function saveCityAfterCrash(): Promise<boolean> {
     }
     if (isBenchmarkState(state)) return false; // benchmark cities are never saved
     await flushPendingSaves();
-    await writeIsoCityAutosaveRaw(compressToUTF16(JSON.stringify(state)));
+    await writeIsoCityCrashRaw(compressToUTF16(JSON.stringify(state)));
     return true;
   } catch (e) {
     console.error('Crash autosave failed:', e);
@@ -80,7 +84,7 @@ export class GameErrorBoundary extends React.Component<{ children: React.ReactNo
       >
         <div className="max-w-sm w-full text-center space-y-4">
           <h1 className="text-2xl font-light text-white/90">
-            {save === 'saved' && <T>Something went wrong. Your city was saved.</T>}
+            {save === 'saved' && <T>Something went wrong. Your last autosave is kept, and a copy of this city was saved separately.</T>}
             {save === 'saving' && <T>Something went wrong. Saving your city…</T>}
             {save === 'failed' && <T>Something went wrong. Your last autosave is kept.</T>}
           </h1>
@@ -90,6 +94,14 @@ export class GameErrorBoundary extends React.Component<{ children: React.ReactNo
             onClick={() => window.location.reload()}
           >
             <T>Reload</T>
+          </Button>
+          <Button
+            variant="ghost"
+            className="min-h-[44px] w-full text-white/80 hover:bg-white/10 hover:text-white"
+            disabled={save === 'saving'}
+            onClick={() => window.location.assign('/')}
+          >
+            <T>Back to menu</T>
           </Button>
         </div>
       </main>

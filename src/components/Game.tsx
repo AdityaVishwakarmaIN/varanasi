@@ -356,7 +356,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         <div className="w-full h-full overflow-hidden bg-background flex flex-col">
           {/* Mobile Top Bar */}
           <MobileTopBar 
-            selectedTile={selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool) ? state.grid[selectedTile.y][selectedTile.x] : null}
+            selectedTile={selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool) ? state.grid[selectedTile.y]?.[selectedTile.x] ?? null : null}
             services={state.services}
             onCloseTile={() => setSelectedTile(null)}
             gangaOverlayActive={overlayMode === 'ganga'}
@@ -404,7 +404,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 onLocate={locateNotification}
               />
             </div>
-            <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" />
+            <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" onExit={onExit} />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed
@@ -510,7 +510,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               className="absolute top-3 left-4 xl:left-1/2 xl:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
             />
             {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
-            <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" />
+            <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" onExit={onExit} />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
             <FestivalEventPanel festivalId={eventPanel} state={state} onClose={closeEventPanel} onLocate={locateEventArea} />
             <CitizenFeed

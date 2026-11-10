@@ -253,11 +253,17 @@ function glideCamera(
   frameRef.current = requestAnimationFrame(step);
 }
 
+/** Tools that place on every tile a drag crosses (zone rectangles are handled separately). */
+const DRAG_PLACE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['road', 'rail', 'subway', 'bulldoze', 'tree', 'zone_water', 'zone_land']);
+
 export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile, isMobile = false, navigationTarget, onNavigationComplete, onViewportChange, onBargeDelivery, controlsRef, touchDrawMode = false }: CanvasIsometricGridProps) {
   const {
     state,
     latestStateRef,
     placeAtTile,
+    beginPlacementStroke,
+    endPlacementStroke,
+    undoLastPlacement,
     finishTrackDrag,
     connectToCity,
     checkAndDiscoverCities,
@@ -508,8 +514,15 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Note: zone_water uses supportsDragPlace behavior (place on click/drag) instead of rectangle selection
   const showsDragGrid = ['zone_residential', 'zone_commercial', 'zone_industrial', 'zone_dezone'].includes(selectedTool);
   
-  // Roads, bulldoze, and other tools support drag-to-place but don't show the grid
-  const supportsDragPlace = selectedTool !== 'select';
+  // Only lines, bulldoze, trees and terraform zones place along a drag (no grid shown)
+  const supportsDragPlace = DRAG_PLACE_TOOLS.has(selectedTool);
+  // Every other tool (buildings) places exactly once, on mouse up at the release tile
+  const placesOnRelease = selectedTool !== 'select' && !showsDragGrid && !supportsDragPlace;
+  const releasePlaceRef = useRef<{ x: number; y: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  useEffect(() => {
+    isDraggingRef.current = isDragging;
+  }, [isDragging]);
 
   const PAN_DRAG_THRESHOLD = 6;
   const CLICK_SELECTION_MAX_MS = 500;
@@ -3523,6 +3536,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     // Any click stops a running zoom animation / pan glide.
     smoothCamera.stop();
     panVelocityRef.current.reset();
+    // Any other button press drops a pending single (on-release) placement
+    releasePlaceRef.current = null;
 
     // Right button: drag pans; a click without a drag cancels the tool (see handleMouseUp).
     // While drawing with the left button, right-click still cancels immediately.
@@ -3543,6 +3558,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       setRoadDrawDirection(null);
       setDragStartTile(null);
       setDragEndTile(null);
+      endPlacementStroke();
       setTool('select');
       return;
     }
@@ -3600,16 +3616,22 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           // Reset road drawing state for new drag
           setRoadDrawDirection(null);
           placedRoadTilesRef.current.clear();
+          // One undo stroke for the whole drag (closed on mouse up / cancel)
+          beginPlacementStroke();
           // Place immediately on first click
           placeAtTile(gridX, gridY);
           // Track initial tile for roads, rail, and subways
           if (selectedTool === 'road' || selectedTool === 'rail' || selectedTool === 'subway') {
             placedRoadTilesRef.current.add(`${gridX},${gridY}`);
           }
+        } else if (placesOnRelease) {
+          panCandidateRef.current = null;
+          // Buildings: place once, on mouse up at the release tile
+          releasePlaceRef.current = { x: gridX, y: gridY };
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeAtTile, zoom, showsDragGrid, supportsDragPlace, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
+  }, [offset, gridSize, selectedTool, placeAtTile, beginPlacementStroke, endPlacementStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -3747,11 +3769,14 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const mouseX = (e.clientX - rect.left) / zoom;
       const mouseY = (e.clientY - rect.top) / zoom;
       const { gridX, gridY } = screenToGrid(mouseX, mouseY, offset.x / zoom, offset.y / zoom);
-      
+
+      // A held single placement follows the pointer; it is placed where the button is released
+      if (releasePlaceRef.current) releasePlaceRef.current = { x: gridX, y: gridY };
+
       if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
         // Only update hovered tile if it actually changed to avoid unnecessary re-renders
         setHoveredTile(prev => (prev?.x === gridX && prev?.y === gridY) ? prev : { x: gridX, y: gridY });
-        
+
         // Check for fire or crime incidents at this tile for tooltip display
         const tile = grid[gridY]?.[gridX];
         const crimeKey = `${gridX},${gridY}`;
@@ -3875,14 +3900,23 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const maxX = Math.max(dragStartTile.x, dragEndTile.x);
       const minY = Math.min(dragStartTile.y, dragEndTile.y);
       const maxY = Math.max(dragStartTile.y, dragEndTile.y);
-      
+
+      beginPlacementStroke(); // the whole rectangle is one undo step
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
           placeAtTile(x, y);
         }
       }
     }
-    
+
+    // Buildings: place exactly once, at the tile under the pointer on release
+    const release = releasePlaceRef.current;
+    releasePlaceRef.current = null;
+    if (release && placesOnRelease && !isPanning
+      && release.x >= 0 && release.x < gridSize && release.y >= 0 && release.y < gridSize) {
+      placeAtTile(release.x, release.y);
+    }
+
     // After placing roads or rail, create bridges for valid water crossings and check for city discovery
     if (isDragging && (selectedTool === 'road' || selectedTool === 'rail') && dragStartTile && dragEndTile) {
       // Collect all tiles in the drag path
@@ -3917,12 +3951,33 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     setIsPanning(false);
     setRoadDrawDirection(null);
     placedRoadTilesRef.current.clear();
-    
+    endPlacementStroke();
+
     // Clear hovered tile when mouse leaves
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeAtTile, beginPlacementStroke, endPlacementStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+
+  // Mouse leaving the map: cancel an in-progress zone/line drag without committing it
+  // (no rectangle fill, no bridges), drop a held single placement, and clear the hover ghost.
+  const handleMouseLeave = useCallback(() => {
+    releasePlaceRef.current = null;
+    if (isDragging) {
+      setIsDragging(false);
+      setDragStartTile(null);
+      setDragEndTile(null);
+      setRoadDrawDirection(null);
+      placedRoadTilesRef.current.clear();
+      endPlacementStroke();
+      panCandidateRef.current = null;
+      rightClickRef.current = null;
+      setIsPanning(false);
+    } else {
+      handleMouseUp();
+    }
+    setHoveredTile(null);
+  }, [isDragging, endPlacementStroke, handleMouseUp]);
   
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -3999,8 +4054,27 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     setDragEndTile(null);
     setRoadDrawDirection(null);
     placedRoadTilesRef.current.clear();
+    releasePlaceRef.current = null;
+    endPlacementStroke();
     setHoveredTile(null);
-  }, []);
+  }, [endPlacementStroke]);
+
+  // Keyboard hooks (useKeyboardControls): Esc cancels an in-progress drag first; Ctrl/Cmd+Z undoes.
+  useEffect(() => {
+    const controls = controlsRef?.current;
+    if (!controls) return;
+    controls.cancelDrag = () => {
+      if (!isDraggingRef.current && !releasePlaceRef.current) return false;
+      isDraggingRef.current = false;
+      cancelToolDrag();
+      return true;
+    };
+    controls.undo = undoLastPlacement;
+    return () => {
+      controls.cancelDrag = null;
+      controls.undo = null;
+    };
+  }, [controlsRef, cancelToolDrag, undoLastPlacement]);
 
   const startPinch = useCallback((g: TouchGesture, t1: React.Touch | Touch, t2: React.Touch | Touch) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -4223,7 +4297,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => {
         e.preventDefault();
       }}

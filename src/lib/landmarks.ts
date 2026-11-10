@@ -25,9 +25,9 @@ export interface LandmarkEffects {
   countsAsGhats?: number;
   /** City-wide happiness points. */
   happiness?: number;
-  /** ₹ per tick of tourism income. */
-  tourismPerTick?: number;
-  /** When true, tourismPerTick is multiplied by the Ganga factor (riverFactor in tourism.ts). */
+  /** ₹ of tourism income per month (added to the monthly tourism figure). */
+  tourismPerMonth?: number;
+  /** When true, tourismPerMonth is multiplied by the Ganga factor (riverFactor in tourism.ts). */
   tourismGangaAffected?: boolean;
   commercialDemand?: number;
   residentialDemand?: number;
@@ -79,7 +79,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     cost: 40_000,
     placement: 'Within 8 tiles of the Ganga, on the west bank',
     effects: {
-      tourismPerTick: 150,
+      tourismPerMonth: 1200,
       tourismGangaAffected: true,
       commercialDemand: 10,
       pilgrimMultiplier: 2,
@@ -103,7 +103,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     size: { width: 3, height: 3 },
     cost: 50_000,
     placement: 'Northern quarter of the map, west of the Ganga',
-    effects: { tourismPerTick: 200, tourismGangaAffected: false, happiness: 3 },
+    effects: { tourismPerMonth: 1600, tourismGangaAffected: false, happiness: 3 },
   },
   landmark_ramnagar_fort: {
     id: 'landmark_ramnagar_fort',
@@ -112,7 +112,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     size: { width: 3, height: 3 },
     cost: 80_000,
     placement: 'East bank, beyond the sandy floodplain',
-    effects: { tourismPerTick: 250, tourismGangaAffected: true, boatDestination: true, landValueBonus: 20, landValueRadius: 6 },
+    effects: { tourismPerMonth: 2000, tourismGangaAffected: true, boatDestination: true, landValueBonus: 20, landValueRadius: 6 },
   },
 };
 
@@ -303,7 +303,7 @@ export interface LandmarkBonuses {
   happiness: number;
   residentialDemand: number;
   commercialDemand: number;
-  /** ₹ per tick, after the Ganga factor where it applies. */
+  /** ₹ per month, after the Ganga factor where it applies. */
   tourismIncome: number;
   /** Extra ghat positions for the ghat tourism model (Dashashwamedh counts as 4 ghats). Distinct objects, so they cluster. */
   extraGhats: { x: number; y: number }[];
@@ -317,7 +317,7 @@ export function getLandmarkBonuses(placed: readonly PlacedLandmark[], gangaHealt
     out.happiness += e.happiness ?? 0;
     out.residentialDemand += e.residentialDemand ?? 0;
     out.commercialDemand += e.commercialDemand ?? 0;
-    if (e.tourismPerTick) out.tourismIncome += e.tourismPerTick * (e.tourismGangaAffected ? riverFactor(gangaHealth) : 1);
+    if (e.tourismPerMonth) out.tourismIncome += e.tourismPerMonth * (e.tourismGangaAffected ? riverFactor(gangaHealth) : 1);
     for (let i = 0; i < (e.countsAsGhats ?? 0); i++) out.extraGhats.push({ x: p.x, y: p.y });
   }
   return out;

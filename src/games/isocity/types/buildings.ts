@@ -54,6 +54,8 @@ export interface Building {
   age: number;
   constructionProgress: number;
   abandoned: boolean;
+  /** Consecutive in-game days a zoned non-starter building has gone without power or water (absent = 0). */
+  unservedDays?: number;
   flipped?: boolean;
   cityId?: string;
   bridgeType?: BridgeType;
@@ -63,6 +65,8 @@ export interface Building {
   bridgeIndex?: number;
   bridgeSpan?: number;
   bridgeTrackType?: BridgeTrackType;
+  /** Unzoned service/utility building that stood in flood water this season; repaired when the river recedes. */
+  floodedThisSeason?: boolean;
 }
 
 export const RESIDENTIAL_BUILDINGS: BuildingType[] = ['house_small', 'house_medium', 'mansion', 'apartment_low', 'apartment_high'];
@@ -79,18 +83,19 @@ export const BUILDING_STATS: Record<BuildingType, { maxPop: number; maxJobs: num
   tree: { maxPop: 0, maxJobs: 0, pollution: -5, landValue: 2 },
   house_small: { maxPop: 6, maxJobs: 0, pollution: 0, landValue: 10 },
   house_medium: { maxPop: 14, maxJobs: 0, pollution: 0, landValue: 22 },
-  mansion: { maxPop: 18, maxJobs: 0, pollution: 0, landValue: 60 },
+  // Multi-tile zoned buildings hold at least 1.25x the single tiles they replace (4 x house_medium = 56)
+  mansion: { maxPop: 70, maxJobs: 0, pollution: 0, landValue: 60 },
   apartment_low: { maxPop: 120, maxJobs: 0, pollution: 2, landValue: 40 },
   apartment_high: { maxPop: 260, maxJobs: 0, pollution: 3, landValue: 55 },
   shop_small: { maxPop: 0, maxJobs: 10, pollution: 1, landValue: 16 },
   shop_medium: { maxPop: 0, maxJobs: 28, pollution: 2, landValue: 26 },
-  office_low: { maxPop: 0, maxJobs: 90, pollution: 2, landValue: 40 },
+  office_low: { maxPop: 0, maxJobs: 140, pollution: 2, landValue: 40 }, // >= 1.25 x 4 shop_medium
   office_high: { maxPop: 0, maxJobs: 210, pollution: 3, landValue: 55 },
-  mall: { maxPop: 0, maxJobs: 260, pollution: 6, landValue: 70 },
+  mall: { maxPop: 0, maxJobs: 320, pollution: 6, landValue: 70 }, // >= 1.25 x 9 shop_medium
   factory_small: { maxPop: 0, maxJobs: 40, pollution: 15, landValue: -5 },
-  factory_medium: { maxPop: 0, maxJobs: 90, pollution: 28, landValue: -10 },
-  factory_large: { maxPop: 0, maxJobs: 180, pollution: 55, landValue: -18 },
-  warehouse: { maxPop: 0, maxJobs: 60, pollution: 18, landValue: -6 },
+  factory_medium: { maxPop: 0, maxJobs: 200, pollution: 28, landValue: -10 }, // >= 1.25 x 4 factory_small
+  factory_large: { maxPop: 0, maxJobs: 450, pollution: 55, landValue: -18 }, // >= 1.25 x 9 factory_small
+  warehouse: { maxPop: 0, maxJobs: 210, pollution: 18, landValue: -6 }, // >= 1.25 x 4 factory_small
   police_station: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: 15 },
   fire_station: { maxPop: 0, maxJobs: 20, pollution: 0, landValue: 10 },
   hospital: { maxPop: 0, maxJobs: 80, pollution: 0, landValue: 25 },

@@ -71,6 +71,12 @@ export function useKeyboardControls<Overlay extends string>(options: KeyboardCon
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || isInsideModal(e.target)) return;
+      // Ctrl/Cmd+Z: one-step undo of the last placement (matchKeyBinding skips modified keys).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (!e.repeat) controls.undo?.();
+        return;
+      }
       const binding = matchKeyBinding(e);
       if (!binding || binding.handledElsewhere) return;
       const opts = optionsRef.current;
@@ -122,15 +128,17 @@ export function useKeyboardControls<Overlay extends string>(options: KeyboardCon
           controls.camera?.zoomStep(binding.action === 'zoomIn' ? 1 : -1);
           break;
         case 'cancel':
-          // Existing order: close overlay → close panel → deselect → Select tool.
-          if (opts.overlayMode !== 'none') {
+          // Order: cancel an in-progress drag → Select tool → close overlay → close panel → deselect.
+          if (controls.cancelDrag?.()) {
+            // drag cancelled, nothing committed
+          } else if (opts.selectedTool !== 'select') {
+            opts.setTool('select');
+          } else if (opts.overlayMode !== 'none') {
             opts.setOverlayMode('none' as Overlay);
           } else if (opts.activePanel !== 'none') {
             opts.setActivePanel('none');
           } else if (opts.selectedTile) {
             opts.setSelectedTile(null);
-          } else if (opts.selectedTool !== 'select') {
-            opts.setTool('select');
           }
           break;
         case 'cycleOverlay':

@@ -111,10 +111,10 @@ export const TOOL_INFO: Record<Tool, ToolInfo> = {
   sewage_treatment_plant: { name: msg('Sewage Treatment Plant'), cost: 2500, description: msg('Cleans sewage before it reaches the Ganga. Treats a large area (2x2).'), size: 2 },
   jal_sansthan_water_works: { name: msg('Jal Sansthan Water Works'), cost: 6000, description: msg('Draws and treats Ganga water for a large area. Needs power; must be within 3 tiles of the Ganga. A cleaner river gives more water (3x3).'), size: 3 },
   landmark_dashashwamedh: { name: msg('Dashashwamedh Ghat'), cost: 15000, description: msg('Landmark. Counts as 4 ghats for tourism; happiness +2. Must include at least 2 west-bank riverfront tiles (2x2).'), size: 2 },
-  landmark_kashi_vishwanath: { name: msg('Kashi Vishwanath Temple'), cost: 40000, description: msg('Landmark. Tourism +₹150 a tick (needs a clean Ganga); commercial demand +10. Within 8 tiles of the Ganga, west bank (2x2).'), size: 2 },
+  landmark_kashi_vishwanath: { name: msg('Kashi Vishwanath Temple'), cost: 40000, description: msg('Landmark. Tourism +₹1,200 per month (needs a clean Ganga); commercial demand +10. Within 8 tiles of the Ganga, west bank (2x2).'), size: 2 },
   landmark_bhu: { name: msg('Banaras Hindu University'), cost: 60000, description: msg('Landmark. Education coverage with twice the college range; residential demand +10, commercial +5. Not in a flood zone (4x4).'), size: 4 },
-  landmark_sarnath: { name: msg('Sarnath'), cost: 50000, description: msg('Landmark. International tourism +₹200 a tick; happiness +3. Northern quarter of the map, west of the Ganga (3x3).'), size: 3 },
-  landmark_ramnagar_fort: { name: msg('Ramnagar Fort'), cost: 80000, description: msg('Landmark. Tourism +₹250 a tick; land value +20 within 6 tiles. East bank, beyond the floodplain (3x3).'), size: 3 },
+  landmark_sarnath: { name: msg('Sarnath'), cost: 50000, description: msg('Landmark. International tourism +₹1,600 per month; happiness +3. Northern quarter of the map, west of the Ganga (3x3).'), size: 3 },
+  landmark_ramnagar_fort: { name: msg('Ramnagar Fort'), cost: 80000, description: msg('Landmark. Tourism +₹2,000 per month; land value +20 within 6 tiles. East bank, beyond the floodplain (3x3).'), size: 3 },
   embankment: { name: msg('Embankment'), cost: 300, description: msg('Raised river bank. Land behind it floods one river level later. Within 4 tiles of the Ganga; lowers nearby land value.'), size: 1 },
 };
 

@@ -50,7 +50,7 @@ export interface TipDefinition {
 const TIP_DEFINITIONS: TipDefinition[] = [
   {
     id: 'get_started',
-    message: msg('Welcome! Start by zoning areas for residential, commercial, and industrial buildings. Then add roads, power, and water to build your city.'),
+    message: msg('Welcome! Start by laying roads, then zone residential, commercial, and industrial areas along them. Then add power and water so buildings can grow.'),
     priority: 0, // Highest priority - shows first on fresh cities
     check: (state: GameState) => {
       // Check if this is a fresh/empty city - no zones placed yet
@@ -94,7 +94,7 @@ const TIP_DEFINITIONS: TipDefinition[] = [
           }
           const type = tile.building.type;
           if (type === 'power_plant') hasPowerPlant = true;
-          if (type === 'water_tower') hasWaterTower = true;
+          if (type === 'water_tower' || type === 'jal_sansthan_water_works') hasWaterTower = true;
           if (type === 'road' || type === 'bridge') hasRoad = true;
         }
       }
@@ -202,7 +202,7 @@ const TIP_DEFINITIONS: TipDefinition[] = [
   // One tip per system, the first time it matters (S5-T8). Crisis tips outrank the general advice above.
   {
     id: 'debt_warning',
-    message: msg('The treasury is in debt. Raise taxes or cut spending on the Budget panel. After three months in debt, the city is offered an emergency loan: it clears the debt, but you repay it with interest every month.'),
+    message: msg('The treasury is in debt. Raise taxes or cut spending on the Budget panel. After three months in debt, the city is offered a one-time emergency loan worth six months of expenses, repaid as 15% of your monthly income for the next 24 months.'),
     priority: -9,
     check: (state: GameState) => SYSTEM_TIP_CHECKS.debt_warning(state),
   },

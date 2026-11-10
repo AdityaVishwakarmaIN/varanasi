@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { msg, useGT, useMessages } from 'gt-next';
 import { AlertTriangle, Landmark, Users } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
@@ -32,6 +32,8 @@ const LABELS = {
   loadLastAutosave: msg('Load last autosave'),
   noAutosave: msg('No earlier autosave of this city was found.'),
   newCity: msg('New city'),
+  confirmNewCity: msg('Click again to start a new city'),
+  exitToMenu: msg('Exit to menu'),
 };
 
 /** Same text as FAILING_STAT_LINES in failure.ts, as literals so they can be translated. */
@@ -43,19 +45,37 @@ const FAILING_LINES: Record<FailingStat, string> = {
   safety: msg('Crime and fires made people feel unsafe.'),
   environment: msg('Pollution choked the city.'),
   gangaHealth: msg('The Ganga became too polluted.'),
+  jobs: msg('There were not enough jobs.'),
+  taxes: msg('Taxes were too high.'),
 };
 
 /**
  * Failure states UI (S4-T11): the debt and exodus banners, the emergency loan dialog and the
  * game-over screen. `bannerClassName` places the banners for the desktop or mobile layout.
  */
-export function FailureOverlays({ bannerClassName }: { bannerClassName?: string }) {
-  const { state, acceptEmergencyLoan, declineEmergencyLoan, loadLastAutosave, newGame } = useGame();
+export function FailureOverlays({ bannerClassName, onExit }: { bannerClassName?: string; onExit?: () => void }) {
+  const { state, acceptEmergencyLoan, declineEmergencyLoan, loadLastAutosave, getLastAutosaveMonthsBack, newGame } = useGame();
   const m = useMessages();
   const gt = useGT();
   const [autosaveMissing, setAutosaveMissing] = useState(false);
+  const [confirmNewCityFor, setConfirmNewCityFor] = useState<unknown>(null);
+  const [monthsBack, setMonthsBack] = useState(0);
   const failure = state.failure;
   const gameOver = state.gameOver;
+  // The first "New city" click only arms it, for this game over only
+  const confirmNewCity = !!gameOver && confirmNewCityFor === gameOver;
+
+  // On game over, find how far back the autosave copy that "Load last autosave" loads is
+  useEffect(() => {
+    if (!gameOver) return;
+    let cancelled = false;
+    void getLastAutosaveMonthsBack().then((n) => {
+      if (!cancelled) setMonthsBack(n);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [gameOver, getLastAutosaveMonthsBack]);
 
   const inDebt = !gameOver && state.stats.money < 0;
   const lowHappiness = !gameOver && !!failure && failure.lowHappinessMonths > 0;
@@ -166,13 +186,30 @@ export function FailureOverlays({ bannerClassName }: { bannerClassName?: string 
               </div>
               {autosaveMissing && <p className="text-xs text-muted-foreground">{m(LABELS.noAutosave)}</p>}
               <DialogFooter className="gap-2">
+                {onExit && (
+                  <Button variant="ghost" onClick={onExit}>{m(LABELS.exitToMenu)}</Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={async () => setAutosaveMissing(!(await loadLastAutosave()))}
                 >
-                  {m(LABELS.loadLastAutosave)}
+                  {monthsBack > 0
+                    ? gt('Load autosave ({months} months back)', { months: monthsBack })
+                    : m(LABELS.loadLastAutosave)}
                 </Button>
-                <Button onClick={() => newGame({ mapId: state.mapId, size: state.gridSize })}>{m(LABELS.newCity)}</Button>
+                <Button
+                  variant={confirmNewCity ? 'destructive' : 'default'}
+                  onClick={() => {
+                    // New city replaces the autosave: ask for a second click first
+                    if (!confirmNewCity) {
+                      setConfirmNewCityFor(gameOver);
+                      return;
+                    }
+                    newGame({ mapId: state.mapId, size: state.gridSize });
+                  }}
+                >
+                  {m(confirmNewCity ? LABELS.confirmNewCity : LABELS.newCity)}
+                </Button>
               </DialogFooter>
             </>
           )}

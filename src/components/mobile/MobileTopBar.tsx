@@ -340,7 +340,7 @@ export function MobileTopBar({
               value={[taxRate]}
               onValueChange={(value) => setTaxRate(value[0])}
               min={0}
-              max={100}
+              max={20}
               step={1}
               className="flex-1"
             />
@@ -530,7 +530,7 @@ export function MobileTopBar({
                 value={[taxRate]}
                 onValueChange={(value) => setTaxRate(value[0])}
                 min={0}
-                max={100}
+                max={20}
                 step={1}
                 className="w-full"
               />

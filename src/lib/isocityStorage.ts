@@ -216,13 +216,74 @@ export function writeIsoCityAutosaveRaw(compressed: string): Promise<void> {
   return writeSaveKey(ISOCITY_STORAGE_KEY, compressed);
 }
 
-/** The compressed once-a-month autosave copy (S4-T11), or null. */
-export function readIsoCityLastMonthRaw(): Promise<string | null> {
-  return readSaveKey(ISOCITY_LAST_MONTH_STORAGE_KEY);
+/** Number of rolling once-a-month autosave copies (keys `<last-month key>-1` newest .. `-3` oldest). */
+export const ISOCITY_MONTHLY_BACKUP_COUNT = 3;
+const monthlyBackupKey = (slot: number) => `${ISOCITY_LAST_MONTH_STORAGE_KEY}-${slot}`;
+
+/** The compressed monthly autosave copies, newest first (index 0 = 1 month back); null where missing. */
+export async function readIsoCityMonthlyBackupsRaw(): Promise<(string | null)[]> {
+  const out: (string | null)[] = [];
+  for (let slot = 1; slot <= ISOCITY_MONTHLY_BACKUP_COUNT; slot++) {
+    out.push(await readSaveKey(monthlyBackupKey(slot)));
+  }
+  return out;
 }
 
-export function writeIsoCityLastMonthRaw(compressed: string): Promise<void> {
-  return writeSaveKey(ISOCITY_LAST_MONTH_STORAGE_KEY, compressed);
+/** Push a new monthly copy: -2 moves to -3, -1 to -2, the new copy becomes -1 (one queued step). */
+export function rotateIsoCityMonthlyBackups(compressed: string): Promise<void> {
+  return trackPendingSave(saveQueue.run(async () => {
+    await ensureIsoCitySavesMigrated();
+    const store = getSavesStore();
+    for (let slot = ISOCITY_MONTHLY_BACKUP_COUNT; slot > 1; slot--) {
+      const prev = await store.get(monthlyBackupKey(slot - 1));
+      if (prev !== undefined) await safeWrite(store, monthlyBackupKey(slot), prev);
+    }
+    await safeWrite(store, monthlyBackupKey(1), compressed);
+  }));
+}
+
+/** Saved-city id suffix of the automatic backup made before a city is replaced. */
+export const ISOCITY_AUTO_BACKUP_ID_SUFFIX = '-auto-backup';
+
+/**
+ * Before the autosave is replaced by a different city, keep the old one as a saved city
+ * "<name> (auto-backup)": one entry per city id, overwritten each time. Skipped for an empty
+ * city (population 0) or when `targetCityId` is that city or its backup.
+ * Resolves with the new saved-cities list, or null when nothing was backed up.
+ */
+export async function backupIsoCityToSavedCities(
+  state: GameState | null,
+  compressed: string | null,
+  targetCityId?: string,
+): Promise<SavedCityMeta[] | null> {
+  if (!state || !compressed || !state.id || !(state.stats?.population > 0)) return null;
+  const backupId = `${state.id}${ISOCITY_AUTO_BACKUP_ID_SUFFIX}`;
+  if (targetCityId === state.id || targetCityId === backupId) return null;
+  await writeIsoCitySavedCityRaw(backupId, compressed);
+  const meta: SavedCityMeta = {
+    id: backupId,
+    cityName: `${state.cityName} (auto-backup)`,
+    population: state.stats.population,
+    money: state.stats.money,
+    year: state.year,
+    month: state.month,
+    gridSize: state.gridSize,
+    savedAt: Date.now(),
+  };
+  return updateIsoCitySavedCities((cities) => [meta, ...cities.filter((c) => c.id !== backupId)]);
+}
+
+/** `backupIsoCityToSavedCities` for the autosave on disk (title screen). */
+export async function backupIsoCityAutosave(targetCityId?: string): Promise<SavedCityMeta[] | null> {
+  const raw = await readIsoCityAutosaveRaw();
+  return backupIsoCityToSavedCities(raw ? parseStoredGameState(raw) : null, raw, targetCityId);
+}
+
+/** Crash copy written by the error boundary; never the autosave, so a crash cannot loop. */
+export const ISOCITY_CRASH_STORAGE_KEY = 'isocity-game-state-crash';
+
+export function writeIsoCityCrashRaw(compressed: string): Promise<void> {
+  return writeSaveKey(ISOCITY_CRASH_STORAGE_KEY, compressed);
 }
 
 export function clearIsoCityAutosave(): Promise<void> {

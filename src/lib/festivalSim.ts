@@ -7,6 +7,7 @@ import type { GameState, Notification, Tile } from '@/types/game';
 import type { OverlayMode } from '@/components/game/types';
 import type { ForecastInput } from '@/lib/notifications';
 import { addForecast } from '@/lib/notifications';
+import { formatINR } from '@/lib/format';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
 import {
   EVENT_CONFIG,
@@ -15,7 +16,6 @@ import {
   getActiveFestivals,
   getFestivalCrowdMultipliers,
   getFestivalHappinessModifier,
-  getFestivalTourismMultiplier,
   getUpcomingFestivals,
   resolveEvent,
   scaleEventMultiplier,
@@ -136,7 +136,7 @@ function markDisk(mask: Uint8Array, size: number, cx: number, cy: number, radius
 const areaCache = new Map<string, EventArea>();
 
 /**
- * The event area (S5-T4). Dev Deepawali: every west-bank riverfront tile plus land within 5 tiles of any ghat.
+ * The event area (S5-T4). Dev Deepawali: land within 5 tiles of any ghat (empty without ghats).
  * Maha Shivratri: within 10 tiles of Kashi Vishwanath, or of the largest ghat cluster at half scale. River tiles are
  * never part of an area. Cached per building layout (structureVersion).
  */
@@ -159,19 +159,9 @@ export function getEventArea(city: FestivalCity, festivalId: FestivalId): EventA
       center = origin;
     }
   } else {
-    let riverfront: { x: number; y: number } | null = null;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        if (getRiverZone(x, y, size, mapId) === 'westRiverfront') {
-          mask[y * size + x] = 1;
-          // The riverfront tile nearest the middle row stands in for the ghats when there are none
-          if (!riverfront || Math.abs(y - size / 2) < Math.abs(riverfront.y - size / 2)) riverfront = { x, y };
-        }
-      }
-    }
+    // Only the player's ghats host the crowds: with no ghats the area is empty and the festival passes quietly
     for (const g of ghats) markDisk(mask, size, g.x, g.y, EVENT_CONFIG.devDeepawaliGhatRadius);
-    center = cluster?.center ?? riverfront;
-    if (ghats.length === 0 && !riverfront) center = null;
+    center = cluster?.center ?? null;
   }
   const list: number[] = [];
   for (let i = 0; i < mask.length; i++) {
@@ -262,6 +252,14 @@ export interface FestivalDayResult {
   festival: FestivalState | undefined;
   forecasts: FestivalForecast[];
   notifications: Added[];
+  /** Festival tourism paid as a lump sum when a management event resolves (₹, add to the treasury). */
+  tourismPayout: number;
+}
+
+/** Extra tourism from an event: (monthly tourism / 30) × event days × (multiplier − 1), whole rupees. */
+export function getFestivalTourismPayout(monthlyTourismIncome: number, days: number, multiplier: number): number {
+  if (monthlyTourismIncome <= 0 || multiplier <= 1) return 0;
+  return Math.floor((monthlyTourismIncome / 30) * days * (multiplier - 1));
 }
 
 function chipIcon(f: FestivalDef): string {
@@ -279,7 +277,7 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
     if (festival === prev) festival = { ...prev };
     return festival!;
   };
-  const result: FestivalDayResult = { festival, forecasts: [], notifications: [] };
+  const result: FestivalDayResult = { festival, forecasts: [], notifications: [], tourismPayout: 0 };
   if (city.mapId !== 'varanasi') return result;
 
   if (prev?.event && today > prev.event.endDay) delete edit().event;
@@ -323,19 +321,25 @@ export function runFestivalDay(city: FestivalCity, today: number, month: number,
     const { outcome } = resolveEvent(f.id, readiness.inputs);
     const scale = readiness.area.scale;
     const state = edit();
+    const days = f.durationDays ?? 1;
+    const tourismMultiplier = scaleEventMultiplier(outcome.tourismMultiplier, scale);
     state.event = {
       id: f.id,
       startDay: today,
-      endDay: today + (f.durationDays ?? 1) - 1,
+      endDay: today + days - 1,
       outcome: outcome.kind,
-      tourismMultiplier: scaleEventMultiplier(outcome.tourismMultiplier, scale),
+      tourismMultiplier,
     };
     state.mood = { delta: outcome.happinessDelta, untilDay: today + outcome.happinessDays - 1 };
+    // Festival tourism is paid now as one sum, so it does not depend on a weekly deposit falling inside the event
+    const payout = getFestivalTourismPayout(city.stats.tourismIncome ?? 0, days, tourismMultiplier);
+    result.tourismPayout += payout;
+    const payoutText = payout > 0 ? ` Festival visitors brought ${formatINR(payout)} in tourism.` : '';
     const halfScale = scale < 1 ? ' Build Kashi Vishwanath Temple for a full-scale Maha Shivratri.' : '';
     const overlay = failed.length > 0 ? readinessOverlay(failed[0]) : undefined;
     result.notifications.push({
       title: outcome.kind === 'triumph' ? `${f.name}: a triumph` : outcome.kind === 'success' ? `${f.name}: a success` : `${f.name}: overwhelmed`,
-      description: outcome.message + halfScale,
+      description: outcome.message + payoutText + halfScale,
       icon: outcome.isCrisis ? 'alert' : outcome.kind === 'triumph' ? 'trophy' : chipIcon(f),
       severity: outcome.isCrisis ? 'crisis' : 'info',
       x: center.x,
@@ -360,15 +364,12 @@ export function applyFestivalForecasts(
   return out;
 }
 
-/** Per tick: tourism × the running event's multiplier, and the happiness left by the last event. Mutates `stats`. */
+/**
+ * Per tick: the happiness left by the last event. Mutates `stats`. Event tourism is not applied here: it is paid as a
+ * lump sum when the event resolves (`FestivalDayResult.tourismPayout`).
+ */
 export function applyFestivalStats(stats: GameState['stats'], festival: FestivalState | undefined, today: number): void {
   if (!festival) return;
-  const mult = getFestivalTourismMultiplier(festival, today);
-  if (mult !== 1 && stats.tourismIncome) {
-    const extra = Math.floor(stats.tourismIncome * (mult - 1));
-    stats.tourismIncome += extra;
-    stats.income += extra;
-  }
   const mood = getFestivalHappinessModifier(festival, today);
   if (mood !== 0) stats.happiness = Math.max(0, Math.min(100, stats.happiness + mood));
 }
