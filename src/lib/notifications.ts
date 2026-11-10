@@ -2,21 +2,28 @@
  * Notifications with a location, severity and overlay, and forecasts on the calendar strip (S4-T4).
  * Pure helpers: the simulation and the context use them to add notifications, and to pause on a crisis.
  */
-import type { Forecast, GameState, Notification } from '@/types/game';
+import type { Forecast, GameState, Notification, NotificationKind } from '@/types/game';
 import { absoluteDay } from '@/lib/seasons';
 
 /** Optional fields a caller can add to a notification: where it is, which overlay explains it, how bad it is. */
-export type NotificationExtras = Pick<Notification, 'x' | 'y' | 'overlay' | 'severity'>;
+export type NotificationExtras = Pick<Notification, 'x' | 'y' | 'overlay' | 'severity' | 'kind'>;
+
+/**
+ * True when the notification is of `kind`. Old saves have no `kind`: for those, `legacy` is tested
+ * against "title description".
+ */
+export function isNotificationKind(n: Notification, kind: NotificationKind, legacy: RegExp): boolean {
+  return n.kind !== undefined ? n.kind === kind : legacy.test(`${n.title} ${n.description}`);
+}
 
 export const NOTIFICATION_CONFIG = {
-  /** Notifications kept on the state (newest first). */
-  maxKept: 10,
+  /** Notifications kept on the state (newest first); the notification log shows all of them. */
+  maxKept: 20,
   /** Forecasts kept on the calendar strip. */
   maxForecasts: 12,
-  /** Toast display times in ms. A crisis stays longer. */
+  /** Toast display time in ms. A crisis toast stays until dismissed. */
   toastMs: 6000,
-  crisisToastMs: 12000,
-  /** Toasts on screen at once. */
+  /** Non-crisis toasts on screen at once (crisis toasts are never evicted). */
   maxToasts: 3,
 } as const;
 

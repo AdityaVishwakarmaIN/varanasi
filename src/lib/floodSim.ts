@@ -6,7 +6,7 @@
  */
 import type { GameState, Notification, Tile } from '@/types/game';
 import type { ServiceCoverage } from '@/games/isocity/types/services';
-import type { Rng } from '@/lib/rng';
+import { rollRng, type Rng } from '@/lib/rng';
 import type { ForecastInput } from '@/lib/notifications';
 import { getLandmarkLandValueBonus } from '@/lib/landmarks';
 import { formatINR } from '@/lib/format';
@@ -239,7 +239,7 @@ export function getFloodRepairNotification(count: number, total: number): Omit<N
  * Rolls the monsoon on 1 June, moves the river level, rolls flood damage and writes the notifications.
  */
 export function runFloodDay(
-  state: Pick<GameState, 'mapId' | 'gridSize' | 'grid' | 'structureVersion' | 'id'> & FloodStateFields,
+  state: Pick<GameState, 'mapId' | 'gridSize' | 'grid' | 'structureVersion' | 'id' | 'seed' | 'year'> & FloodStateFields,
   month: number,
   day: number,
   today: number,
@@ -263,7 +263,8 @@ export function runFloodDay(
   const f = result.fields;
 
   if (isMonsoonRollDay(month, day)) {
-    const strength: MonsoonStrength = rollMonsoonStrength(rng);
+    // Seeded per city and year, so reloading a save cannot re-roll the monsoon
+    const strength: MonsoonStrength = rollMonsoonStrength(rollRng(state.seed, rng, 'monsoon', state.year));
     f.monsoonStrength = strength;
     f.floodNotifiedLevel = 0;
     const text = getMonsoonForecastText(strength);

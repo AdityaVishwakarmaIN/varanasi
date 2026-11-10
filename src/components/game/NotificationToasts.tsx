@@ -2,37 +2,21 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { msg, useMessages } from 'gt-next';
-import { AlertTriangle, Flame, Home, Info, Landmark, MapPin, Route, Thermometer, Trophy, Waves, X, type LucideIcon } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import type { Notification } from '@/types/game';
 import { NOTIFICATION_CONFIG } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
+import { canLocateNotification, isHandledElsewhere, NotificationIcon } from '@/components/game/notificationUi';
 
 const LABELS = {
   locate: msg('Show on map'),
   dismiss: msg('Dismiss'),
 };
 
-/** Notification `icon` names used by the simulation and context. Anything else (an emoji) is shown as text. */
-const ICONS: Record<string, LucideIcon> = {
-  alert: AlertTriangle,
-  home: Home,
-  road: Route,
-  trophy: Trophy,
-  fire: Flame,
-  flood: Waves,
-  heat: Thermometer,
-  info: Info,
-  landmark: Landmark,
-};
-
-/** Save failures have their own toast (SaveErrorToast). */
-const HANDLED_ELSEWHERE = /^save-failed-/;
-
-function NotificationIcon({ icon, className }: { icon: string; className?: string }) {
-  const Icon = ICONS[icon];
-  if (Icon) return <Icon className={cn('w-4 h-4', className)} aria-hidden />;
-  if (/^[a-z_-]+$/.test(icon)) return <Info className={cn('w-4 h-4', className)} aria-hidden />;
-  return <span className="text-base leading-none" aria-hidden>{icon}</span>;
+/** Newest first: every crisis toast stays (until dismissed); other toasts are capped at `maxToasts`. */
+function keepToasts(list: readonly Notification[]): Notification[] {
+  let others = 0;
+  return list.filter((n) => n.severity === 'crisis' || ++others <= NOTIFICATION_CONFIG.maxToasts);
 }
 
 const SEVERITY_STYLES: Record<NonNullable<Notification['severity']>, string> = {
@@ -65,10 +49,10 @@ export function NotificationToasts({
       return;
     }
     const seen = seenRef.current;
-    const fresh = notifications.filter((n) => !seen.has(n.id) && !HANDLED_ELSEWHERE.test(n.id));
+    const fresh = notifications.filter((n) => !seen.has(n.id) && !isHandledElsewhere(n));
     if (fresh.length === 0) return;
     for (const n of fresh) seen.add(n.id);
-    setToasts((prev) => [...fresh, ...prev].slice(0, NOTIFICATION_CONFIG.maxToasts));
+    setToasts((prev) => keepToasts([...fresh, ...prev]));
   }, [notifications]);
 
   const dismiss = useCallback((id: string) => {
@@ -110,13 +94,12 @@ function NotificationToast({
   const isCrisis = n.severity === 'crisis';
   /** S5-T1: landmark unlocks are a celebration, shown in gold. */
   const isCelebration = n.icon === 'landmark';
-  const canLocate = n.x !== undefined && n.y !== undefined;
+  const canLocate = canLocateNotification(n);
 
+  // A crisis stays until the player dismisses it; the notification log keeps every one
   useEffect(() => {
-    const timer = setTimeout(
-      () => onDismiss(n.id),
-      isCrisis ? NOTIFICATION_CONFIG.crisisToastMs : NOTIFICATION_CONFIG.toastMs
-    );
+    if (isCrisis) return;
+    const timer = setTimeout(() => onDismiss(n.id), NOTIFICATION_CONFIG.toastMs);
     return () => clearTimeout(timer);
   }, [n.id, isCrisis, onDismiss]);
 

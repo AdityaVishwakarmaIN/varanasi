@@ -105,9 +105,17 @@ export const OVERLAY_CONFIG: Record<OverlayMode, OverlayConfig> = {
 /** Overlays that only make sense on the Varanasi map. */
 const VARANASI_ONLY_OVERLAYS: ReadonlySet<OverlayMode> = new Set<OverlayMode>(['ganga', 'flood']);
 
+/** Overlays hidden on the Varanasi map (no subway there). */
+const VARANASI_HIDDEN_OVERLAYS: ReadonlySet<OverlayMode> = new Set<OverlayMode>(['subway']);
+
+/** Is this overlay offered on this map? */
+export function isOverlayAvailable(mode: OverlayMode, mapId: MapId | undefined): boolean {
+  return mapId === 'varanasi' ? !VARANASI_HIDDEN_OVERLAYS.has(mode) : !VARANASI_ONLY_OVERLAYS.has(mode);
+}
+
 /** Overlay modes available on a map, in display / Tab-cycling order. */
 export function getOverlayModesForMap(mapId: MapId | undefined): OverlayMode[] {
-  return OVERLAY_MODES.filter((mode) => mapId === 'varanasi' || !VARANASI_ONLY_OVERLAYS.has(mode));
+  return OVERLAY_MODES.filter((mode) => isOverlayAvailable(mode, mapId));
 }
 
 /** Extra per-frame context for overlays that depend on more than a single tile (Ganga). */
@@ -164,6 +172,10 @@ const UNCOVERED_WARNING = 'rgba(239, 68, 68, 0.45)'; // Red tint
 /** No overlay needed (transparent) */
 const NO_OVERLAY = 'rgba(0, 0, 0, 0)';
 
+/** Subway overlay: bright amber for existing subway, dark brown tint for the "underground" view. */
+const SUBWAY_FILL = 'rgba(245, 158, 11, 0.7)';
+const NO_SUBWAY_FILL = 'rgba(40, 30, 20, 0.4)';
+
 /**
  * Calculate the fill style color for an overlay tile.
  * 
@@ -219,9 +231,7 @@ export function getOverlayFillStyle(
 
     case 'subway':
       // Underground view overlay - keep existing behavior
-      return tile.hasSubway
-        ? 'rgba(245, 158, 11, 0.7)'  // Bright amber for existing subway
-        : 'rgba(40, 30, 20, 0.4)';   // Dark brown tint for "underground" view
+      return tile.hasSubway ? SUBWAY_FILL : NO_SUBWAY_FILL;
 
     case 'ganga': {
       if (!river) return NO_OVERLAY;
@@ -259,6 +269,56 @@ function hexToRgba(hex: string, alpha: number): string {
 const GANGA_HURTS = 'rgba(220, 38, 38, 0.45)';
 /** Ganga overlay: riverside greenery and homes whose sewage is treated. */
 const GANGA_CLEANS = 'rgba(34, 197, 94, 0.4)';
+
+// ============================================================================
+// Overlay legend (E1): built from the same colours the overlay draws with
+// ============================================================================
+
+/** Label keys of legend entries (the legend component turns them into translated text). */
+export type OverlayLegendKey =
+  | 'uncovered'
+  | 'range'
+  | 'subway'
+  | 'noSubway'
+  | 'gangaHurts'
+  | 'gangaCleans'
+  | 'gangaPolluted'
+  | 'gangaClean'
+  | 'floodAny'
+  | 'floodNormal'
+  | 'floodHeavy';
+
+export interface OverlayLegend {
+  swatches: { color: string; key: OverlayLegendKey }[];
+  /** A colour ramp (left to right) with labels for its two ends. */
+  ramp?: { colors: string[]; from: OverlayLegendKey; to: OverlayLegendKey };
+}
+
+/** What the colours of an overlay mean, or null for no overlay. */
+export function getOverlayLegend(mode: OverlayMode): OverlayLegend | null {
+  switch (mode) {
+    case 'none':
+      return null;
+    case 'subway':
+      return { swatches: [{ color: SUBWAY_FILL, key: 'subway' }, { color: NO_SUBWAY_FILL, key: 'noSubway' }] };
+    case 'ganga':
+      return {
+        swatches: [{ color: GANGA_HURTS, key: 'gangaHurts' }, { color: GANGA_CLEANS, key: 'gangaCleans' }],
+        ramp: { colors: [0, 50, 100].map((h) => getGangaRiverColor(h, 1)), from: 'gangaPolluted', to: 'gangaClean' },
+      };
+    case 'flood':
+      return {
+        swatches: [
+          { color: FLOOD_RISK_FILL[1], key: 'floodAny' },
+          { color: FLOOD_RISK_FILL[2], key: 'floodNormal' },
+          { color: FLOOD_RISK_FILL[3], key: 'floodHeavy' },
+        ],
+      };
+    default:
+      // Service overlays: red tint on buildings without the service, circles for each building's range
+      return { swatches: [{ color: UNCOVERED_WARNING, key: 'uncovered' }, { color: OVERLAY_CIRCLE_COLORS[mode], key: 'range' }] };
+  }
+}
 
 /**
  * Get the overlay mode that should be shown for a given tool.

@@ -2,7 +2,8 @@
  * "Voices of the City" feed logic (S5-T7): which CITIZEN_VOICES conditions are true in the city right now, and
  * the next message (at most one per in-game week). Pure; the feed component keeps the entries (UI state only).
  */
-import type { GameState, Notification } from '@/types/game';
+import type { GameState, Notification, NotificationKind } from '@/types/game';
+import { isNotificationKind } from '@/lib/notifications';
 import type { Rng } from '@/lib/rng';
 import {
   CITIZEN_VOICE_CONFIG,
@@ -89,8 +90,9 @@ function scan(state: CitizenFeedState): Scan {
   return out;
 }
 
-function recentMatch(list: readonly Notification[], re: RegExp): Notification | undefined {
-  return list.slice(0, CITIZEN_FEED_CONFIG.recentNotifications).find((n) => re.test(`${n.title} ${n.description}`));
+/** A recent notification of `kind` (`legacy` matches old saves without a kind). */
+function recentMatch(list: readonly Notification[], kind: NotificationKind, legacy: RegExp): Notification | undefined {
+  return list.slice(0, CITIZEN_FEED_CONFIG.recentNotifications).find((n) => isNotificationKind(n, kind, legacy));
 }
 
 /** Every voice condition that is true in the city now, with a place when there is one. */
@@ -151,7 +153,7 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
 
   // Housing
   if (s.informalAt || stats.demand.residential > 50) add('housing_short', s.informalAt);
-  const formalised = recentMatch(state.notifications, /Proper homes/i);
+  const formalised = recentMatch(state.notifications, 'formalised', /Proper homes/i);
   if (formalised) add('settlement_formalised', formalised.x !== undefined && formalised.y !== undefined ? { x: formalised.x, y: formalised.y } : undefined);
 
   // Tourism and ghats
@@ -169,8 +171,8 @@ export function getActiveVoiceConditions(state: CitizenFeedState, problems: Prob
 
   // Festivals and landmarks
   if (varanasi && getUpcomingFestivals(state.month, state.day).some((u) => u.festival.type === 'management')) add('festival_upcoming');
-  if (recentMatch(state.notifications, /magnificent|went well/i)) add('festival_success');
-  if (recentMatch(state.notifications, /Crowds overwhelmed/i)) add('festival_overwhelmed');
+  if (recentMatch(state.notifications, 'festival_success', /magnificent|went well/i)) add('festival_success');
+  if (recentMatch(state.notifications, 'festival_overwhelmed', /Crowds overwhelmed/i)) add('festival_overwhelmed');
   if (s.landmarkAt) add('landmark_built', s.landmarkAt);
 
   return out;

@@ -103,7 +103,7 @@ describe('rolling cuts in simulateTick (S3-T7/T8)', () => {
       }
     });
     // ~6 in-game hours at ratio ≈ 0.5: every block with demand takes a turn
-    expect(seen.size).toBe(state.stats.power!.feeders.length);
+    expect(seen.size).toBeGreaterThanOrEqual(state.stats.power!.feeders.length); // a block cut to zero demand can drop off the list
   });
 
   it('adding capacity ends the cuts', () => {

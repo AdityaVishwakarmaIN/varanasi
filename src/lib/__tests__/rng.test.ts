@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRng } from '@/lib/rng';
+import { createRng, rollRng } from '@/lib/rng';
 
 describe('createRng', () => {
   it('gives the same sequence for the same seed', () => {
@@ -23,5 +23,19 @@ describe('createRng', () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+});
+
+describe('rollRng', () => {
+  it('gives the same roll for the same seed and key, and a different one for another year', () => {
+    const fallback = () => 0.5;
+    expect(rollRng(42, fallback, 'monsoon', 2025)()).toBe(rollRng(42, fallback, 'monsoon', 2025)());
+    expect(rollRng(42, fallback, 'monsoon', 2025)()).not.toBe(rollRng(42, fallback, 'monsoon', 2026)());
+    expect(rollRng(42, fallback, 'monsoon', 2025)()).not.toBe(rollRng(42, fallback, 'heatwave', 2025)());
+  });
+
+  it('falls back to the shared stream without a seed', () => {
+    const fallback = () => 0.5;
+    expect(rollRng(undefined, fallback, 'monsoon', 2025)).toBe(fallback);
   });
 });

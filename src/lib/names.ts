@@ -1,4 +1,6 @@
 // Name generation utilities for cities and water bodies
+// (Varanasi's waters are named by its map generator: Ganga, Varuna, Assi.)
+import type { MapId } from '@/games/isocity/maps/varanasi';
 
 const CITY_NAME_PARTS = [
   'Spring', 'Riverside', 'Harbor', 'Valley', 'Hill', 'Bay', 'Creek', 'Park',
@@ -45,7 +47,17 @@ const OCEAN_NAMES = [
   'Turquoise Sea', 'Northern Sea', 'Southern Sea', 'Eastern Sea', 'Western Sea',
 ];
 
-export function generateCityName(): string {
+/** Real towns around Varanasi, used for the neighbouring cities on the Varanasi map. */
+export const VARANASI_NEIGHBOUR_NAMES = [
+  'Ramnagar', 'Sarnath', 'Mughalsarai', 'Chunar', 'Mirzapur', 'Jaunpur',
+  'Ghazipur', 'Bhadohi', 'Chandauli', 'Gyanpur', 'Saidpur', 'Chakia',
+];
+
+/** A neighbouring city name. On the Varanasi map these are real nearby towns; the random map keeps invented names. */
+export function generateCityName(mapId?: MapId): string {
+  if (mapId === 'varanasi') {
+    return VARANASI_NEIGHBOUR_NAMES[Math.floor(Math.random() * VARANASI_NEIGHBOUR_NAMES.length)];
+  }
   const part1 = CITY_NAME_PARTS[Math.floor(Math.random() * CITY_NAME_PARTS.length)];
   const part2 = CITY_NAME_PARTS[Math.floor(Math.random() * CITY_NAME_PARTS.length)];
   const suffix = CITY_SUFFIXES[Math.floor(Math.random() * CITY_SUFFIXES.length)];

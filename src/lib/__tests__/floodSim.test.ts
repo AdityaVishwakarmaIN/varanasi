@@ -120,7 +120,8 @@ describe('a monsoon season, day by day (S4-T5)', () => {
 
   it('a heavy monsoon is forecast on 1 June, floods homes from July and recedes by 30 September', () => {
     const state = cityWithFloodplainHomes();
-    const { fields, log } = runSeason(state, () => 0.99); // 0.99: heavy monsoon, and no damage rolls succeed
+    // No seed: the monsoon roll falls back to the injected rng (0.99: heavy monsoon, and no damage rolls succeed)
+    const { fields, log } = runSeason({ ...state, seed: undefined }, () => 0.99);
 
     const june1 = log[0].result;
     expect(june1.fields.monsoonStrength).toBe('heavy');
@@ -183,6 +184,13 @@ describe('a monsoon season, day by day (S4-T5)', () => {
     expect(getCitySiltMask(after, 500 + FLOOD_CONFIG.siltDays + 1)).toBeNull();
   });
 
+  it('a seeded city rolls the same monsoon however often the save is reloaded', () => {
+    const state = cityWithFloodplainHomes();
+    const roll = (rng: () => number) => runFloodDay(state, 6, 1, absoluteDay(state.year, 6, 1), rng).fields.monsoonStrength;
+    expect(roll(() => 0.01)).toBe(roll(() => 0.99));
+    expect(roll(Math.random)).toBe(roll(Math.random));
+  });
+
   it('other maps have no monsoon floods', () => {
     const random = createInitialGameState(SIZE, 'Random', createRng(11));
     const r = runFloodDay(random, 6, 1, absoluteDay(2025, 6, 1), () => 0.99);
@@ -194,7 +202,7 @@ describe('a monsoon season, day by day (S4-T5)', () => {
 describe('floods in simulateTick (S4-T5)', () => {
   it('a new flood crisis pauses the city and puts the monsoon on the calendar', () => {
     // 30 June, last tick of the day: the next tick is 1 July, when the river starts rising
-    const june = { ...cityWithFloodplainHomes(), month: 6, day: 1, tick: CALENDAR.ticksPerDay - 1, speed: 1 as const };
+    const june = { ...cityWithFloodplainHomes(), seed: undefined, month: 6, day: 1, tick: CALENDAR.ticksPerDay - 1, speed: 1 as const };
     const forecast = simulateTick({ ...june, day: 30, month: 5 }, undefined, () => 0.99);
     expect(forecast.monsoonStrength).toBe('heavy');
     expect(forecast.forecasts?.some((f) => f.id === 'monsoon')).toBe(true);

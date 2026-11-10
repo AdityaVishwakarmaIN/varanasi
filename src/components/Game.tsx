@@ -10,8 +10,12 @@ import { Tool } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
 import { MobileToolbar } from '@/components/mobile/MobileToolbar';
 import { MobileTopBar } from '@/components/mobile/MobileTopBar';
+import { MobileMiniMapToggle, TouchGestureHint } from '@/components/mobile/MobileMapExtras';
+import { TileInfoPanel } from '@/components/game/panels/TileInfoPanel';
+import { isDrawModeTool } from '@/lib/touchGestures';
 import { msg, useMessages, useGT } from 'gt-next';
 import { loadIsocityUiPreferences, saveIsocityUiPreferences } from '@/lib/isocityStorage';
+import { formatINR } from '@/lib/format';
 
 // Import shadcn components
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -30,7 +34,7 @@ import { Copy, Check } from 'lucide-react';
 
 // Import game components
 import { OverlayMode } from '@/components/game/types';
-import { getOverlayForTool, OVERLAY_CONFIG } from '@/components/game/overlays';
+import { getOverlayForTool, getOverlayModesForMap } from '@/components/game/overlays';
 import { ControlsHelpDialog } from '@/components/game/ControlsHelpDialog';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { createSharedControlsState, SharedControlsState } from '@/lib/controlsConfig';
@@ -46,6 +50,9 @@ import { MiniMap } from '@/components/game/MiniMap';
 import { TopBar, StatsPanel } from '@/components/game/TopBar';
 import { CanvasIsometricGrid } from '@/components/game/CanvasIsometricGrid';
 import { NotificationToasts } from '@/components/game/NotificationToasts';
+import { NotificationLog } from '@/components/game/NotificationLog';
+import { CityStatusChips, CrisisPauseBanner } from '@/components/game/CityStatusChips';
+import { GettingStartedChecklist } from '@/components/game/GettingStartedChecklist';
 import { FailureOverlays } from '@/components/game/FailureOverlays';
 import { FestivalEventBanner, FestivalEventPanel, festivalFromEventId } from '@/components/game/FestivalPanel';
 import type { FestivalId } from '@/lib/festivals';
@@ -56,9 +63,6 @@ import type { Notification } from '@/types/game';
 
 // Cargo type names for notifications
 const CARGO_TYPE_NAMES = [msg('containers'), msg('bulk materials'), msg('oil')];
-
-// Tab cycles overlays in the same order as the overlay toolbar
-const OVERLAY_ORDER = Object.keys(OVERLAY_CONFIG) as OverlayMode[];
 
 type ViewportState = {
   offset: { x: number; y: number };
@@ -94,8 +98,16 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     typeof window === 'undefined' ? true : loadIsocityUiPreferences().showMinimap,
   );
   const [selectedTile, setSelectedTile] = useState<{ x: number; y: number } | null>(null);
-  const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number } | null>(null);
+  // A replaced city (load, import, new game, resize) bumps gameVersion: the old selection means nothing there
+  const [selectionGameVersion, setSelectionGameVersion] = useState(state.gameVersion);
+  if (selectionGameVersion !== state.gameVersion) {
+    setSelectionGameVersion(state.gameVersion);
+    setSelectedTile(null);
+  }
+  const [navigationTarget, setNavigationTarget] = useState<{ x: number; y: number; instant?: boolean } | null>(null);
   const clearNavigationTarget = useCallback(() => setNavigationTarget(null), []);
+  // Minimap (desktop and mobile): a press glides, a drag moves the camera directly
+  const navigateFromMiniMap = useCallback((x: number, y: number, instant?: boolean) => setNavigationTarget({ x, y, instant }), []);
   // Crisis notifications (S4-T4): jump to the problem and show the overlay that explains it
   // S5-T4: the Event panel opens from a festival forecast notification, the calendar strip or the banner
   const [eventPanel, setEventPanel] = useState<FestivalId | null>(null);
@@ -114,6 +126,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
     const festival = festivalFromEventId(n.id);
     if (festival) setEventPanel(festival);
   }, []);
+  const resumeAfterCrisis = useCallback(() => setSpeed(1), [setSpeed]);
   // Advisor "Show me" (S5-T6) and citizen feed (S5-T7): same jump as notifications
   const showAdvisorNote = useCallback((note: AdvisorNote) => {
     if (note.x !== undefined && note.y !== undefined) setNavigationTarget({ x: note.x, y: note.y });
@@ -134,6 +147,12 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const openControlsHelp = useCallback(() => setShowControlsHelp(true), []);
   // S1-T11 (touch): Draw mode makes a one-finger drag draw roads/rail/zones instead of panning.
   const [touchDrawMode, setTouchDrawMode] = useState(false);
+  // Picking a road / rail / zone tool turns Draw on (so a drag draws, not pans); Select turns it off.
+  // The player can still flip the Draw button by hand afterwards.
+  useEffect(() => {
+    if (isDrawModeTool(state.selectedTool)) setTouchDrawMode(true);
+    else if (state.selectedTool === 'select') setTouchDrawMode(false);
+  }, [state.selectedTool]);
   // S1-T11 (touch): a long-press inspects a tile with any tool. Remember the tool it was inspected
   // with, so the tile info stays open for that tool and closes when the player switches tools.
   const [selectedTileTool, setSelectedTileTool] = useState<Tool>('select');
@@ -274,11 +293,13 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   }, [state.selectedTool]);
   
   // All keyboard shortcuts (bindings in src/lib/controlsConfig.ts KEY_BINDINGS)
+  const overlayOrder = useMemo(() => getOverlayModesForMap(state.mapId), [state.mapId]);
   useKeyboardControls({
     controlsRef,
     overlayMode,
     setOverlayMode,
-    overlayOrder: OVERLAY_ORDER,
+    // Tab cycles overlays in the same order as the overlay toolbar (only this map's overlays)
+    overlayOrder: overlayOrder,
     activePanel: state.activePanel,
     setActivePanel,
     selectedTile,
@@ -299,7 +320,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Retro Cheat Activated!'),
-          gt('Your accountants are confused but not complaining. You received $50,000!'),
+          gt('Your accountants are confused but not complaining. You received {amount}!', { amount: formatINR(triggeredCheat.amount) }),
           'trophy'
         );
         clearTriggeredCheat();
@@ -309,7 +330,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         addMoney(triggeredCheat.amount);
         addNotification(
           gt('Motherlode!'),
-          gt('Your treasury just got a lot heavier. You received $1,000,000!'),
+          gt('Your treasury just got a lot heavier. You received {amount}!', { amount: formatINR(triggeredCheat.amount) }),
           'trophy'
         );
         clearTriggeredCheat();
@@ -320,7 +341,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         clearTriggeredCheat();
         break;
     }
-  }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat]);
+  }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat, gt]);
 
   useEffect(() => {
     if (skipInitialUiPrefsSave.current) {
@@ -343,7 +364,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
       const cargoName = CARGO_TYPE_NAMES[cargoType] || msg('cargo');
       addNotification(
         gt('Cargo Delivered'),
-        gt('A shipment of {cargoName} has arrived at the marina. +${cargoValue} trade revenue.', { cargoName: m(cargoName), cargoValue }),
+        gt('A shipment of {cargoName} has arrived at the marina. +{cargoValue} trade revenue.', { cargoName: m(cargoName), cargoValue: formatINR(cargoValue) }),
         'ship'
       );
     }
@@ -351,14 +372,14 @@ export default function Game({ onExit }: { onExit?: () => void }) {
 
   // Mobile layout
   if (isMobile) {
+    const mobileSelectedTile = selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool)
+      ? state.grid[selectedTile.y]?.[selectedTile.x] ?? null
+      : null;
     return (
       <TooltipProvider>
         <div className="w-full h-full overflow-hidden bg-background flex flex-col">
           {/* Mobile Top Bar */}
-          <MobileTopBar 
-            selectedTile={selectedTile && (state.selectedTool === 'select' || state.selectedTool === selectedTileTool) ? state.grid[selectedTile.y]?.[selectedTile.x] ?? null : null}
-            services={state.services}
-            onCloseTile={() => setSelectedTile(null)}
+          <MobileTopBar
             gangaOverlayActive={overlayMode === 'ganga'}
             onToggleGangaOverlay={toggleGangaOverlay}
             overlayMode={overlayMode}
@@ -389,9 +410,23 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
               touchDrawMode={touchDrawMode}
+              onViewportChange={handleViewportChange}
+            />
+            {/* B4: minimap toggle (opens the shared MiniMap in an overlay) */}
+            <MobileMiniMapToggle
+              onNavigate={navigateFromMiniMap}
+              onViewportSubscribe={subscribeMiniMapViewport}
+              className="absolute right-3 bottom-[calc(140px+env(safe-area-inset-bottom))] z-20"
             />
             {/* Top HUD column: tip first, notifications stack under it (never overlap) */}
             <div className="absolute top-[calc(80px+env(safe-area-inset-top))] left-3 right-3 z-30 flex flex-col gap-2 pointer-events-none">
+              {/* Notification log, crisis status and the crisis pause line (A2/A3) */}
+              <div className="flex items-start gap-2">
+                <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
+                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 pt-1" />
+              </div>
+              <CrisisPauseBanner speed={state.speed} notifications={state.notifications} onResume={resumeAfterCrisis} />
+              <TouchGestureHint selectedTool={state.selectedTool} />
               <TipToast
                 message={currentTip || ''}
                 isVisible={isTipVisible}
@@ -403,6 +438,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 notifications={state.notifications}
                 onLocate={locateNotification}
               />
+              <GettingStartedChecklist key={state.id} cityId={state.id} compact className="self-start w-[min(16rem,100%)]" />
             </div>
             <FailureOverlays bannerClassName="absolute bottom-[132px] left-3 right-3 z-30" onExit={onExit} />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[184px] left-3 z-20" />
@@ -450,8 +486,18 @@ export default function Game({ onExit }: { onExit?: () => void }) {
             )}
           </div>
           
+          {/* Tile info: the shared TileInfoPanel as a bottom sheet (Select tool, or a long-press with any tool) */}
+          {mobileSelectedTile && (
+            <TileInfoPanel
+              isMobile
+              tile={mobileSelectedTile}
+              services={state.services}
+              onClose={() => setSelectedTile(null)}
+            />
+          )}
+
           {/* Mobile Bottom Toolbar */}
-          <MobileToolbar 
+          <MobileToolbar
             onOpenPanel={(panel) => setActivePanel(panel)}
             overlayMode={overlayMode}
             setOverlayMode={setOverlayMode}
@@ -504,11 +550,15 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               onBargeDelivery={handleBargeDelivery}
               controlsRef={controlsRef}
             />
-            <NotificationToasts
-              notifications={state.notifications}
-              onLocate={locateNotification}
-              className="absolute top-3 left-4 xl:left-1/2 xl:-translate-x-1/2 z-30 w-[min(24rem,calc(100%-26rem))]"
-            />
+            {/* Top-left HUD column: notification log + crisis status, the crisis pause line, then toasts (A2/A3) */}
+            <div className="absolute top-3 left-4 z-30 w-[min(24rem,calc(100%-26rem))] flex flex-col gap-2 pointer-events-none">
+              <div className="flex items-start gap-2">
+                <NotificationLog notifications={state.notifications} onLocate={locateNotification} />
+                <CityStatusChips state={state} onOverlay={setOverlayMode} onLocate={locateEventArea} onOpenFestival={setEventPanel} className="flex-1 pt-1.5" />
+              </div>
+              <CrisisPauseBanner speed={state.speed} notifications={state.notifications} onResume={resumeAfterCrisis} />
+              <NotificationToasts notifications={state.notifications} onLocate={locateNotification} />
+            </div>
             {/* Bottom centre sits above the overlay bar (bottom-left) and clear of the minimap (bottom-right) */}
             <FailureOverlays bannerClassName="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-2rem))]" onExit={onExit} />
             <FestivalEventBanner state={state} onOpen={setEventPanel} className="absolute bottom-[168px] left-1/2 -translate-x-1/2 z-20" />
@@ -521,7 +571,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
               <OverlayModeToggle overlayMode={overlayMode} setOverlayMode={setOverlayMode} mapId={state.mapId} />
             )}
             {showMinimap && (
-              <MiniMap onNavigate={(x, y) => setNavigationTarget({ x, y })} onViewportSubscribe={subscribeMiniMapViewport} />
+              <MiniMap onNavigate={navigateFromMiniMap} onViewportSubscribe={subscribeMiniMapViewport} />
             )}
             
             {/* Right HUD column: multiplayer card, then the tip (never over the feed or overlay bar) */}
@@ -567,6 +617,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 onSkipAll={onTipSkipAll}
                 className="w-full"
               />
+              <GettingStartedChecklist key={state.id} cityId={state.id} className="w-64" />
             </div>
           </div>
         </div>

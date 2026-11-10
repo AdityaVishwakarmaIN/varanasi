@@ -3,7 +3,6 @@
 import React, { useState, useCallback } from 'react';
 import { msg, useMessages } from 'gt-next';
 import { useGame } from '@/context/GameContext';
-import { Tile } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,8 +11,6 @@ import { Separator } from '@/components/ui/separator';
 import {
   PlayIcon,
   PauseIcon,
-  PopulationIcon,
-  MoneyIcon,
   HappyIcon,
   HealthIcon,
   EducationIcon,
@@ -30,14 +27,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { LanguageSelector } from '@/components/ui/LanguageSelector';
-import { formatINR, formatPopulation } from '@/lib/format';
+import { formatINR, formatMonthlyNet, formatPopulation, getMonthlyNet } from '@/lib/format';
 import { GangaHealthChip } from '@/components/game/GangaHealthChip';
 import { UtilityChip, shouldShowUtilityChip } from '@/components/game/UtilityChip';
 import type { OverlayMode } from '@/components/game/types';
 import { FogChip, SeasonDateLabel, SeasonStrip } from '@/components/game/SeasonCalendar';
 import { FestivalChip } from '@/components/game/FestivalPanel';
-import { describeGangaTileEffect, getGangaTileEffectInfo } from '@/lib/ganga';
 
 // Translatable UI labels
 const UI_LABELS = {
@@ -45,13 +40,7 @@ const UI_LABELS = {
   funds: msg('Funds'),
   tax: msg('Tax'),
   taxRate: msg('Tax Rate'),
-  emptyLot: msg('Empty Lot'),
-  jobsLower: msg('jobs'),
   jobs: msg('Jobs'),
-  hasPower: msg('Has power'),
-  noPower: msg('No power'),
-  hasWater: msg('Has water'),
-  noWater: msg('No water'),
   happiness: msg('Happiness'),
   health: msg('Health'),
   education: msg('Education'),
@@ -60,13 +49,12 @@ const UI_LABELS = {
   population: msg('Population'),
   monthlyIncome: msg('Monthly Income'),
   monthlyExpenses: msg('Monthly Expenses'),
-  weeklyNet: msg('Weekly Net'),
+  monthlyNet: msg('Monthly Net'),
   exitToMainMenu: msg('Exit to Main Menu'),
   exitDialogTitle: msg('Exit to Main Menu'),
   exitDialogDescription: msg('Would you like to save your city before exiting?'),
   exitWithoutSaving: msg('Exit Without Saving'),
   saveAndExit: msg('Save & Exit'),
-  zone: msg('Zone'),
   pause: msg('Pause'),
   resume: msg('Resume'),
   speed: msg('Game speed'),
@@ -116,10 +104,7 @@ function DemandBar({ label, demand, color }: { label: string; demand: number; co
   );
 }
 
-export function MobileTopBar({ 
-  selectedTile, 
-  services, 
-  onCloseTile,
+export function MobileTopBar({
   gangaOverlayActive = false,
   onToggleGangaOverlay,
   overlayMode = 'none',
@@ -128,10 +113,7 @@ export function MobileTopBar({
   onCalendarEventClick,
   onShare,
   onExit,
-}: { 
-  selectedTile: Tile | null;
-  services: { police: number[][]; fire: number[][]; health: number[][]; education: number[][]; power: boolean[][]; water: boolean[][] };
-  onCloseTile: () => void;
+}: {
   /** Varanasi map: the Ganga Health chip toggles the Ganga overlay (S2-T8). */
   gangaOverlayActive?: boolean;
   onToggleGangaOverlay?: () => void;
@@ -170,11 +152,6 @@ export function MobileTopBar({
   }, [onExit]);
 
   const gangaHealth = state.mapId === 'varanasi' ? stats.gangaHealth : undefined;
-  // S2-T8: "Effect on Ganga" for catchment tiles (memoized per grid inside ganga.ts).
-  const gangaEffectInfo = selectedTile
-    ? getGangaTileEffectInfo(state.grid, state.gridSize, state.mapId, selectedTile.x, selectedTile.y)
-    : null;
-  const gangaEffectLines = gangaEffectInfo ? describeGangaTileEffect(gangaEffectInfo, formatPopulation) : null;
 
   return (
     <>
@@ -243,8 +220,7 @@ export function MobileTopBar({
               </span>
             </button>
 
-            {/* Language selector, Share, and Exit button group */}
-            <LanguageSelector useDrawer iconSize={14} />
+            {/* Share and Exit button group */}
 
             {onShare && (
               <button
@@ -313,27 +289,21 @@ export function MobileTopBar({
 
           <button
             className="flex items-center justify-center gap-1 active:opacity-70 h-11 min-w-11 px-2 -my-3"
-            onClick={() => {
-              const newShowTaxSlider = !showTaxSlider;
-              setShowTaxSlider(newShowTaxSlider);
-              if (newShowTaxSlider && selectedTile) {
-                onCloseTile();
-              }
-            }}
+            onClick={() => setShowTaxSlider(!showTaxSlider)}
           >
             <span className="text-[9px] text-muted-foreground">{m(UI_LABELS.tax)}</span>
             <span className="text-[10px] font-mono text-foreground">{taxRate}%</span>
           </button>
 
           <div className="flex items-center gap-1">
-            <span className={`text-[10px] font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {stats.income - stats.expenses >= 0 ? '+' : ''}{formatINR(stats.income - stats.expenses)}/mo
+            <span className={`text-[10px] font-mono ${getMonthlyNet(stats) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {formatMonthlyNet(stats)}/mo
             </span>
           </div>
         </div>
 
         {/* Tax Slider Row */}
-        {showTaxSlider && !selectedTile && (
+        {showTaxSlider && (
           <div className="border-t border-gold/10 bg-black/15 px-3 py-0.5 flex items-center gap-2 text-[10px]">
             <span className="text-muted-foreground whitespace-nowrap">{m(UI_LABELS.taxRate)}</span>
             <Slider
@@ -354,91 +324,7 @@ export function MobileTopBar({
           </div>
         )}
 
-        {/* Tile Info Row - Mobile Only */}
-        {selectedTile && (
-          <div className="border-t border-gold/10 bg-black/20 px-3 py-0.5 flex items-center gap-2 text-[10px]">
-            {/* Name */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div className={`w-2 h-2 rounded-full ${
-                selectedTile.zone === 'residential' ? 'bg-green-500' :
-                selectedTile.zone === 'commercial' ? 'bg-blue-500' :
-                selectedTile.zone === 'industrial' ? 'bg-amber-500' : 'bg-muted-foreground/40'
-              }`} />
-              <span className="text-xs font-medium text-foreground capitalize">
-                {selectedTile.building.type === 'empty' 
-                  ? (selectedTile.zone === 'none' ? m(UI_LABELS.emptyLot) : `${selectedTile.zone} ${m(UI_LABELS.zone)}`)
-                  : selectedTile.building.type.replace(/_/g, ' ')}
-              </span>
-            </div>
-            
-            {/* Population & Jobs */}
-            {selectedTile.building.population > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                <PopulationIcon size={10} className="text-muted-foreground" />
-                <span className="text-foreground font-mono">{formatPopulation(selectedTile.building.population)}</span>
-              </div>
-            )}
-            {selectedTile.building.jobs > 0 && (
-              <span className="text-foreground font-mono shrink-0">{formatPopulation(selectedTile.building.jobs)} {m(UI_LABELS.jobsLower)}</span>
-            )}
-            
-            {/* Utilities */}
-            <span className={`shrink-0 ${selectedTile.building.powered ? 'text-yellow-400' : 'text-muted-foreground/60'}`}>
-              {selectedTile.building.powered ? m(UI_LABELS.hasPower) : m(UI_LABELS.noPower)}
-            </span>
-            <span className={`shrink-0 ${selectedTile.building.watered ? 'text-cyan-400' : 'text-muted-foreground/60'}`}>
-              {selectedTile.building.watered ? m(UI_LABELS.hasWater) : m(UI_LABELS.noWater)}
-            </span>
-            
-            {/* Land value */}
-            <div className="flex items-center gap-1 text-muted-foreground shrink-0">
-              <MoneyIcon size={10} />
-              <span className="font-mono text-foreground">{selectedTile.landValue}</span>
-            </div>
-            
-            {/* Pollution */}
-            {selectedTile.pollution > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  selectedTile.pollution > 50 ? 'bg-red-500' : 
-                  selectedTile.pollution > 25 ? 'bg-amber-500' : 'bg-green-500'
-                }`} />
-                <span className={`font-mono ${
-                  selectedTile.pollution > 50 ? 'text-red-400' : 
-                  selectedTile.pollution > 25 ? 'text-amber-400' : 'text-green-400'
-                }`}>{Math.round(selectedTile.pollution)}%</span>
-              </div>
-            )}
-            
-            {/* Spacer to push close button right */}
-            <div className="flex-1" />
-            
-            {/* Close button */}
-            <button 
-              onClick={onCloseTile} 
-              className="h-11 w-11 -my-3 -mr-3 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            >
-              <CloseIcon size={12} />
-            </button>
-          </div>
-        )}
-
-        {/* Effect on Ganga (Varanasi catchment tiles only) */}
-        {selectedTile && gangaEffectLines && (
-          <div className="border-t border-gold/10 bg-black/10 px-3 py-1 flex items-center gap-1.5 text-[10px] min-w-0">
-            <span className="text-muted-foreground shrink-0">Effect on Ganga:</span>
-            <span className="truncate">
-              {gangaEffectLines.map((line, i) => (
-                <span
-                  key={line.text}
-                  className={line.tone === 'hurts' ? 'text-red-400' : line.tone === 'cleans' ? 'text-green-400' : 'text-muted-foreground'}
-                >
-                  {i > 0 ? ' · ' : ''}{line.text}
-                </span>
-              ))}
-            </span>
-          </div>
-        )}
+        {/* Tile info is the shared TileInfoPanel, shown as a bottom sheet by Game.tsx */}
       </Card>
 
       {/* Expanded Details Panel */}
@@ -511,9 +397,9 @@ export function MobileTopBar({
                 <span className="text-sm font-mono text-red-400">{formatINR(stats.expenses)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{m(UI_LABELS.weeklyNet)}</span>
-                <span className={`text-sm font-mono ${stats.income - stats.expenses >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {formatINR(Math.floor((stats.income - stats.expenses) / 4))}
+                <span className="text-sm text-muted-foreground">{m(UI_LABELS.monthlyNet)}</span>
+                <span className={`text-sm font-mono ${getMonthlyNet(stats) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {formatMonthlyNet(stats)}
                 </span>
               </div>
             </div>

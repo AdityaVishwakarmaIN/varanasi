@@ -26,7 +26,6 @@ import { useMobile } from '@/hooks/useMobile';
 import { TitleBackdrop } from '@/components/TitleBackdrop';
 import { SavedCityMeta, GameState } from '@/types/game';
 import { compressToUTF16 } from 'lz-string';
-import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { T, Var } from 'gt-next';
 import { Users, X } from 'lucide-react';
 import {
@@ -481,7 +480,6 @@ export default function HomePage() {
           <CreditsButton variant="ghost" className="justify-start h-auto min-h-11 px-0 text-sm tracking-wide text-sandstone/60 hover:text-marigold hover:bg-transparent" />
         </div>
         <div className="flex h-full min-h-[88px] flex-col items-end justify-between">
-          <LanguageSelector variant="ghost" className="text-sandstone/60 hover:text-marigold hover:bg-sandstone/[0.06]" />
           {hasResettableProgress && (
             <NewGameResetButton onClick={() => setShowResetDialog(true)} />
           )}

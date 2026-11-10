@@ -48,6 +48,17 @@ export function formatINR(n: number): string {
   return `${sign}₹${lakhCroreWords(abs) ?? formatIndianNumber(abs)}`;
 }
 
+/** The city's monthly net (income − expenses): the one figure desktop and mobile HUDs both show. */
+export function getMonthlyNet(stats: { income: number; expenses: number }): number {
+  return stats.income - stats.expenses;
+}
+
+/** Monthly net with an explicit sign: "+₹1,200" / "-₹300". */
+export function formatMonthlyNet(stats: { income: number; expenses: number }): string {
+  const net = getMonthlyNet(stats);
+  return `${net >= 0 ? '+' : ''}${formatINR(net)}`;
+}
+
 /** Takes the SIMULATION population, multiplies by POPULATION_DISPLAY_SCALE, then formats with lakh/crore words. */
 export function formatPopulation(simPopulation: number): string {
   if (!Number.isFinite(simPopulation)) return '0';
