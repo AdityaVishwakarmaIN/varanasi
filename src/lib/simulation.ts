@@ -121,16 +121,6 @@ export function getDefaultGridSize(isMobile: boolean): number {
 /** Desktop default, used when a caller does not pass a size. UI code should use getDefaultGridSize(). */
 export const DEFAULT_GRID_SIZE: number = DEFAULT_GRID_SIZES.desktop;
 
-// Check if a factory_small at this position would render as a farm
-// This matches the deterministic logic in Game.tsx for farm variant selection
-function isFarmBuilding(x: number, y: number, buildingType: string): boolean {
-  if (buildingType !== 'factory_small') return false;
-  // Same seed calculation as in Game.tsx rendering
-  const seed = (x * 31 + y * 17) % 100;
-  // ~50% chance to be a farm variant (when seed < 50)
-  return seed < 50;
-}
-
 // Check if a building is a "starter" type that can operate without utilities
 // This includes all factory_small (farms AND small factories), small houses, and small shops
 // All starter buildings represent small-scale, self-sufficient operations that don't need
@@ -776,24 +766,6 @@ export function checkForDiscoverableCities(
   return citiesToShow;
 }
 
-// Check for cities that are discovered, have roads at their edge, but are not yet connected
-// This can be used to remind players they can connect to a city
-export function getConnectableCities(
-  grid: Tile[][],
-  gridSize: number,
-  adjacentCities: AdjacentCity[]
-): AdjacentCity[] {
-  const connectable: AdjacentCity[] = [];
-  
-  for (const city of adjacentCities) {
-    if (city.discovered && !city.connected && hasRoadAtEdge(grid, gridSize, city.direction)) {
-      connectable.push(city);
-    }
-  }
-  
-  return connectable;
-}
-
 // Generate terrain - grass with scattered trees, lakes, and oceans
 function generateTerrain(size: number, rng: Rng = Math.random, mapId: MapId = 'random'): { grid: Tile[][]; waterBodies: WaterBody[] } {
   if (mapId === 'varanasi') return generateVaranasiTerrain(size, rng, createTile);
@@ -931,79 +903,6 @@ export function getWaterAdjacency(
   const shouldFlip = hasWater && waterOnNorthOrWest && !waterOnSouthOrEast;
   
   return { hasWater, shouldFlip };
-}
-
-// Check if a building footprint is adjacent to roads and determine flip direction
-// Similar to getWaterAdjacency but for roads - makes buildings face the road
-export function getRoadAdjacency(
-  grid: Tile[][],
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  gridSize: number
-): { hasRoad: boolean; shouldFlip: boolean } {
-  // In isometric view (looking from SE toward NW):
-  // - The default sprite faces toward the "front" (south-east in world coords)
-  // - To face the opposite direction, we flip horizontally
-  
-  // Check all four edges and track which sides have roads
-  let roadOnSouthOrEast = false; // "Front" sides - no flip needed
-  let roadOnNorthOrWest = false; // "Back" sides - flip needed
-  
-  // Check south edge (y + height) - front-right in isometric view
-  for (let dx = 0; dx < width; dx++) {
-    const checkX = x + dx;
-    const checkY = y + height;
-    const checkType = grid[checkY]?.[checkX]?.building.type;
-    if (checkY < gridSize && (checkType === 'road' || checkType === 'bridge')) {
-      roadOnSouthOrEast = true;
-      break;
-    }
-  }
-  
-  // Check east edge (x + width) - front-left in isometric view
-  if (!roadOnSouthOrEast) {
-    for (let dy = 0; dy < height; dy++) {
-      const checkX = x + width;
-      const checkY = y + dy;
-      const checkType = grid[checkY]?.[checkX]?.building.type;
-      if (checkX < gridSize && (checkType === 'road' || checkType === 'bridge')) {
-        roadOnSouthOrEast = true;
-        break;
-      }
-    }
-  }
-  
-  // Check north edge (y - 1) - back-left in isometric view
-  for (let dx = 0; dx < width; dx++) {
-    const checkX = x + dx;
-    const checkY = y - 1;
-    const checkType = grid[checkY]?.[checkX]?.building.type;
-    if (checkY >= 0 && (checkType === 'road' || checkType === 'bridge')) {
-      roadOnNorthOrWest = true;
-      break;
-    }
-  }
-  
-  // Check west edge (x - 1) - back-right in isometric view
-  if (!roadOnNorthOrWest) {
-    for (let dy = 0; dy < height; dy++) {
-      const checkX = x - 1;
-      const checkY = y + dy;
-      const checkType = grid[checkY]?.[checkX]?.building.type;
-      if (checkX >= 0 && (checkType === 'road' || checkType === 'bridge')) {
-        roadOnNorthOrWest = true;
-        break;
-      }
-    }
-  }
-  
-  const hasRoad = roadOnSouthOrEast || roadOnNorthOrWest;
-  // Only flip if road is on the back sides and NOT on the front sides
-  const shouldFlip = hasRoad && roadOnNorthOrWest && !roadOnSouthOrEast;
-  
-  return { hasRoad, shouldFlip };
 }
 
 function createTile(x: number, y: number, buildingType: BuildingType = 'grass'): Tile {
@@ -1735,11 +1634,6 @@ const scratchServiceList: number[] = [];
 /** Turn the service coverage cache on or off (tests use this to compare results). Clears the cache. */
 export function setServiceCoverageCacheEnabled(enabled: boolean): void {
   serviceCoverageCacheEnabled = enabled;
-  serviceCoverageCache = null;
-}
-
-/** Forget the cached service coverage. Never needed for correctness; useful in tests and benchmarks. */
-export function clearServiceCoverageCache(): void {
   serviceCoverageCache = null;
 }
 
@@ -4886,21 +4780,6 @@ function withTileEdit(state: GameState, x: number, y: number, edit: (cell: Tile)
   return cow.finish();
 }
 
-// Remove subway from a tile
-export function removeSubway(state: GameState, x: number, y: number): GameState {
-  const tile = state.grid[y]?.[x];
-  if (!tile) return state;
-  
-  // No subway to remove
-  if (!tile.hasSubway) return state;
-
-  return {
-    ...state,
-    grid: withTileEdit(state, x, y, (cell) => { cell.hasSubway = false; }),
-    structureVersion: (state.structureVersion ?? 0) + 1,
-  };
-}
-
 // Terraform a tile into water
 export function placeWaterTerraform(state: GameState, x: number, y: number): GameState {
   if (!canPlaceWaterTerraform(state, x, y)) return state;
@@ -5540,74 +5419,6 @@ export function expandGrid(
   const isOldWater = (oldX: number, oldY: number): boolean => {
     if (oldX < 0 || oldY < 0 || oldX >= currentSize || oldY >= currentSize) return false;
     return currentGrid[oldY][oldX].building.type === 'water';
-  };
-  
-  // Helper to check if position is land (not water) in the old grid
-  const isOldLand = (oldX: number, oldY: number): boolean => {
-    if (oldX < 0 || oldY < 0 || oldX >= currentSize || oldY >= currentSize) return false;
-    return currentGrid[oldY][oldX].building.type !== 'water';
-  };
-  
-  // Find the closest edge tile type from the original grid
-  // Returns: 'water' | 'land' | 'mixed' depending on what was at the nearest edge
-  const getClosestEdgeType = (newX: number, newY: number): 'water' | 'land' | 'mixed' => {
-    const oldX = newX - expansion;
-    const oldY = newY - expansion;
-    
-    // Determine which edge(s) we're extending from
-    let waterCount = 0;
-    let landCount = 0;
-    
-    // Check a strip along the nearest original edge
-    if (oldX < 0) {
-      // Left of original grid - check left edge (x=0) of original
-      const startY = Math.max(0, oldY - 3);
-      const endY = Math.min(currentSize - 1, oldY + 3);
-      for (let y = startY; y <= endY; y++) {
-        if (isOldWater(0, y)) waterCount++;
-        else landCount++;
-      }
-    } else if (oldX >= currentSize) {
-      // Right of original grid - check right edge (x=currentSize-1)
-      const startY = Math.max(0, oldY - 3);
-      const endY = Math.min(currentSize - 1, oldY + 3);
-      for (let y = startY; y <= endY; y++) {
-        if (isOldWater(currentSize - 1, y)) waterCount++;
-        else landCount++;
-      }
-    }
-    
-    if (oldY < 0) {
-      // Above original grid - check top edge (y=0)
-      const startX = Math.max(0, oldX - 3);
-      const endX = Math.min(currentSize - 1, oldX + 3);
-      for (let x = startX; x <= endX; x++) {
-        if (isOldWater(x, 0)) waterCount++;
-        else landCount++;
-      }
-    } else if (oldY >= currentSize) {
-      // Below original grid - check bottom edge (y=currentSize-1)
-      const startX = Math.max(0, oldX - 3);
-      const endX = Math.min(currentSize - 1, oldX + 3);
-      for (let x = startX; x <= endX; x++) {
-        if (isOldWater(x, currentSize - 1)) waterCount++;
-        else landCount++;
-      }
-    }
-    
-    // Corner case: check both edges
-    if ((oldX < 0 || oldX >= currentSize) && (oldY < 0 || oldY >= currentSize)) {
-      // In a corner - check the corner tile
-      const cornerX = oldX < 0 ? 0 : currentSize - 1;
-      const cornerY = oldY < 0 ? 0 : currentSize - 1;
-      if (isOldWater(cornerX, cornerY)) waterCount += 2;
-      else landCount += 2;
-    }
-    
-    if (waterCount === 0 && landCount === 0) return 'mixed';
-    if (waterCount > landCount * 2) return 'water';
-    if (landCount > waterCount * 2) return 'land';
-    return 'mixed';
   };
   
   // Helper to get distance from the original grid boundary (how far into expansion zone)
