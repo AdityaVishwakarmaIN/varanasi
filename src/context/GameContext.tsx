@@ -80,7 +80,7 @@ import { createNewGameState, type NewGameOptions } from '@/lib/newGame';
 import { acceptEmergencyLoan as acceptLoan, declineEmergencyLoan as declineLoan } from '@/lib/failure';
 import { playSfx } from '@/lib/audio';
 import { sfxForTool } from '@/lib/audio/audioConfig';
-import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
+import { clampTaxRate } from '@/lib/tax';
 import {
   addForecast as addForecastToState,
   pushNotifications,
@@ -494,7 +494,6 @@ export function GameProvider({
   const [hasExistingGame, setHasExistingGame] = useState(false);
   const [isStateReady, setIsStateReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextSaveRef = useRef(false);
   /** Set when the autosave on disk could not be loaded and no copy of it was kept: autosaving would destroy it. */
   const autosaveBlockedRef = useRef(false);

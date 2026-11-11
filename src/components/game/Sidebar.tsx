@@ -161,7 +161,6 @@ const HoverSubmenu = React.memo(function HoverSubmenu({
     const currentX = e.clientX;
     const currentY = e.clientY;
     const lastX = lastMousePos.current.x;
-    const lastY = lastMousePos.current.y;
     
     // Check if moving rightward (toward submenu)
     const movingRight = currentX > lastX;

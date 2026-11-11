@@ -1,4 +1,4 @@
-import { Seaplane, WorldRenderState, TILE_WIDTH, TILE_HEIGHT, WakeParticle } from './types';
+import { Seaplane, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import {
   SEAPLANE_MIN_POPULATION,
   SEAPLANE_MIN_BAY_SIZE,

@@ -6,7 +6,6 @@ import { useGame } from '@/context/GameContext';
 import { Tile } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { PlayIcon, PauseIcon, CloseIcon } from '@/components/ui/Icons';
 import { LogOut, Users } from 'lucide-react';
 import {
@@ -52,33 +51,6 @@ const UI_LABELS = {
   calendar: msg('Calendar'),
 };
 
-// Sun/Moon icon for time of day
-function TimeOfDayIcon({ hour }: { hour: number }) {
-  const isNight = hour < 6 || hour >= 20;
-  const isDawn = hour >= 6 && hour < 8;
-  const isDusk = hour >= 18 && hour < 20;
-
-  if (isNight) {
-    return (
-      <svg className="w-3 h-3 text-blue-700" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-      </svg>
-    );
-  } else if (isDawn || isDusk) {
-    return (
-      <svg className="w-3 h-3 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0z" />
-      </svg>
-    );
-  } else {
-    return (
-      <svg className="w-3 h-3 text-amber-700" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0z" />
-      </svg>
-    );
-  }
-}
-
 export function MobileTopBar({ 
   selectedTile, 
   services, 
@@ -108,7 +80,7 @@ export function MobileTopBar({
   onExit?: () => void;
 }) {
   const { state, setSpeed, visualHour, saveCity, discardUnsavedChanges } = useGame();
-  const { year, month, day, speed, cityName } = state;
+  const { year, month, speed, cityName } = state;
   // One panel open at a time: a group chip's details or the calendar.
   const [openId, setOpenId] = useState<TopBarPanelId | null>(null);
   const [showExitDialog, setShowExitDialog] = useState(false);

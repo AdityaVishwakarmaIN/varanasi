@@ -17,7 +17,7 @@ import {
   FloodIcon,
 } from '@/components/ui/Icons';
 import { OverlayMode } from './types';
-import { OVERLAY_CONFIG, getOverlayButtonClass, getOverlayModesForMap } from './overlays';
+import { OVERLAY_CONFIG, getOverlayModesForMap } from './overlays';
 import type { MapId } from '@/games/isocity/maps/varanasi';
 
 // ============================================================================

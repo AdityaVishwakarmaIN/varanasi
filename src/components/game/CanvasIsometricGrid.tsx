@@ -7,12 +7,12 @@ import { currentBatterySaverFrameMs, installBatterySaverInputTracking } from '@/
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useMessages, T, Var, useGT } from 'gt-next';
 import { useGame } from '@/context/GameContext';
-import { TOOL_INFO, Tile, Building, BuildingType, AdjacentCity, Tool } from '@/types/game';
-import { getBuildingSize, requiresWaterAdjacency, getWaterAdjacency } from '@/lib/simulation';
+import { TOOL_INFO, Tile, BuildingType, Tool } from '@/types/game';
+import { getBuildingSize, requiresWaterAdjacency } from '@/lib/simulation';
 import { FireIcon, SafetyIcon } from '@/components/ui/Icons';
 import { getNeighbourhoodName } from '@/lib/firePlaces';
-import { getSpriteCoords, BUILDING_TO_SPRITE, SPRITE_VERTICAL_OFFSETS, SPRITE_HORIZONTAL_OFFSETS, getActiveSpritePack } from '@/lib/renderConfig';
-import { selectSpriteSource, calculateSpriteCoords, calculateSpriteScale, calculateSpriteOffsets, getSpriteRenderInfo } from '@/components/game/buildingSprite';
+import { BUILDING_TO_SPRITE, getActiveSpritePack } from '@/lib/renderConfig';
+import { selectSpriteSource, calculateSpriteCoords, calculateSpriteScale, calculateSpriteOffsets } from '@/components/game/buildingSprite';
 
 // Import shadcn components
 import { Button } from '@/components/ui/button';
@@ -176,7 +176,7 @@ import { Check, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { getFrameSeq, getFrameStatsSince, recordFrame, setEntityCount, setPerfRenderer } from '@/lib/perfStats';
 import { registerCameraController } from '@/components/game/cameraController';
-import { armAutoQuality, disarmAutoQuality, getActivePreset, getGraphicsSnapshot, getRenderDpr, holdAutoQuality, initGraphicsSettings, reportGpuFailure, runAutoQualityCheck } from '@/lib/graphicsSettings';
+import { armAutoQuality, disarmAutoQuality, getActivePreset, getRenderDpr, holdAutoQuality, initGraphicsSettings, reportGpuFailure, runAutoQualityCheck } from '@/lib/graphicsSettings';
 import { StartupVeil } from '@/components/game/StartupVeil';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import { AUTO_QUALITY_CONFIG, QUALITY_PRESETS } from '@/lib/qualityConfig';

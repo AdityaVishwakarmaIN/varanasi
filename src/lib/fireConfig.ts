@@ -211,28 +211,6 @@ export function hasFireDestroyedBuilding(fireProgress: number): boolean {
   return fireProgress >= FIRE_SIMULATION_CONFIG.destructionThreshold;
 }
 
-export function countAdjacentBurningTiles(
-  grid: Tile[][],
-  gridSize: number,
-  x: number,
-  y: number
-): number {
-  // Same neighbours as FIRE_ADJACENT_OFFSETS, written out: this runs for most tiles on every tick.
-  // Rows are only read when y is inside the grid, matching the bounds check of the offset loop.
-  let adjacentFireCount = 0;
-  if (y >= 0 && y < gridSize) {
-    const row = grid[y];
-    if (x - 1 >= 0 && x - 1 < gridSize && row[x - 1].building.onFire) adjacentFireCount++;
-    if (x + 1 >= 0 && x + 1 < gridSize && row[x + 1].building.onFire) adjacentFireCount++;
-  }
-  if (x >= 0 && x < gridSize) {
-    if (y - 1 >= 0 && y - 1 < gridSize && grid[y - 1][x].building.onFire) adjacentFireCount++;
-    if (y + 1 >= 0 && y + 1 < gridSize && grid[y + 1][x].building.onFire) adjacentFireCount++;
-  }
-
-  return adjacentFireCount;
-}
-
 export function getFireIncidentKey(x: number, y: number): string {
   return `${x},${y}`;
 }

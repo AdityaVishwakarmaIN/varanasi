@@ -145,13 +145,6 @@ export const TOOL_TO_OVERLAY_MAP: Record<string, OverlayMode> = {
   embankment: 'ganga',
 };
 
-/** Get the button class name for an overlay button */
-export function getOverlayButtonClass(mode: OverlayMode, isActive: boolean): string {
-  if (!isActive || mode === 'none') return '';
-  const config = OVERLAY_CONFIG[mode];
-  return `${config.activeColor} ${config.hoverColor}`;
-}
-
 // ============================================================================
 // Overlay Fill Style Calculation
 // ============================================================================

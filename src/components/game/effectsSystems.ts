@@ -1023,12 +1023,10 @@ export function createEffectsSystems(
     // Update existing clouds
     const dpr = getRenderDpr();
     const viewWidth = canvasSize.width / (dpr * zoom);
-    const viewHeight = canvasSize.height / (dpr * zoom);
     const viewLeft = -offset.x / zoom;
     const viewTop = -offset.y / zoom;
     const viewRight = viewLeft + viewWidth;
-    const viewBottom = viewTop + viewHeight;
-    
+
     cloudsRef.current = cloudsRef.current.filter(cloud => {
       // Move cloud
       cloud.x += cloud.vx * scaledDelta;
@@ -1105,7 +1103,7 @@ export function createEffectsSystems(
     return bakedCloudSheet;
   };
   const drawClouds = (ctx: IsoRenderer, _currentHour: number) => {
-    const { offset: currentOffset, zoom: currentZoom, canvasSize, cloudWeatherMode } = worldStateRef.current;
+    const { offset: currentOffset, zoom: currentZoom, cloudWeatherMode } = worldStateRef.current;
     const canvas = ctx.canvas;
     const dpr = getRenderDpr();
     const weatherConfig = CLOUD_WEATHER_CONFIG[cloudWeatherMode];

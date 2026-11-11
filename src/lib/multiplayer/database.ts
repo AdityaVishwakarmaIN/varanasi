@@ -33,7 +33,7 @@
 //   EXECUTE FUNCTION update_updated_at();
 
 import { getSupabaseClient } from './supabaseClient';
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
+import { decompressFromEncodedURIComponent } from 'lz-string';
 import { MultiplayerGameState } from './types';
 import { serializeAndCompressForDBAsync } from '@/lib/saveWorkerManager';
 

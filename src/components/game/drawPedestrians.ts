@@ -4,7 +4,7 @@
  * OPTIMIZED for performance with LOD (Level of Detail)
  */
 
-import { Pedestrian, PedestrianActivity, TILE_WIDTH, TILE_HEIGHT } from './types';
+import { Pedestrian, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { DIRECTION_META } from './constants';
 import { gridToScreen } from './utils';
 import { getPedestrianOpacity, getVisiblePedestrians } from './pedestrianSystem';

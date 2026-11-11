@@ -282,7 +282,6 @@ export const MAX_TRAINS = 35;                      // Maximum trains in city
 export const MAX_TRAINS_MOBILE = 8;               // Mobile: fewer trains for performance
 
 // Far zoom thresholds - all mobile/animated entities hidden below these levels
-export const HELICOPTER_MIN_ZOOM = 0.3;           // Minimum zoom to show helicopters
 export const SMOG_MIN_ZOOM = 0.35;                // Minimum zoom to show factory smog
 export const FIREWORK_MIN_ZOOM = 0.3;             // Minimum zoom to show fireworks
 

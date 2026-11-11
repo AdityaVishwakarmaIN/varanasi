@@ -656,9 +656,6 @@ export function drawBridgeTile(
       
       // Calculate dash offset to align dashes across bridge tiles
       // Use grid position to create consistent offset
-      const travelDx = endEdge.x - startEdge.x;
-      const travelDy = endEdge.y - startEdge.y;
-      
       // Create offset based on tile position to align dashes across tiles
       // Use a combination of grid coordinates to create unique but consistent offset
       const offsetBase = (gridX * 17 + gridY * 23) % 100; // Pseudo-random but consistent per tile

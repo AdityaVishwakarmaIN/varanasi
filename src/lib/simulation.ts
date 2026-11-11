@@ -10,8 +10,6 @@ import {
   Budget,
   ServiceCoverage,
   AdvisorMessage,
-  HistoryPoint,
-  Notification,
   AdjacentCity,
   WaterBody,
   BridgeType,
@@ -36,7 +34,6 @@ import {
   getFireFuelFactor,
   getFireFundingFactor,
   getFirePressure,
-  countAdjacentBurningTiles,
   createDefaultFireState,
   getFireSpreadChance,
   getRandomFireIgnitionChance,
@@ -1017,19 +1014,6 @@ function createBridgeBuilding(
     bridgeSpan: span,
     bridgeTrackType: trackType,
   };
-}
-
-/** Check if a tile at position is water */
-function isWaterTile(grid: Tile[][], gridSize: number, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
-  return grid[y][x].building.type === 'water';
-}
-
-/** Check if a tile at position is a road or bridge */
-function isRoadOrBridgeTile(grid: Tile[][], gridSize: number, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
-  const type = grid[y][x].building.type;
-  return type === 'road' || type === 'bridge';
 }
 
 /** Bridge opportunity data */

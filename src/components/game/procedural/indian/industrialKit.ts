@@ -504,7 +504,7 @@ export function coolingTower(iso: Iso, rng: Rng, u: number, v: number, z: number
   iso.ellipse(u, v, z + H, Rt, '#d9d3c5', alpha('#5e574e', 0.6), 1);
   const { ctx } = iso;
   const [cx, cy] = iso.pt(u, v, z + H);
-  const [rx, ry] = iso.ellipseRadii(Rt * 0.94);
+  const [, ry] = iso.ellipseRadii(Rt * 0.94);
   const g = ctx.createLinearGradient(cx, cy - ry, cx, cy + ry);
   g.addColorStop(0, '#6d675e');
   g.addColorStop(0.5, '#3e3934');

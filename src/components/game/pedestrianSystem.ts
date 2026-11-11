@@ -12,12 +12,9 @@
 import { Tile, BuildingType } from '@/types/game';
 import {
   Pedestrian,
-  PedestrianState,
   PedestrianActivity,
   PedestrianDestType,
   CarDirection,
-  TILE_WIDTH,
-  TILE_HEIGHT,
 } from './types';
 import {
   PEDESTRIAN_SKIN_COLORS,
@@ -41,7 +38,7 @@ import {
   PEDESTRIAN_BEACH_SWIM_CHANCE,
   PEDESTRIAN_MAT_COLORS,
 } from './constants';
-import { isRoadTile, getDirectionOptions, findPathOnRoads, getDirectionToTile, findNearestRoadToBuilding } from './utils';
+import { isRoadTile, findPathOnRoads, getDirectionToTile, findNearestRoadToBuilding } from './utils';
 import { PILGRIM_CONFIG, pickPilgrimClothing } from '@/lib/pilgrims';
 
 // Building types that are recreational (pedestrians do activities here)

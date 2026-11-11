@@ -7,7 +7,7 @@
  *   amusement_park – Mela ground: giant wheel, carousel, shamianas, food stalls, lights
  * See ./index.ts for the drawing contract.
  */
-import { alpha, mat, mix, seededRng, shade, type Iso, type P3 } from '../isoPainter';
+import { alpha, mat, seededRng, shade, type Iso, type P3 } from '../isoPainter';
 import {
   C,
   OUTLINE,
@@ -15,7 +15,6 @@ import {
   dome,
   flag,
   grime,
-  lawn,
   makeIso,
   paving,
   slab,
@@ -260,7 +259,6 @@ function pavilion(iso: Iso, rng: Rng, u0: number, v0: number, s: number, z: numb
     [u0 + 0.12, v0 + 0.12, zr + 0.12],
     [u1 - 0.12, v1 - 0.12, zr + 0.12],
   ];
-  const A: P3 = [u0 - o, v0 - o, zr];
   const B: P3 = [u1 + o, v0 - o, zr];
   const Cc: P3 = [u1 + o, v1 + o, zr];
   const D: P3 = [u0 - o, v1 + o, zr];

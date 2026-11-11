@@ -4,7 +4,7 @@
  */
 
 import { Tile } from '@/types/game';
-import { Train, TrainCarriage, CarriageType, TrainType, CarDirection, TILE_WIDTH, TILE_HEIGHT, TrainSmokeParticle } from './types';
+import { Train, TrainCarriage, CarriageType, TrainType, CarDirection, TILE_WIDTH, TILE_HEIGHT } from './types';
 import {
   DIRECTION_META,
   OPPOSITE_DIRECTION,

@@ -1,7 +1,7 @@
 // Tree auto-growth mechanics with weather-based probabilities
 
 import type { CloudWeatherMode } from '@/components/game/types';
-import type { Building, BuildingType, Tile } from '@/types/game';
+import type { Building, Tile } from '@/types/game';
 
 // Tree growth probability per tick by weather mode
 export const TREE_GROWTH_CONFIG: Record<CloudWeatherMode, number> = {

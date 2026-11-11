@@ -11,7 +11,6 @@ import {
   PLANE_TYPES,
   AIRPLANE_MIN_ZOOM_FAR,
   HELICOPTER_MIN_ZOOM_FAR,
-  HELICOPTER_MIN_ZOOM,
 } from './constants';
 import { gridToScreen } from './utils';
 import { isFogActive, type SimWeather } from '@/lib/seasons';

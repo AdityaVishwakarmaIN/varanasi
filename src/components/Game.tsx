@@ -6,7 +6,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/context/GameContext';
-import { Tool, TOOL_INFO } from '@/types/game';
+import { Tool } from '@/types/game';
 import { useMobile } from '@/hooks/useMobile';
 import { MobileToolbar } from '@/components/mobile/MobileToolbar';
 import { MobileTopBar } from '@/components/mobile/MobileTopBar';
@@ -186,12 +186,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   // Multiplayer sync
   const {
     isMultiplayer,
-    isHost,
-    playerCount,
     roomCode,
     players,
-    broadcastPlace,
-    leaveRoom,
   } = useMultiplayerSync();
   
   const { copied: copiedRoomLink, handleCopyRoomLink } = useCopyRoomLink(roomCode, 'coop');
