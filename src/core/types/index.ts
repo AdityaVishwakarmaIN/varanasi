@@ -1,4 +1,2 @@
-// Core types - re-exports all shared types
+// Core types - shared grid types
 export * from './grid';
-export * from './rendering';
-export * from './entities';
