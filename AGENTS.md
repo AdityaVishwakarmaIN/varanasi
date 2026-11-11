@@ -9,7 +9,7 @@
 ## Architecture
 Next.js 16 + React 19 isometric city-builder game with canvas rendering.
 - `src/app/` - Next.js App Router pages
-- `src/components/` - React components (Game.tsx is main entry, `game/` for game UI, `buildings/` for building renderers, `ui/` for shadcn components)
+- `src/components/` - React components (Game.tsx is main entry, `game/` for game UI and canvas building drawing, `ui/` for shadcn components)
 - `src/context/` - React context (GameContext for global state)
 - `src/hooks/` - Custom hooks (useMobile, useCheatCodes)
 - `src/lib/` - Utilities (simulation.ts for game logic, renderConfig.ts for canvas)

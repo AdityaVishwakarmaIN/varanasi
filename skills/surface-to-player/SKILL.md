@@ -5,7 +5,7 @@ description: Use after a system, metric or building exists and the player must s
 
 # Surface To Player
 
-This skill owns the feedback channels and the overlay tables. The design rule is "inform, don't preach": the player gets a number, its cause, its trend, where on the map it comes from, and what to do about it. Every problem should be at most two clicks from its cause. Ganga Health is the worked example: `src/lib/scoring.ts` (number) -> Stats -> `GangaHealthChip.tsx` (HUD) -> `panels/StatisticsPanel.tsx` (cause lines) -> `ganga` overlay (tile view) -> River advisor.
+This skill owns the feedback channels and the overlay tables. The design rule is "inform, don't preach": the player gets a number, its cause, its trend, where on the map it comes from, and what to do about it. Every problem should be at most two clicks from its cause. Ganga Health is the worked example: `src/lib/scoring.ts` (number) -> Stats -> `TopBarGroups.tsx` (River chip in the HUD) -> `panels/StatisticsPanel.tsx` (cause lines) -> `ganga` overlay (tile view) -> River advisor.
 
 ## Read first
 - skills/varanasi-world-model (tone, units)
@@ -23,7 +23,7 @@ This skill owns the feedback channels and the overlay tables. The design rule is
 ## Decision table
 | Event | Channel |
 |---|---|
-| Ongoing metric | HUD chip (`HudStat.tsx`, `GangaHealthChip.tsx`, `UtilityChip.tsx`) + StatisticsPanel section |
+| Ongoing metric | HUD chip (`HudStat.tsx`, `TopBarGroups.tsx`, `UtilityChip.tsx`) + StatisticsPanel section |
 | Where on the map | Overlay mode (below) |
 | Per-building fault | Problem icon (`PROBLEM_KINDS` in `src/lib/problemIcons.ts`, drawn by `problemIconsDraw.ts`) + `TileInfoPanel.tsx` line |
 | One-off event | Notification (`pushNotifications`) with `x`, `y`, `overlay` deep link |
