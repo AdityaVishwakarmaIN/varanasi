@@ -69,9 +69,3 @@ export function useMobile(): UseMobileReturn {
     orientation,
   };
 }
-
-// Simple context-free check for SSR
-export function getIsMobileSSR(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.innerWidth < 768 || isMobile;
-}

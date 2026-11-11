@@ -34,12 +34,6 @@ export function getSupplyLabel(stats: UtilitySupplyStats): string {
   return percent > SUPPLY_PERCENT_CAP ? `>${SUPPLY_PERCENT_CAP}%` : `${percent}%`;
 }
 
-/** Whether a chip should be shown: desktop whenever there is demand, mobile only when supply is short. */
-export function shouldShowUtilityChip(stats: UtilitySupplyStats | undefined, variant: 'desktop' | 'mobile'): stats is UtilitySupplyStats {
-  if (!stats || !(stats.demand > 0)) return false;
-  return variant === 'desktop' || stats.ratio < 1;
-}
-
 interface UtilityChipProps {
   kind: 'power' | 'water';
   stats: UtilitySupplyStats;

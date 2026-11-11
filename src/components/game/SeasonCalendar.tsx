@@ -8,7 +8,6 @@
 import React from 'react';
 import { msg, useMessages } from 'gt-next';
 import {
-  CALENDAR,
   SEASON_COLORS,
   absoluteDay,
   getSeason,
@@ -137,9 +136,6 @@ export const SeasonStrip = React.memo(function SeasonStrip({
     </div>
   );
 });
-
-/** Days in one strip, for tests and callers that place events. */
-export const CALENDAR_STRIP_DAYS = CALENDAR_STRIP_MONTHS * CALENDAR.daysPerMonth;
 
 /** Small "Fog" chip shown while winter fog is active (S4-T8): cars slow down and flights are grounded. */
 export function FogChip({ weather, hour, className = '' }: { weather: SimWeather | undefined; hour: number; className?: string }) {

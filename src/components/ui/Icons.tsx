@@ -50,14 +50,6 @@ export function PauseIcon({ size = 18, className }: IconProps) {
   );
 }
 
-export function FastForwardIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M4 5l7 7-7 7zM13 5l7 7-7 7z" />
-    </svg>
-  );
-}
-
 export function CloseIcon({ size = 18, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
@@ -146,25 +138,6 @@ export function PopulationIcon({ size = 18, className }: IconProps) {
   );
 }
 
-export function JobsIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" />
-      <path {...baseStroke} d="M4 10h16v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-      <path {...baseStroke} d="M10 14h4" />
-    </svg>
-  );
-}
-
-export function MoneyIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <rect {...baseStroke} x="4" y="6" width="16" height="12" rx="2" />
-      <path {...baseStroke} d="M12 9v6M9 12h6" />
-    </svg>
-  );
-}
-
 export function HappyIcon({ size = 18, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
@@ -179,15 +152,6 @@ export function HealthIcon({ size = 18, className }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
       <circle {...baseStroke} cx="12" cy="12" r="8.5" />
       <path {...baseStroke} d="M12 9v6M9 12h6" />
-    </svg>
-  );
-}
-
-export function MedicalCrossIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M12 2v20M2 12h20" />
-      <circle {...baseStroke} cx="12" cy="12" r="10" />
     </svg>
   );
 }
@@ -271,33 +235,6 @@ export function SettingsIcon({ size = 18, className }: IconProps) {
   );
 }
 
-export function AlertIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M12 4l8 14H4z" />
-      <path {...baseStroke} d="M12 10v4M12 17h.01" />
-    </svg>
-  );
-}
-
-export function InfoIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <circle {...baseStroke} cx="12" cy="12" r="9" />
-      <path {...baseStroke} d="M12 10v6M12 7h.01" />
-    </svg>
-  );
-}
-
-export function BudgetSheetIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      <path {...baseStroke} d="M6 4h9l3 3v13H6z" />
-      <path {...baseStroke} d="M9 10h6M9 14h6M9 18h3" />
-    </svg>
-  );
-}
-
 export function PlaneIcon({ size = 18, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
@@ -343,19 +280,6 @@ export function AmusementParkIcon({ size = 18, className }: IconProps) {
       {/* Base/platform */}
       <path {...baseStroke} d="M6 20h12" />
       <path {...baseStroke} d="M8 20v-1M16 20v-1" />
-    </svg>
-  );
-}
-
-export function ShareIcon({ size = 18, className }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-      {/* Share nodes */}
-      <circle {...baseStroke} cx="18" cy="5" r="3" />
-      <circle {...baseStroke} cx="6" cy="12" r="3" />
-      <circle {...baseStroke} cx="18" cy="19" r="3" />
-      {/* Connecting lines */}
-      <path {...baseStroke} d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
     </svg>
   );
 }

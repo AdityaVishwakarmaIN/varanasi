@@ -522,7 +522,6 @@ export function GameProvider({
   const saveFailureNotifiedRef = useRef(false);
 
   // Track the state that needs to be saved
-  const lastSaveTimeRef = useRef<number>(0);
   
   // Update the state to save whenever state changes
   // PERF: Just mark that state has changed - defer expensive deep copy to actual save time
@@ -605,7 +604,6 @@ export function GameProvider({
     
     if (skipNextSaveRef.current) {
       skipNextSaveRef.current = false;
-      lastSaveTimeRef.current = Date.now();
       return;
     }
     
@@ -781,7 +779,6 @@ export function GameProvider({
 
       // PERF: No need for structuredClone here - the worker handles everything
       saveGameState(latestStateRef.current, (ok) => {
-        lastSaveTimeRef.current = Date.now();
         if (ok) {
           setHasExistingGame(true);
         } else {

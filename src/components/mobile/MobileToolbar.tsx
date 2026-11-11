@@ -14,6 +14,7 @@ import { getLandmarkMenuStatus, hasUnseenLandmarks, isLandmarkType, LANDMARKS } 
 import { BUILDING_CATEGORY_ORDER, getMapToolCategories, type ToolCategoryKey } from '@/components/game/toolCategories';
 import { formatIndianNumber, formatINR } from '@/lib/format';
 import { ToolGlyph, CATEGORY_ICONS } from '@/components/game/ToolGlyph';
+import { isOverlayAvailable } from '@/components/game/overlays';
 
 /** Bottom-bar quick tool: saffron when selected, sandstone otherwise. */
 function quickToolClass(selected: boolean, extra = '') {
@@ -424,7 +425,7 @@ export function MobileToolbar({ onOpenPanel, overlayMode = 'none', setOverlayMod
                 <div className="flex flex-col gap-1.5 border-t border-chrome-border p-2">
                   <span className="hud-label shrink-0">{m(UI_LABELS.viewOverlays)}</span>
                   <div className="grid min-w-0 grid-cols-5 gap-1" role="group" aria-label={String(m(UI_LABELS.viewOverlays))}>
-                    {OVERLAY_BUTTONS.filter(([mode]) => (state.mapId === 'varanasi' ? mode !== 'subway' : mode !== 'ganga' && mode !== 'flood')).map(([mode, label, activeClass]) => (
+                    {OVERLAY_BUTTONS.filter(([mode]) => isOverlayAvailable(mode, state.mapId)).map(([mode, label, activeClass]) => (
                       <Button
                         key={mode}
                         variant="ghost"
