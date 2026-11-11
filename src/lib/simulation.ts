@@ -122,7 +122,8 @@ export const DEFAULT_GRID_SIZE: number = DEFAULT_GRID_SIZES.desktop;
 // farm or a small factory) are small, self-sufficient operations: they run without municipal
 // power or water.
 function isStarterBuilding(buildingType: string): boolean {
-  return buildingType === 'house_small' || buildingType === 'shop_small' || buildingType === 'factory_small';
+  if (buildingType === 'house_small' || buildingType === 'shop_small') return true;
+  return buildingType === 'factory_small';
 }
 
 /** Demand for a zone type (0 when demand is unknown or the tile is unzoned). */
