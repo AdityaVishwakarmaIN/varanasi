@@ -778,16 +778,6 @@ export function getActiveSpritePack(): SpritePack {
   return _activeSpritePack;
 }
 
-// Legacy exports that read from the active sprite pack
-export const SPRITE_SHEET = {
-  get src() { return _activeSpritePack.src; },
-  get cols() { return _activeSpritePack.cols; },
-  get rows() { return _activeSpritePack.rows; },
-  get layout() { return _activeSpritePack.layout; },
-};
-
-export const SPRITE_ORDER = _activeSpritePack.spriteOrder;
-
 export const SPRITE_VERTICAL_OFFSETS = new Proxy({} as Record<string, number>, {
   get(_, key: string) {
     return _activeSpritePack.verticalOffsets[key] ?? 0;
@@ -885,16 +875,3 @@ export function getSpriteCoords(
   };
 }
 
-// Helper to get offsets for a specific pack
-export function getSpriteOffsets(
-  buildingType: string,
-  pack?: SpritePack
-): { vertical: number; horizontal: number } {
-  const activePack = pack || _activeSpritePack;
-  const spriteKey = activePack.buildingToSprite[buildingType];
-  
-  return {
-    vertical: spriteKey ? (activePack.verticalOffsets[spriteKey] ?? 0) : 0,
-    horizontal: spriteKey ? (activePack.horizontalOffsets[spriteKey] ?? 0) : 0,
-  };
-}

@@ -265,12 +265,6 @@ export interface FestivalState {
   mood?: { delta: number; untilDay: number };
 }
 
-/** Tourism × this today (1 when no management event is running). */
-export function getFestivalTourismMultiplier(festival: FestivalState | undefined, today: number): number {
-  const e = festival?.event;
-  return e && today >= e.startDay && today <= e.endDay ? e.tourismMultiplier : 1;
-}
-
 /** Happiness points added today by the last management event's outcome (0 when none). */
 export function getFestivalHappinessModifier(festival: FestivalState | undefined, today: number): number {
   const mood = festival?.mood;

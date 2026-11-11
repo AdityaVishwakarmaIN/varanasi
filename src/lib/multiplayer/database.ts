@@ -66,15 +66,6 @@ function checkCitySize(compressed: string): void {
   }
 }
 
-export interface GameRoomRow {
-  room_code: string;
-  city_name: string;
-  game_state: string; // Compressed
-  created_at: string;
-  updated_at: string;
-  player_count: number;
-}
-
 /**
  * Create a new game room in the database
  * PERF: Uses Web Worker for serialization + compression - no main thread blocking!
@@ -188,25 +179,6 @@ export async function updateGameRoom(
       throw e;
     }
     console.error('[Database] Error updating room:', e);
-    return false;
-  }
-}
-
-/**
- * Check if a room exists
- */
-export async function roomExists(roomCode: string): Promise<boolean> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return false;
-  try {
-    const { data, error } = await supabase
-      .from('game_rooms')
-      .select('room_code')
-      .eq('room_code', roomCode.toUpperCase())
-      .single();
-
-    return !error && !!data;
-  } catch {
     return false;
   }
 }

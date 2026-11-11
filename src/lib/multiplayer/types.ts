@@ -67,9 +67,6 @@ export interface TickData {
 // Connection states
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-// Player roles
-export type PlayerRole = 'host' | 'guest' | 'solo';
-
 // Connected player info
 export interface Player {
   id: string;
@@ -86,13 +83,6 @@ export interface RoomData {
   cityName: string;
   createdAt: number;
   playerCount: number;
-}
-
-// Awareness state for each player (used in Supabase Presence)
-export interface AwarenessState {
-  player: Player;
-  cursor?: { x: number; y: number };
-  selectedTool?: MultiplayerTool;
 }
 
 // Word lists for random name generation

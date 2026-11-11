@@ -48,17 +48,6 @@ export function formatINR(n: number): string {
   return `${sign}₹${lakhCroreWords(abs) ?? formatIndianNumber(abs)}`;
 }
 
-/** The city's monthly net (income − expenses): the one figure desktop and mobile HUDs both show. */
-export function getMonthlyNet(stats: { income: number; expenses: number }): number {
-  return stats.income - stats.expenses;
-}
-
-/** Monthly net with an explicit sign: "+₹1,200" / "-₹300". */
-export function formatMonthlyNet(stats: { income: number; expenses: number }): string {
-  const net = getMonthlyNet(stats);
-  return `${net >= 0 ? '+' : ''}${formatINR(net)}`;
-}
-
 /** Money with an explicit sign: "+₹1,200", "-₹340". Zero is "+₹0". */
 export function formatINRSigned(n: number): string {
   return `${n >= 0 ? '+' : ''}${formatINR(n)}`;

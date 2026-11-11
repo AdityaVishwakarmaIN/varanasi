@@ -170,8 +170,3 @@ export function getSavesStore(): KeyValueStore {
   if (!defaultStore) defaultStore = createIdbStore();
   return defaultStore;
 }
-
-export const get = (key: string) => getSavesStore().get(key);
-export const set = (key: string, value: string) => getSavesStore().set(key, value);
-export const del = (key: string) => getSavesStore().del(key);
-export const keys = () => getSavesStore().keys();

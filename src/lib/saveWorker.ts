@@ -5,20 +5,14 @@
 import { compressToUTF16, decompressFromUTF16, compressToEncodedURIComponent } from 'lz-string';
 
 export type SaveWorkerMessage = 
-  | { type: 'serialize-compress'; id: number; state: unknown }
   | { type: 'decompress-parse'; id: number; compressed: string }
-  | { type: 'serialize-compress-uri'; id: number; state: unknown }
-  // PERF: Transferable buffer variants - no structuredClone overhead!
-  | { type: 'compress-transferred'; id: number; buffer: ArrayBuffer }
+  // PERF: the JSON arrives as transferred buffers - no structuredClone overhead
   | { type: 'compress-transferred-uri'; id: number; buffer: ArrayBuffer }
   // S1-T9: JSON produced in time slices on the main thread, one buffer per slice
   | { type: 'compress-transferred-parts'; id: number; buffers: ArrayBuffer[] };
 
 export type SaveWorkerResponse = 
-  | { type: 'serialized-compressed'; id: number; compressed: string; error?: string }
   | { type: 'decompressed-parsed'; id: number; state: unknown; error?: string }
-  | { type: 'serialized-compressed-uri'; id: number; compressed: string; error?: string }
-  | { type: 'compressed-transferred'; id: number; compressed: string; error?: string }
   | { type: 'compressed-transferred-uri'; id: number; compressed: string; error?: string }
   | { type: 'compressed-transferred-parts'; id: number; compressed: string; error?: string };
 
@@ -26,79 +20,7 @@ export type SaveWorkerResponse =
 self.onmessage = (event: MessageEvent<SaveWorkerMessage>) => {
   const { type, id } = event.data;
   
-  // Serialize game state to JSON and compress
-  if (type === 'serialize-compress') {
-    try {
-      const { state } = event.data as { type: 'serialize-compress'; id: number; state: unknown };
-      // Both operations happen in the worker - no main thread blocking!
-      const serialized = JSON.stringify(state);
-      const compressed = compressToUTF16(serialized);
-      
-      self.postMessage({
-        type: 'serialized-compressed',
-        id,
-        compressed,
-      });
-    } catch (error) {
-      self.postMessage({
-        type: 'serialized-compressed',
-        id,
-        compressed: '',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  }
-  
-  // Serialize and compress for Supabase (URI-safe encoding)
-  if (type === 'serialize-compress-uri') {
-    try {
-      const { state } = event.data as { type: 'serialize-compress-uri'; id: number; state: unknown };
-      const serialized = JSON.stringify(state);
-      const compressed = compressToEncodedURIComponent(serialized);
-      
-      self.postMessage({
-        type: 'serialized-compressed-uri',
-        id,
-        compressed,
-      });
-    } catch (error) {
-      self.postMessage({
-        type: 'serialized-compressed-uri',
-        id,
-        compressed: '',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  }
-  
-  // PERF: Compress pre-serialized data from transferred ArrayBuffer (zero-copy transfer!)
-  // Main thread serializes to JSON string, encodes to ArrayBuffer, transfers ownership
-  // This avoids the expensive structuredClone of complex nested objects
-  if (type === 'compress-transferred') {
-    try {
-      const { buffer } = event.data as { type: 'compress-transferred'; id: number; buffer: ArrayBuffer };
-      // Decode the transferred buffer back to string
-      const decoder = new TextDecoder();
-      const jsonString = decoder.decode(buffer);
-      // Compress the JSON string
-      const compressed = compressToUTF16(jsonString);
-      
-      self.postMessage({
-        type: 'compressed-transferred',
-        id,
-        compressed,
-      });
-    } catch (error) {
-      self.postMessage({
-        type: 'compressed-transferred',
-        id,
-        compressed: '',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  }
-  
-  // PERF: Same as above but with URI-safe encoding for Supabase
+  // Compress JSON from a transferred buffer, URI-safe encoding for Supabase
   if (type === 'compress-transferred-uri') {
     try {
       const { buffer } = event.data as { type: 'compress-transferred-uri'; id: number; buffer: ArrayBuffer };

@@ -40,12 +40,6 @@ function initWorker(): boolean {
       
       if (error) {
         pending.reject(new Error(error));
-      } else if (type === 'serialized-compressed') {
-        pending.resolve(compressed);
-      } else if (type === 'serialized-compressed-uri') {
-        pending.resolve(compressed);
-      } else if (type === 'compressed-transferred') {
-        pending.resolve(compressed);
       } else if (type === 'compressed-transferred-uri') {
         pending.resolve(compressed);
       } else if (type === 'compressed-transferred-parts') {
@@ -76,70 +70,11 @@ function initWorker(): boolean {
 }
 
 /**
- * Serialize and compress a game state using the worker (off main thread)
- * PERF: Uses Transferable ArrayBuffer to avoid expensive structuredClone!
- * - Main thread: JSON.stringify (fast) + encode to ArrayBuffer
- * - Transfer: Zero-copy ownership transfer to worker
- * - Worker: Decode + compress (heavy work off main thread)
- * Falls back to main thread if worker is not available
- */
-export async function serializeAndCompressAsync(state: unknown): Promise<string> {
-  // Try to initialize worker if not already done
-  if (!worker && !initWorker()) {
-    // Fallback: serialize and compress on main thread
-    return compressToUTF16(JSON.stringify(state));
-  }
-  
-  const id = ++requestId;
-  
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      const pending = pendingRequests.get(id);
-      if (pending) {
-        pendingRequests.delete(id);
-        console.warn('Save worker timeout, falling back to main thread');
-        try {
-          const compressed = compressToUTF16(JSON.stringify(state));
-          resolve(compressed);
-        } catch (error) {
-          reject(error);
-        }
-      }
-    }, 15000); // 15 second timeout for larger states
-    
-    pendingRequests.set(id, { resolve, reject, timeoutId });
-    
-    try {
-      // PERF: Serialize to JSON string, then encode to ArrayBuffer for zero-copy transfer
-      // This avoids the expensive structuredClone that postMessage does on complex objects
-      const jsonString = JSON.stringify(state);
-      const encoder = new TextEncoder();
-      const buffer = encoder.encode(jsonString).buffer;
-      
-      // Transfer the buffer (zero-copy, ownership moves to worker)
-      worker!.postMessage(
-        { type: 'compress-transferred', id, buffer },
-        [buffer] // Transfer list - buffer ownership moves to worker
-      );
-    } catch (error) {
-      clearTimeout(timeoutId);
-      pendingRequests.delete(id);
-      try {
-        const compressed = compressToUTF16(JSON.stringify(state));
-        resolve(compressed);
-      } catch (fallbackError) {
-        reject(fallbackError);
-      }
-    }
-  });
-}
-
-/**
  * S1-T9: Serialize and compress without a long main-thread block.
  * JSON.stringify of a big city takes 50+ ms, so the JSON is built in time
  * slices (see slicedStringify.ts); each slice is encoded and transferred to
  * the worker, which joins and compresses them. The output is identical to
- * serializeAndCompressAsync. Falls back to the main thread without a worker.
+ * compressToUTF16(JSON.stringify(state)). Falls back to the main thread without a worker.
  */
 export async function serializeAndCompressInSlicesAsync(
   state: unknown,
@@ -270,11 +205,6 @@ export async function decompressAndParseAsync<T = unknown>(compressed: string): 
   });
 }
 
-// Legacy export for backward compatibility
-export const compressAsync = (data: string): Promise<string> => {
-  return serializeAndCompressAsync(data);
-};
-
 /**
  * Serialize and compress for Supabase database (URI-safe encoding)
  * PERF: Uses Transferable ArrayBuffer to avoid expensive structuredClone!
@@ -330,16 +260,3 @@ export async function serializeAndCompressForDBAsync(state: unknown): Promise<st
   });
 }
 
-/**
- * Terminate the worker and clean up resources
- */
-export function terminateWorker(): void {
-  if (worker) {
-    worker.terminate();
-    worker = null;
-  }
-  pendingRequests.forEach((pending) => {
-    clearTimeout(pending.timeoutId);
-  });
-  pendingRequests.clear();
-}

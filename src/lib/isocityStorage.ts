@@ -21,7 +21,6 @@ import {
 } from '@/lib/storage/saveStore';
 
 export const ISOCITY_STORAGE_KEY = 'isocity-game-state';
-export const ISOCITY_SAVED_CITY_STORAGE_KEY = 'isocity-saved-city';
 /** Extra autosave copy written once per in-game month, for "Load last autosave" after game over (S4-T11). */
 export const ISOCITY_LAST_MONTH_STORAGE_KEY = 'isocity-game-state-last-month';
 export const ISOCITY_SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index';

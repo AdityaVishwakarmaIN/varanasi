@@ -81,10 +81,6 @@ export function unlockAudio(): Promise<void> {
   return loading;
 }
 
-export function isAudioReady(): boolean {
-  return manager !== null;
-}
-
 export function playSfx(id: SfxId): void {
   if (typeof window === 'undefined') return;
   const now = performance.now();

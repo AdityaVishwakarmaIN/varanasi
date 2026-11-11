@@ -157,11 +157,6 @@ export function createDefaultFireState(): Pick<Building, 'onFire' | 'fireProgres
   return { ...DEFAULT_FIRE_STATE };
 }
 
-export function resetBuildingFireState(building: Pick<Building, 'onFire' | 'fireProgress'>): void {
-  building.onFire = DEFAULT_FIRE_STATE.onFire;
-  building.fireProgress = DEFAULT_FIRE_STATE.fireProgress;
-}
-
 export function igniteBuilding(building: Pick<Building, 'onFire' | 'fireProgress'>): void {
   building.onFire = true;
   building.fireProgress = 0;
