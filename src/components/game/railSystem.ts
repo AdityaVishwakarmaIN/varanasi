@@ -38,46 +38,6 @@ export type TrackType =
   | 'terminus_w'      // Dead-end facing west
   | 'single';         // Isolated single track
 
-/** Train carriage type */
-export type CarriageType = 'locomotive' | 'passenger' | 'freight_box' | 'freight_tank' | 'freight_flat' | 'caboose';
-
-/** Train type */
-export type TrainType = 'passenger' | 'freight';
-
-/** Individual train carriage */
-export interface TrainCarriage {
-  type: CarriageType;
-  color: string;
-  // Position along the train's path (0-1 within current tile segment)
-  progress: number;
-  // Current tile position
-  tileX: number;
-  tileY: number;
-  // Direction of travel
-  direction: CarDirection;
-}
-
-/** Complete train with multiple carriages */
-export interface Train {
-  id: number;
-  type: TrainType;
-  carriages: TrainCarriage[];
-  // Lead locomotive position
-  tileX: number;
-  tileY: number;
-  direction: CarDirection;
-  progress: number;
-  speed: number;
-  // Path for the train
-  path: { x: number; y: number }[];
-  pathIndex: number;
-  // Lifecycle
-  age: number;
-  maxAge: number;
-  // Visual
-  color: string;
-}
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -1069,34 +1029,6 @@ export function drawRailTrack(
 }
 
 /**
- * Get adjacent rail connections for a combined rail+road tile
- * Checks for both pure rail tiles AND road tiles with rail overlay
- */
-export function getAdjacentRailForOverlay(
-  grid: Tile[][],
-  gridSize: number,
-  x: number,
-  y: number
-): RailConnection {
-  const hasRailAt = (checkX: number, checkY: number): boolean => {
-    if (checkX < 0 || checkY < 0 || checkX >= gridSize || checkY >= gridSize) return false;
-    const tile = grid[checkY][checkX];
-    // Consider a tile as having rail if it's a rail tile, a rail station (any tile), road with rail overlay, or rail bridge
-    return tile.building.type === 'rail' || 
-           isRailStationTile(grid, gridSize, checkX, checkY) || 
-           (tile.building.type === 'road' && tile.hasRailOverlay === true) ||
-           (tile.building.type === 'bridge' && tile.building.bridgeTrackType === 'rail');
-  };
-
-  return {
-    north: hasRailAt(x - 1, y),
-    east: hasRailAt(x, y - 1),
-    south: hasRailAt(x + 1, y),
-    west: hasRailAt(x, y + 1),
-  };
-}
-
-/**
  * Draw rail tracks only (inset rails, no ties or ballast) for overlay on roads
  * This is used when rail is overlaid on a road tile - the road provides the base
  */
@@ -1111,7 +1043,7 @@ export function drawRailTracksOnly(
   zoom: number
 ): void {
   // Get adjacent rail connections (including road+rail combined tiles)
-  const connections = getAdjacentRailForOverlay(grid, gridSize, gridX, gridY);
+  const connections = getAdjacentRail(grid, gridSize, gridX, gridY);
   
   // Determine track type
   const trackType = getTrackType(connections);
@@ -1358,17 +1290,6 @@ function drawInsetRails(
 /** Railroad crossing state */
 export type CrossingState = 'open' | 'warning' | 'closed';
 
-/** Railroad crossing information */
-export interface RailroadCrossing {
-  tileX: number;
-  tileY: number;
-  state: CrossingState;
-  gateAngle: number; // 0 = up (open), 90 = down (closed)
-  flashTimer: number; // For alternating lights
-  trainApproaching: boolean;
-  trainDistance: number; // Distance in tiles to nearest approaching train
-}
-
 /** Detection radius for triggering crossing warning */
 export const CROSSING_WARNING_DISTANCE = 3; // tiles
 
@@ -1419,7 +1340,7 @@ export function isRailroadCrossing(grid: Tile[][], gridSize: number, x: number, 
   
   // Get road and rail directions
   const roadDir = getRoadDirection(grid, gridSize, x, y);
-  const railConnections = getAdjacentRailForOverlay(grid, gridSize, x, y);
+  const railConnections = getAdjacentRail(grid, gridSize, x, y);
   
   const railHasNS = railConnections.north || railConnections.south;
   const railHasEW = railConnections.east || railConnections.west;
@@ -1466,7 +1387,7 @@ export function getCrossingRailOrientation(
   x: number,
   y: number
 ): 'ns' | 'ew' | 'cross' {
-  const connections = getAdjacentRailForOverlay(grid, gridSize, x, y);
+  const connections = getAdjacentRail(grid, gridSize, x, y);
   const hasNS = connections.north || connections.south;
   const hasEW = connections.east || connections.west;
   
@@ -1900,55 +1821,3 @@ export function shouldStopAtCrossing(
   return state === 'closed' || state === 'warning';
 }
 
-/**
- * Find path on rail network between two points
- */
-export function findPathOnRails(
-  grid: Tile[][],
-  gridSize: number,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): { x: number; y: number }[] | null {
-  // BFS pathfinding on rail network
-  const queue: { x: number; y: number; path: { x: number; y: number }[] }[] = [
-    { x: startX, y: startY, path: [{ x: startX, y: startY }] }
-  ];
-  const visited = new Set<string>();
-  visited.add(`${startX},${startY}`);
-
-  const directions = [
-    { dx: -1, dy: 0 },  // north
-    { dx: 0, dy: -1 },  // east
-    { dx: 1, dy: 0 },   // south
-    { dx: 0, dy: 1 },   // west
-  ];
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-
-    if (current.x === endX && current.y === endY) {
-      return current.path;
-    }
-
-    for (const { dx, dy } of directions) {
-      const nx = current.x + dx;
-      const ny = current.y + dy;
-      const key = `${nx},${ny}`;
-
-      if (nx < 0 || ny < 0 || nx >= gridSize || ny >= gridSize) continue;
-      if (visited.has(key)) continue;
-      if (!isRailTile(grid, gridSize, nx, ny) && !isRailStationTile(grid, gridSize, nx, ny)) continue;
-
-      visited.add(key);
-      queue.push({
-        x: nx,
-        y: ny,
-        path: [...current.path, { x: nx, y: ny }],
-      });
-    }
-  }
-
-  return null;
-}

@@ -199,34 +199,6 @@ export function findEnterableBuildings(
 }
 
 /**
- * Check if a building type is a sports facility
- */
-export function isSportsFacility(buildingType: BuildingType): boolean {
-  return SPORTS_TYPES.includes(buildingType);
-}
-
-/**
- * Check if a building type is a relaxation area
- */
-export function isRelaxationArea(buildingType: BuildingType): boolean {
-  return RELAXATION_TYPES.includes(buildingType);
-}
-
-/**
- * Check if a building type is enterable
- */
-export function isEnterableBuilding(buildingType: BuildingType): boolean {
-  return ENTERABLE_BUILDING_TYPES.includes(buildingType);
-}
-
-/**
- * Check if a building type is a park/recreation area
- */
-export function isRecreationArea(buildingType: BuildingType): boolean {
-  return PARK_TYPES.has(buildingType);
-}
-
-/**
  * Find all stations of a specific type (fire or police)
  */
 export function findStations(
@@ -912,24 +884,6 @@ export function getRandomBayTile(bay: BayInfo): { x: number; y: number; screenX:
     screenX: screenX + TILE_WIDTH / 2,
     screenY: screenY + TILE_HEIGHT / 2,
   };
-}
-
-/**
- * Calculate total population from the grid (with caching support)
- */
-export function calculateTotalPopulation(
-  grid: Tile[][],
-  gridSize: number
-): number {
-  if (!grid || gridSize <= 0) return 0;
-
-  let total = 0;
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      total += grid[y][x].building.population || 0;
-    }
-  }
-  return total;
 }
 
 /**

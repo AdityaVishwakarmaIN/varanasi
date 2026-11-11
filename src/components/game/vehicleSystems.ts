@@ -2,7 +2,7 @@ import React from 'react';
 import { Bus, Car, CarDirection, EmergencyVehicle, EmergencyVehicleType, Pedestrian, PedestrianDestType, WorldRenderState, TILE_WIDTH, TILE_HEIGHT } from './types';
 import { BUS_COLORS, BUS_MIN_POPULATION, BUS_MIN_ZOOM, BUS_SPEED_MAX, BUS_SPEED_MIN, BUS_SPAWN_INTERVAL_MAX, BUS_SPAWN_INTERVAL_MIN, BUS_STOP_DURATION_MAX, BUS_STOP_DURATION_MIN, CAR_COLORS, CAR_MIN_ZOOM, CAR_MIN_ZOOM_MOBILE, DIRECTION_META, MAX_BUSES, MAX_BUSES_MOBILE, PEDESTRIAN_MAX_COUNT, PEDESTRIAN_MAX_COUNT_MOBILE, PEDESTRIAN_MIN_ZOOM, PEDESTRIAN_MIN_ZOOM_MOBILE, PEDESTRIAN_ROAD_TILE_DENSITY, PEDESTRIAN_ROAD_TILE_DENSITY_MOBILE, PEDESTRIAN_SPAWN_BATCH_SIZE, PEDESTRIAN_SPAWN_BATCH_SIZE_MOBILE, PEDESTRIAN_SPAWN_INTERVAL, PEDESTRIAN_SPAWN_INTERVAL_MOBILE, VEHICLE_FAR_ZOOM_THRESHOLD } from './constants';
 import { isRoadTile, getDirectionOptions, pickNextDirection, findPathOnRoads, getDirectionToTile, gridToScreen } from './utils';
-import { findBusStops, findResidentialBuildings, findPedestrianDestinations, findStations, findFires, findRecreationAreas, findEnterableBuildings, SPORTS_TYPES, ACTIVE_RECREATION_TYPES } from './gridFinders';
+import { findBusStops, findResidentialBuildings, findPedestrianDestinations, findStations, findFires, findRecreationAreas, findEnterableBuildings, countRoadTiles, SPORTS_TYPES, ACTIVE_RECREATION_TYPES } from './gridFinders';
 import { drawPedestrians as drawPedestriansUtil } from './drawPedestrians';
 import { BuildingType, Tile } from '@/types/game';
 import {
@@ -12,7 +12,7 @@ import {
   getFireFundingFactor,
 } from '@/lib/fireConfig';
 import { SERVICE_CONFIG, SERVICE_RANGE_INCREASE_PER_LEVEL } from '@/lib/simulation';
-import { getTrafficLightState, canProceedThroughIntersection, TRAFFIC_LIGHT_TIMING } from './trafficSystem';
+import { getTrafficLightState, canProceedThroughIntersection } from './trafficSystem';
 import { canRollThroughRed } from './junctionYield';
 import { followSpeedFactor, FOLLOW_BAND } from './followEasing';
 import { isRailroadCrossing, shouldStopAtCrossing } from './railSystem';
@@ -1067,11 +1067,6 @@ export function createVehicleSystems(
             const nextTile = returnPath[1];
             const dir = getDirectionToTile(vehicle.tileX, vehicle.tileY, nextTile.x, nextTile.y);
             if (dir) vehicle.direction = dir;
-          } else if (returnPath && returnPath.length === 1) {
-            if (vehicle.type !== 'fire_truck') {
-              activeCrimesRef.current.delete(targetKey);
-            }
-            continue;
           } else {
             if (vehicle.type !== 'fire_truck') {
               activeCrimesRef.current.delete(targetKey);
@@ -1085,18 +1080,6 @@ export function createVehicleSystems(
       }
       
       if (!isRoadTile(currentGrid, currentGridSize, vehicle.tileX, vehicle.tileY)) {
-        const targetKey = `${vehicle.targetX},${vehicle.targetY}`;
-        if (vehicle.type === 'fire_truck') {
-          activeFiresRef.current.delete(targetKey);
-        } else {
-          activeCrimesRef.current.delete(targetKey);
-          activeCrimeIncidentsRef.current.delete(targetKey);
-        }
-        continue;
-      }
-      
-      if (vehicle.tileX < 0 || vehicle.tileX >= currentGridSize || 
-          vehicle.tileY < 0 || vehicle.tileY >= currentGridSize) {
         const targetKey = `${vehicle.targetX},${vehicle.targetY}`;
         if (vehicle.type === 'fire_truck') {
           activeFiresRef.current.delete(targetKey);
@@ -1577,15 +1560,7 @@ export function createVehicleSystems(
     if (cachedRoadTileCountRef.current.roadVersion === currentGridVersion) {
       roadTileCount = cachedRoadTileCountRef.current.count;
     } else {
-      roadTileCount = 0;
-      for (let y = 0; y < currentGridSize; y++) {
-        for (let x = 0; x < currentGridSize; x++) {
-          const type = currentGrid[y][x].building.type;
-          if (type === 'road' || type === 'bridge') {
-            roadTileCount++;
-          }
-        }
-      }
+      roadTileCount = countRoadTiles(currentGrid, currentGridSize);
       cachedRoadTileCountRef.current = { count: roadTileCount, roadVersion: currentGridVersion };
     }
 
@@ -2076,39 +2051,6 @@ export function createVehicleSystems(
     const viewTop = -currentOffset.y / currentZoom - TILE_HEIGHT * 2;
     const viewRight = viewWidth - currentOffset.x / currentZoom + TILE_WIDTH;
     const viewBottom = viewHeight - currentOffset.y / currentZoom + TILE_HEIGHT * 2;
-    
-    const isVehicleBehindBuilding = (tileX: number, tileY: number): boolean => {
-      const vehicleDepth = tileX + tileY;
-      
-      for (let dy = 0; dy <= 1; dy++) {
-        for (let dx = 0; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          
-          const checkX = tileX + dx;
-          const checkY = tileY + dy;
-          
-          if (checkX < 0 || checkY < 0 || checkX >= currentGridSize || checkY >= currentGridSize) {
-            continue;
-          }
-          
-          const tile = currentGrid[checkY]?.[checkX];
-          if (!tile) continue;
-          
-          const buildingType = tile.building.type;
-          const skipTypes: BuildingType[] = ['road', 'grass', 'empty', 'water', 'tree'];
-          if (skipTypes.includes(buildingType)) {
-            continue;
-          }
-          
-          const buildingDepth = checkX + checkY;
-          if (buildingDepth > vehicleDepth) {
-            return true;
-          }
-        }
-      }
-      
-      return false;
-    };
     
     emergencyVehiclesRef.current.forEach(vehicle => {
       const { screenX, screenY } = gridToScreen(vehicle.tileX, vehicle.tileY, 0, 0);

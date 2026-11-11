@@ -1235,13 +1235,6 @@ export function spawnPedestrianAtBeach(
   return ped;
 }
 
-/**
- * Check if a pedestrian is a beach-goer (for filtering in draw calls)
- */
-export function isBeachPedestrian(ped: Pedestrian): boolean {
-  return ped.state === 'at_beach';
-}
-
 // ============================================================================
 // Pilgrims at the ghats (S3-T10)
 // ============================================================================

@@ -5,12 +5,6 @@
 
 import { Tile } from '@/types/game';
 import { TILE_WIDTH, TILE_HEIGHT, CarDirection } from './types';
-import { 
-  TRAFFIC_LIGHT_MIN_ZOOM, 
-  DIRECTION_ARROWS_MIN_ZOOM, 
-  MEDIAN_PLANTS_MIN_ZOOM,
-  LANE_MARKINGS_MEDIAN_MIN_ZOOM,
-} from './constants';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
@@ -40,20 +34,6 @@ export interface MergedRoadInfo {
   side: 'left' | 'right' | 'center' | 'single';
 }
 
-/** Traffic light at an intersection */
-export interface TrafficLight {
-  tileX: number;
-  tileY: number;
-  state: TrafficLightState;
-  timer: number;
-  isIntersection: boolean;
-  // Which directions have roads
-  hasNorth: boolean;
-  hasEast: boolean;
-  hasSouth: boolean;
-  hasWest: boolean;
-}
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -63,15 +43,6 @@ export const TRAFFIC_LIGHT_TIMING = {
   GREEN_DURATION: 3.0,    // Time for green light (faster cycle)
   YELLOW_DURATION: 0.8,   // Time for yellow light
   TOTAL_CYCLE: 7.6,       // Full cycle time (2 green + 2 yellow)
-};
-
-/** Road rendering constants */
-export const ROAD_CONFIG = {
-  SINGLE_LANE_WIDTH: 0.09,   // Width ratio for single lane (multiplied by 2 for roadW)
-  AVENUE_LANE_WIDTH: 0.10,   // Lanes for avenues
-  HIGHWAY_LANE_WIDTH: 0.11,  // Lanes for highways
-  MEDIAN_WIDTH: 0.08,        // Width of center median
-  SIDEWALK_WIDTH: 0.08,      // Sidewalk width ratio
 };
 
 /** Colors for road rendering */
@@ -183,12 +154,6 @@ export function analyzeMergedRoad(
   
   if (isNSRoad && !isEWRoad) {
     // Road runs north-south, check east-west for parallel roads
-    // Check west (gridY+1) and east (gridY-1) for parallel NS roads
-    const hasParallelWest = isRoad(grid, gridSize, x, y + 1) && 
-      (isRoad(grid, gridSize, x - 1, y + 1) || isRoad(grid, gridSize, x + 1, y + 1));
-    const hasParallelEast = isRoad(grid, gridSize, x, y - 1) && 
-      (isRoad(grid, gridSize, x - 1, y - 1) || isRoad(grid, gridSize, x + 1, y - 1));
-    
     // Count how many parallel roads exist in a row
     let westCount = 0;
     let eastCount = 0;
@@ -240,11 +205,6 @@ export function analyzeMergedRoad(
   
   if (isEWRoad && !isNSRoad) {
     // Road runs east-west, check north-south for parallel roads
-    const hasParallelNorth = isRoad(grid, gridSize, x - 1, y) && 
-      (isRoad(grid, gridSize, x - 1, y - 1) || isRoad(grid, gridSize, x - 1, y + 1));
-    const hasParallelSouth = isRoad(grid, gridSize, x + 1, y) && 
-      (isRoad(grid, gridSize, x + 1, y - 1) || isRoad(grid, gridSize, x + 1, y + 1));
-    
     // Count how many parallel roads exist
     let northCount = 0;
     let southCount = 0;
@@ -305,25 +265,6 @@ export function analyzeMergedRoad(
     mergeWidth: 1,
     side: 'single',
   };
-}
-
-/**
- * Determine if an intersection should have traffic lights
- * Traffic lights are placed at 3+ way intersections
- */
-export function shouldHaveTrafficLight(
-  grid: Tile[][],
-  gridSize: number,
-  x: number,
-  y: number
-): boolean {
-  if (!isRoad(grid, gridSize, x, y)) return false;
-  
-  const adj = getAdjacentRoads(grid, gridSize, x, y);
-  const connectionCount = [adj.north, adj.east, adj.south, adj.west].filter(Boolean).length;
-  
-  // Traffic lights at 3+ way intersections
-  return connectionCount >= 3;
 }
 
 /**
@@ -482,132 +423,6 @@ export function drawTrafficLight(
 }
 
 /**
- * Draw avenue/highway median with optional plants or barriers
- */
-export function drawMedian(
-  ctx: IsoRenderer,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-  medianType: 'line' | 'plants' | 'barrier',
-  zoom: number
-): void {
-  const medianWidth = TILE_WIDTH * 0.04;
-  
-  if (medianType === 'line') {
-    // Double yellow line
-    ctx.strokeStyle = ROAD_COLORS.CENTER_LINE;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([]);
-    
-    // Calculate perpendicular offset
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const len = Math.hypot(dx, dy);
-    const perpX = -dy / len * 2;
-    const perpY = dx / len * 2;
-    
-    ctx.beginPath();
-    ctx.moveTo(startX + perpX, startY + perpY);
-    ctx.lineTo(endX + perpX, endY + perpY);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(startX - perpX, startY - perpY);
-    ctx.lineTo(endX - perpX, endY - perpY);
-    ctx.stroke();
-  } else if (medianType === 'plants') {
-    // Raised median with plants
-    ctx.fillStyle = ROAD_COLORS.MEDIAN_CONCRETE;
-    ctx.strokeStyle = ROAD_COLORS.CURB;
-    ctx.lineWidth = 1;
-    
-    // Draw concrete base
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const len = Math.hypot(dx, dy);
-    const perpX = -dy / len * medianWidth;
-    const perpY = dx / len * medianWidth;
-    
-    ctx.beginPath();
-    ctx.moveTo(startX + perpX, startY + perpY);
-    ctx.lineTo(endX + perpX, endY + perpY);
-    ctx.lineTo(endX - perpX, endY - perpY);
-    ctx.lineTo(startX - perpX, startY - perpY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    
-    // Draw plants/trees at intervals
-    if (zoom >= MEDIAN_PLANTS_MIN_ZOOM) {
-      const plantSpacing = 8;
-      const numPlants = Math.floor(len / plantSpacing);
-      
-      ctx.fillStyle = ROAD_COLORS.MEDIAN_PLANTS;
-      for (let i = 1; i < numPlants; i++) {
-        const t = i / numPlants;
-        const px = startX + dx * t;
-        const py = startY + dy * t;
-        
-        // Simple circular bush
-        ctx.beginPath();
-        ctx.arc(px, py - 2, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  } else if (medianType === 'barrier') {
-    // Concrete barrier (for highways)
-    ctx.fillStyle = ROAD_COLORS.MEDIAN_CONCRETE;
-    ctx.strokeStyle = ROAD_COLORS.CURB;
-    ctx.lineWidth = 1;
-    
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const len = Math.hypot(dx, dy);
-    const perpX = -dy / len * medianWidth * 0.6;
-    const perpY = dx / len * medianWidth * 0.6;
-    
-    ctx.beginPath();
-    ctx.moveTo(startX + perpX, startY + perpY);
-    ctx.lineTo(endX + perpX, endY + perpY);
-    ctx.lineTo(endX - perpX, endY - perpY);
-    ctx.lineTo(startX - perpX, startY - perpY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-}
-
-/**
- * Draw lane markings (white dashed or solid)
- */
-export function drawLaneMarkings(
-  ctx: IsoRenderer,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-  isSolid: boolean = false
-): void {
-  ctx.strokeStyle = ROAD_COLORS.LANE_MARKING;
-  ctx.lineWidth = 0.8;
-  
-  if (isSolid) {
-    ctx.setLineDash([]);
-  } else {
-    ctx.setLineDash([3, 4]);
-  }
-  
-  ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  ctx.lineTo(endX, endY);
-  ctx.stroke();
-  
-  ctx.setLineDash([]);
-}
-
-/**
  * Draw directional arrow on road surface
  */
 export function drawRoadArrow(
@@ -679,207 +494,6 @@ export function getTrafficFlowDirection(
 }
 
 // ============================================================================
-// Main Road Drawing Function for Merged Roads
-// ============================================================================
-
-/**
- * Draw a merged road segment (avenue or highway)
- */
-export function drawMergedRoadSegment(
-  ctx: IsoRenderer,
-  x: number,
-  y: number,
-  mergeInfo: MergedRoadInfo,
-  adj: { north: boolean; east: boolean; south: boolean; west: boolean },
-  trafficLightTime: number,
-  zoom: number
-): void {
-  const w = TILE_WIDTH;
-  const h = TILE_HEIGHT;
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-  
-  // Diamond corner points
-  const topCorner = { x: x + w / 2, y: y };
-  const rightCorner = { x: x + w, y: y + h / 2 };
-  const bottomCorner = { x: x + w / 2, y: y + h };
-  const leftCorner = { x: x, y: y + h / 2 };
-  
-  // Edge midpoints
-  const northEdgeX = x + w * 0.25;
-  const northEdgeY = y + h * 0.25;
-  const eastEdgeX = x + w * 0.75;
-  const eastEdgeY = y + h * 0.25;
-  const southEdgeX = x + w * 0.75;
-  const southEdgeY = y + h * 0.75;
-  const westEdgeX = x + w * 0.25;
-  const westEdgeY = y + h * 0.75;
-  
-  // Road segment width based on type
-  const laneWidth = mergeInfo.type === 'highway' ? ROAD_CONFIG.HIGHWAY_LANE_WIDTH :
-                    mergeInfo.type === 'avenue' ? ROAD_CONFIG.AVENUE_LANE_WIDTH :
-                    ROAD_CONFIG.SINGLE_LANE_WIDTH;
-  const roadW = w * laneWidth * 2;
-  
-  // Draw sidewalks on outer edges only (not between merged road segments)
-  const drawSidewalks = mergeInfo.side === 'left' || mergeInfo.side === 'right' || mergeInfo.side === 'single';
-  
-  if (drawSidewalks) {
-    // Only draw sidewalk on the outer edge of merged roads
-    const sidewalkWidth = w * ROAD_CONFIG.SIDEWALK_WIDTH;
-    ctx.fillStyle = ROAD_COLORS.SIDEWALK;
-    ctx.strokeStyle = ROAD_COLORS.CURB;
-    ctx.lineWidth = 1;
-    
-    if (mergeInfo.orientation === 'ns') {
-      // NS road - draw sidewalks on east/west edges if this is an outer tile
-      if (mergeInfo.side === 'right' && !adj.east) {
-        // East sidewalk (top-right edge)
-        ctx.beginPath();
-        ctx.moveTo(topCorner.x, topCorner.y);
-        ctx.lineTo(rightCorner.x, rightCorner.y);
-        ctx.lineTo(rightCorner.x - sidewalkWidth * 0.707, rightCorner.y + sidewalkWidth * 0.707);
-        ctx.lineTo(topCorner.x - sidewalkWidth * 0.707, topCorner.y + sidewalkWidth * 0.707);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-      if (mergeInfo.side === 'left' && !adj.west) {
-        // West sidewalk (bottom-left edge)
-        ctx.beginPath();
-        ctx.moveTo(bottomCorner.x, bottomCorner.y);
-        ctx.lineTo(leftCorner.x, leftCorner.y);
-        ctx.lineTo(leftCorner.x + sidewalkWidth * 0.707, leftCorner.y - sidewalkWidth * 0.707);
-        ctx.lineTo(bottomCorner.x + sidewalkWidth * 0.707, bottomCorner.y - sidewalkWidth * 0.707);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    } else if (mergeInfo.orientation === 'ew') {
-      // EW road - draw sidewalks on north/south edges if this is an outer tile
-      if (mergeInfo.side === 'left' && !adj.north) {
-        // North sidewalk (top-left edge)
-        ctx.beginPath();
-        ctx.moveTo(leftCorner.x, leftCorner.y);
-        ctx.lineTo(topCorner.x, topCorner.y);
-        ctx.lineTo(topCorner.x + sidewalkWidth * 0.707, topCorner.y + sidewalkWidth * 0.707);
-        ctx.lineTo(leftCorner.x + sidewalkWidth * 0.707, leftCorner.y + sidewalkWidth * 0.707);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-      if (mergeInfo.side === 'right' && !adj.south) {
-        // South sidewalk (bottom-right edge)
-        ctx.beginPath();
-        ctx.moveTo(rightCorner.x, rightCorner.y);
-        ctx.lineTo(bottomCorner.x, bottomCorner.y);
-        ctx.lineTo(bottomCorner.x - sidewalkWidth * 0.707, bottomCorner.y - sidewalkWidth * 0.707);
-        ctx.lineTo(rightCorner.x - sidewalkWidth * 0.707, rightCorner.y - sidewalkWidth * 0.707);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-  }
-  
-  // Draw the main road surface
-  ctx.fillStyle = ROAD_COLORS.ASPHALT;
-  ctx.beginPath();
-  ctx.moveTo(topCorner.x, topCorner.y);
-  ctx.lineTo(rightCorner.x, rightCorner.y);
-  ctx.lineTo(bottomCorner.x, bottomCorner.y);
-  ctx.lineTo(leftCorner.x, leftCorner.y);
-  ctx.closePath();
-  ctx.fill();
-  
-  // Draw lane markings based on road type
-  if (zoom >= LANE_MARKINGS_MEDIAN_MIN_ZOOM) {
-    if (mergeInfo.type !== 'single' && mergeInfo.hasMedian) {
-      // Draw median for avenues/highways
-      if (mergeInfo.side === 'center' || 
-          (mergeInfo.mergeWidth === 2 && mergeInfo.positionInMerge === 0)) {
-        // Draw median on the boundary between lanes
-        if (mergeInfo.orientation === 'ns') {
-          // Median runs NS (perpendicular to tile boundary)
-          // Draw on the east edge if this is the left tile of a pair
-          if (mergeInfo.positionInMerge === Math.floor(mergeInfo.mergeWidth / 2) - 1) {
-            const medianType = mergeInfo.medianType === 'none' ? 'line' : mergeInfo.medianType;
-            drawMedian(ctx, northEdgeX, northEdgeY, southEdgeX, southEdgeY, medianType, zoom);
-          }
-        } else {
-          // Median runs EW
-          if (mergeInfo.positionInMerge === Math.floor(mergeInfo.mergeWidth / 2) - 1) {
-            const medianType = mergeInfo.medianType === 'none' ? 'line' : mergeInfo.medianType;
-            drawMedian(ctx, eastEdgeX, eastEdgeY, westEdgeX, westEdgeY, medianType, zoom);
-          }
-        }
-      }
-    }
-    
-    // Draw direction arrows
-    if (zoom >= DIRECTION_ARROWS_MIN_ZOOM && mergeInfo.type !== 'single') {
-      const flowDirs = getTrafficFlowDirection(mergeInfo);
-      if (flowDirs.length === 1) {
-        drawRoadArrow(ctx, cx, cy, flowDirs[0], zoom);
-      }
-    }
-    
-    // Draw center line for single roads
-    if (mergeInfo.type === 'single') {
-      ctx.strokeStyle = ROAD_COLORS.CENTER_LINE;
-      ctx.lineWidth = 0.8;
-      ctx.setLineDash([1.5, 2]);
-      
-      if (adj.north) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(northEdgeX, northEdgeY);
-        ctx.stroke();
-      }
-      if (adj.east) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(eastEdgeX, eastEdgeY);
-        ctx.stroke();
-      }
-      if (adj.south) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(southEdgeX, southEdgeY);
-        ctx.stroke();
-      }
-      if (adj.west) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(westEdgeX, westEdgeY);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-  }
-  
-  // Draw traffic lights at intersections
-  const connectionCount = [adj.north, adj.east, adj.south, adj.west].filter(Boolean).length;
-  if (connectionCount >= 3 && zoom >= TRAFFIC_LIGHT_MIN_ZOOM) {
-    const lightState = getTrafficLightState(trafficLightTime);
-    
-    // Draw traffic lights at appropriate corners based on which roads exist
-    if (adj.north && adj.east) {
-      drawTrafficLight(ctx, x, y, lightState, 'ne', zoom);
-    }
-    if (adj.north && adj.west) {
-      drawTrafficLight(ctx, x, y, lightState, 'nw', zoom);
-    }
-    if (adj.south && adj.east) {
-      drawTrafficLight(ctx, x, y, lightState, 'se', zoom);
-    }
-    if (adj.south && adj.west) {
-      drawTrafficLight(ctx, x, y, lightState, 'sw', zoom);
-    }
-  }
-}
-
-// ============================================================================
 // Crosswalk Drawing
 // ============================================================================
 
@@ -912,7 +526,6 @@ export function drawCrosswalks(params: CrosswalkParams): void {
   // Tile corner positions
   const topCorner = { x: cx, y: y };
   const rightCorner = { x: x + w, y: cy };
-  const bottomCorner = { x: cx, y: y + h };
   const leftCorner = { x: x, y: cy };
   
   // Edge midpoints (where roads connect)
