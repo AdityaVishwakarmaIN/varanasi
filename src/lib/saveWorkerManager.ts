@@ -259,4 +259,3 @@ export async function serializeAndCompressForDBAsync(state: unknown): Promise<st
     }
   });
 }
-

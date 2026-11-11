@@ -412,4 +412,3 @@ export function getCachedImage(src: string, filtered: boolean = false): HTMLImag
   const cacheKey = filtered ? `${src}_filtered` : src;
   return imageCache.get(cacheKey);
 }
-

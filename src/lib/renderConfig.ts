@@ -874,4 +874,3 @@ export function getSpriteCoords(
     sh: sh,
   };
 }
-

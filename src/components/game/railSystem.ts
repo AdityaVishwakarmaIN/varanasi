@@ -1820,4 +1820,3 @@ export function shouldStopAtCrossing(
   const state = getCrossingStateForTile(trains, crossingX, crossingY);
   return state === 'closed' || state === 'warning';
 }
-
