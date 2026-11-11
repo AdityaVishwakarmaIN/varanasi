@@ -219,6 +219,7 @@ export function runInformalDay(input: InformalDayInput): InformalDayResult {
         level: 1,
         population: Math.min(w.building.population, 6),
         age: 0,
+        abandoned: false,
       };
       changed++;
       formalisedUntilDay = today + INFORMAL_CONFIG.displacement.durationDays;

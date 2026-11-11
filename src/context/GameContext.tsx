@@ -128,6 +128,8 @@ type GameContextValue = {
   placeAtTile: (x: number, y: number, isRemote?: boolean) => PlaceResult;
   /** Runs many placeAtTile calls (a dragged rectangle) and recalculates the city's derived numbers once at the end. */
   placeBatch: (run: () => void) => void;
+  beginPlacementStroke: () => void;
+  endPlacementStroke: () => void;
   /** Undoes the last build / bulldoze (up to 10 deep). Returns false when there is nothing to undo. */
   undoLast: () => boolean;
   setPlaceCallback: (callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => void;
@@ -530,6 +532,8 @@ export function GameProvider({
   // Undo ring (last 10 build / bulldoze actions): changed tiles only, see lib/undo.ts
   const undoStackRef = useRef<UndoEntry[]>([]);
   const undoSeqRef = useRef(0);
+  const undoGestureSeqRef = useRef(0);
+  const undoGestureRef = useRef<number | undefined>(undefined);
   /** The state an action was recorded from: a re-run of the same updater (Strict Mode) records once. */
   const undoRecordedFromRef = useRef<GameState | null>(null);
   const shownUndoSeqRef = useRef(0);
@@ -965,11 +969,18 @@ export function GameProvider({
     [commit],
   );
 
+  const beginPlacementStroke = useCallback(() => {
+    undoGestureRef.current = ++undoGestureSeqRef.current;
+  }, []);
+  const endPlacementStroke = useCallback(() => {
+    undoGestureRef.current = undefined;
+  }, []);
+
   /** Called from state updaters: must stay idempotent for the same `prev` (React may run an updater twice). */
   const rememberForUndo = useCallback((prev: GameState, next: GameState, tool: Tool = prev.selectedTool) => {
     if (undoRecordedFromRef.current === prev) return;
     undoRecordedFromRef.current = prev;
-    const entry = createUndoEntry(prev, next, tool, Date.now());
+    const entry = createUndoEntry(prev, next, tool, Date.now(), undoGestureRef.current);
     if (entry) undoStackRef.current = pushUndoEntry(undoStackRef.current, entry, ++undoSeqRef.current);
   }, []);
 
@@ -1144,6 +1155,7 @@ export function GameProvider({
   }, [commit, rememberForUndo]);
 
   const undoLast = useCallback((): boolean => {
+    if (undoGestureRef.current !== undefined) return false;
     const entry = undoStackRef.current[undoStackRef.current.length - 1];
     if (process.env.NODE_ENV === 'development') tempRecord('game:undo', { ok: !!entry, kind: entry?.kind, count: entry?.count, depth: undoStackRef.current.length }); // TEMP-RECORDER
     if (!entry) return false;
@@ -1157,6 +1169,7 @@ export function GameProvider({
   const cityKey = `${state.id}:${state.gameVersion ?? 0}`;
   useEffect(() => {
     undoStackRef.current = [];
+    undoGestureRef.current = undefined;
   }, [cityKey]);
 
   // Show the "Built X - Undo" toast for the newest history entry (a drag keeps updating one entry)
@@ -1806,6 +1819,8 @@ export function GameProvider({
     setBudgetFunding,
     placeAtTile,
     placeBatch,
+    beginPlacementStroke,
+    endPlacementStroke,
     undoLast,
     upgradeServiceBuilding: upgradeServiceBuildingHandler,
     setPlaceCallback,

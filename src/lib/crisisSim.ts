@@ -325,7 +325,8 @@ export function runCollapseDay(
   services: Pick<ServiceCoverage, 'fire'>,
   season: Season,
   floodedThisYear: Uint8Array | null,
-  rng: Rng
+  rng: Rng,
+  today?: number,
 ): CollapseDayResult {
   const result: CollapseDayResult = { collapsed: [], notifications: [] };
   for (let y = 0; y < size; y++) {
@@ -342,6 +343,7 @@ export function runCollapseDay(
         season,
         floodedThisYear: !!floodedThisYear?.[y * size + x],
         fireCoverage: services.fire[y][x] > 0,
+        daysSinceUpgrade: today !== undefined && b.lastUpgradeDay !== undefined ? today - b.lastUpgradeDay : undefined,
       });
       if (chance <= 0 || rng() >= chance) continue;
       result.collapsed.push({ x, y });

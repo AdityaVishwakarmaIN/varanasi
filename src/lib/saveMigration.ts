@@ -64,6 +64,7 @@ export function migrateAndValidateState(raw: unknown, options: MigrateOptions = 
       // Old saves: existing buildings are complete and not abandoned
       if (b.constructionProgress === undefined) b.constructionProgress = 100;
       if (b.abandoned === undefined) b.abandoned = false;
+      if (b.lastUpgradeDay !== undefined && (!Number.isSafeInteger(b.lastUpgradeDay) || (b.lastUpgradeDay as number) < 0)) delete b.lastUpgradeDay;
     }
   }
   if (s.selectedTool === 'park_medium') s.selectedTool = 'park_large';

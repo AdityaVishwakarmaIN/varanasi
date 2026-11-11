@@ -70,7 +70,7 @@ export function getCollapseChance(inputs: CollapseInputs): number {
   let chance = c.dailyChance;
   if (c.riskySeasons.includes(inputs.season)) chance *= c.monsoonMultiplier;
   if (inputs.floodedThisYear) chance *= c.floodedThisYearMultiplier;
-  const recentlyUpgraded = inputs.daysSinceUpgrade !== undefined && inputs.daysSinceUpgrade <= c.recentUpgradeDays;
+  const recentlyUpgraded = inputs.daysSinceUpgrade !== undefined && inputs.daysSinceUpgrade >= 0 && inputs.daysSinceUpgrade <= c.recentUpgradeDays;
   if (inputs.fireCoverage || recentlyUpgraded) chance *= c.protectionMultiplier;
   return Math.min(1, chance);
 }

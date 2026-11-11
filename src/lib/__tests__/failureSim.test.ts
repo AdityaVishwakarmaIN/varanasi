@@ -24,8 +24,13 @@ function withMoney(state: GameState, money: number): GameState {
  * and water, and an empty city does not count toward the low-happiness months.
  */
 function addHomes(state: GameState, count: number): GameState {
+  // Keep this failure-state fixture connected: road loss is tested separately.
+  for (const row of state.grid) for (const tile of row) {
+    tile.zone = 'none';
+    tile.building = { ...tile.building, type: tile.y === 0 ? 'road' : 'grass' };
+  }
   let placed = 0;
-  for (let y = 0; y < SIZE && placed < count; y++) {
+  for (let y = 1; y < SIZE && placed < count; y++) {
     for (let x = 0; x < SIZE && placed < count; x++) {
       const tile = state.grid[y][x];
       if (tile.building.type !== 'grass') continue;

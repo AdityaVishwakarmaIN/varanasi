@@ -54,8 +54,10 @@ export interface Building {
   age: number;
   constructionProgress: number;
   abandoned: boolean;
-  /** Consecutive in-game days a zoned non-starter building has gone without power or water (absent = 0). */
+  /** Consecutive days without road access or required utilities (absent = 0). */
   unservedDays?: number;
+  /** Absolute day of the last level-up. Missing means no known recent upgrade. */
+  lastUpgradeDay?: number;
   flipped?: boolean;
   cityId?: string;
   bridgeType?: BridgeType;

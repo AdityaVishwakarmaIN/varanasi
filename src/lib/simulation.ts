@@ -100,6 +100,7 @@ import {
   supplyRatio, getCutFeeders, getRotationHour, type UtilityBuilding,
 } from '@/lib/utilities';
 import { clampEffectiveTaxRate, clampTaxRate } from '@/lib/tax';
+import { computeRoadAccessMask } from '@/lib/problemIcons';
 import { getFeederBounds, getFeederIndex } from '@/lib/feederZones';
 import { applyFeederCuts } from '@/lib/utilityCuts';
 import { INFORMAL_CONFIG } from '@/lib/informal';
@@ -1987,6 +1988,9 @@ const UNSERVED_ABANDON_DAYS = 30;
 /** Per-day abandonment chance once a building has been unserved for UNSERVED_ABANDON_DAYS. */
 const UNSERVED_ABANDON_CHANCE = 0.05;
 
+/** Disconnected buildings retain some occupants, but stop building and upgrading. */
+export const ROAD_ACCESS_CONFIG = { disconnectedOutput: 0.25 } as const;
+
 // Evolve buildings based on conditions, reserving footprints as density increases.
 // The tile at (x, y) must already be writable; other tiles are written through `writableTile`.
 /** Set by simulateTick each tick: true while an exodus is active, so abandoned homes are not cleared and rebuilt. */
@@ -2006,7 +2010,9 @@ function evolveBuilding(
    * only a tile with no supply at all counts as unserved. (Shrinking a cut block's population would
    * lower demand, end the cut, restore the population and start the cut again, every tick.)
    */
-  uncutServices: ServiceCoverage = services
+  uncutServices: ServiceCoverage = services,
+  roadAccess = true,
+  today = 0,
 ): Building {
   const tile = grid[y][x];
   const building = tile.building;
@@ -2040,7 +2046,7 @@ function evolveBuilding(
   // no level-ups, and after UNSERVED_ABANDON_DAYS days without service they may be abandoned.
   const suppliedPower = uncutServices.power[y][x];
   const suppliedWater = uncutServices.water[y][x];
-  const unserved = !isStarter && (!suppliedPower || !suppliedWater);
+  const unserved = !roadAccess || (!isStarter && (!suppliedPower || !suppliedWater));
   if (unserved) {
     if (dayStart) building.unservedDays = (building.unservedDays ?? 0) + 1;
   } else if (building.unservedDays !== undefined) {
@@ -2228,7 +2234,8 @@ function evolveBuilding(
   // Consolidation ALWAYS requires utilities (power and water) - no farm exemption
   // because consolidation upgrades buildings to larger types that need utilities
   const ageRequirement = 12;
-  const hasUtilitiesForConsolidation = hasPower && hasWater;
+  const hasUtilitiesForConsolidation = roadAccess && hasPower && hasWater;
+  const previousLevel = building.level;
   // Hysteresis: a merged (multi-tile) building only reverts when its target is at least 2 levels lower
   const currentSize = getBuildingSize(building.type);
   const isMerged = currentSize.width > 1 || currentSize.height > 1;
@@ -2258,16 +2265,18 @@ function evolveBuilding(
   if (dayStart && !unserved) {
     anchorBuilding.level = Math.max(anchorBuilding.level, Math.min(targetLevel, anchorBuilding.level + 1));
   }
+  if (anchorBuilding.level > previousLevel) anchorBuilding.lastUpgradeDay = today;
 
   const buildingStats = BUILDING_STATS[anchorBuilding.type];
   // Starters keep the old split; other buildings get a utility penalty (only reachable unserved
   // when there was no consolidation, so anchorBuilding is this tile's building)
-  const efficiency = isStarter
+  const utilityEfficiency = isStarter
     ? (anchorBuilding.powered ? 0.5 : 0) + (anchorBuilding.watered ? 0.5 : 0)
     : (suppliedPower && suppliedWater) ? 1
       : suppliedWater ? 0.5 // no power
         : suppliedPower ? 0.3 // no water
           : 0.15;
+  const efficiency = utilityEfficiency * (roadAccess ? 1 : ROAD_ACCESS_CONFIG.disconnectedOutput);
 
   anchorBuilding.population = buildingStats?.maxPop > 0
     ? Math.floor(buildingStats.maxPop * Math.max(1, anchorBuilding.level) * efficiency * 0.8)
@@ -3049,7 +3058,7 @@ const BUILDING_FIELDS_COMPARED: Record<keyof Building, true> = {
   type: true, level: true, population: true, jobs: true, powered: true, watered: true, onFire: true,
   fireProgress: true, age: true, constructionProgress: true, abandoned: true, flipped: true, cityId: true,
   bridgeType: true, bridgeOrientation: true, bridgeVariant: true, bridgePosition: true, bridgeIndex: true,
-  bridgeSpan: true, bridgeTrackType: true, unservedDays: true, floodedThisSeason: true,
+  bridgeSpan: true, bridgeTrackType: true, unservedDays: true, floodedThisSeason: true, lastUpgradeDay: true,
 };
 void TILE_FIELDS_COMPARED;
 void BUILDING_FIELDS_COMPARED;
@@ -3077,7 +3086,8 @@ function sameTileValues(a: Tile, b: Tile): boolean {
     p.bridgeType === q.bridgeType && p.bridgeOrientation === q.bridgeOrientation &&
     p.bridgeVariant === q.bridgeVariant && p.bridgePosition === q.bridgePosition &&
     p.bridgeIndex === q.bridgeIndex && p.bridgeSpan === q.bridgeSpan && p.bridgeTrackType === q.bridgeTrackType &&
-    p.unservedDays === q.unservedDays && p.floodedThisSeason === q.floodedThisSeason
+    p.unservedDays === q.unservedDays && p.floodedThisSeason === q.floodedThisSeason &&
+    p.lastUpgradeDay === q.lastUpgradeDay
   );
 }
 
@@ -3283,6 +3293,7 @@ export function simulateTick(
   const outbreakMask = crisesOn ? getOutbreakMask(state.outbreaks, size) : null;
   const tickDay = absoluteDay(state.year, state.month, state.day);
   const services = applyFloodToServices(applyFeederCuts(baseServices, powerCut, waterCut, size), floodMask, size);
+  let developedRoadAccess: Uint8Array | null = null;
   // Upper bound of burning tiles per row (input fires plus fires started this tick). Buildings are
   // only ever put out or replaced during the tick otherwise, so the bound stays valid; when rows
   // y-1, y and y+1 are all 0 the neighbour count is 0 without looking at the tiles.
@@ -3502,7 +3513,11 @@ export function simulateTick(
         const beforeConstructionProgress = beforeBuilding.constructionProgress;
         const beforeOnFire = beforeBuilding.onFire;
         const beforeAbandoned = beforeBuilding.abandoned;
-        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile, state.tick === 0, baseServices);
+        // Computed once per tick, straight from the grid (about 1 ms on a 160 map): a cache keyed on
+        // structureVersion would go stale when a save of the same city is loaded.
+        developedRoadAccess ??= computeRoadAccessMask(state.grid, size);
+        newGrid[y][x].building = evolveBuilding(newGrid, x, y, services, state.stats.demand, writableTile, state.tick === 0, baseServices,
+          developedRoadAccess[y * size + x] === 1, tickDay);
         const evolvedBuilding = newGrid[y][x].building;
         const didEvolveStructureChange =
           beforeType !== evolvedBuilding.type ||
@@ -3984,7 +3999,7 @@ export function simulateTick(
     const floodedThisYear = floodsEnabled && state.mapId === 'varanasi' && seasonLevel > 0 && newMonth >= FLOOD_CONFIG.floodStartMonth
       ? computeFloodMask(size, seasonLevel, getCityEmbankments({ ...state, grid: newGrid }))
       : null;
-    const collapse = runCollapseDay(newGrid, size, services, daySeason, floodedThisYear, rng);
+    const collapse = runCollapseDay(newGrid, size, services, daySeason, floodedThisYear, rng, today);
     added.push(...collapse.notifications);
     for (const { x, y } of collapse.collapsed) {
       const b = writableTile(x, y).building;

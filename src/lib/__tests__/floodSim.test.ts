@@ -13,6 +13,7 @@ import {
   type FloodStateFields,
 } from '@/lib/floodSim';
 import { getRiverZone } from '@/games/isocity/maps/riverZones';
+import { computeRoadAccessMask } from '@/lib/problemIcons';
 import type { GameState } from '@/types/game';
 
 const SIZE = 60;
@@ -215,7 +216,23 @@ describe('floods in simulateTick (S4-T5)', () => {
   });
 
   it('with Crises off the monsoon never floods: no flood notices, no damage, river stays at 0', () => {
+    // Road-connected homes only: homes without road access are abandoned after a month (tested
+    // separately), which is not flood damage.
     const base = cityWithFloodplainHomes();
+    for (const row of base.grid) for (const tile of row) {
+      if (tile.zone === 'residential' && tile.x % 3 === 0) {
+        tile.zone = 'none';
+        tile.building = { ...tile.building, type: 'road', population: 0 };
+      }
+    }
+    const access = computeRoadAccessMask(base.grid, SIZE);
+    for (const row of base.grid) for (const tile of row) {
+      if (tile.zone === 'residential' && !access[tile.y * SIZE + tile.x]) {
+        tile.zone = 'none';
+        tile.building = { ...tile.building, type: 'grass', population: 0 };
+      }
+    }
+    expect(base.grid.flat().filter((t) => t.building.type === 'house_small').length).toBeGreaterThan(50);
     let s: GameState = { ...base, disastersEnabled: false, month: 6, day: 30, tick: CALENDAR.ticksPerDay - 1, speed: 1 };
     for (let i = 0; i < CALENDAR.ticksPerDay * 60; i++) s = simulateTick(s, undefined, () => 0.99);
     expect(s.riverLevel ?? 0).toBe(0);

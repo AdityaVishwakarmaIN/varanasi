@@ -403,6 +403,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     latestStateRef,
     placeAtTile,
     placeBatch,
+    beginPlacementStroke,
+    endPlacementStroke,
     finishTrackDrag,
     connectToCity,
     checkAndDiscoverCities,
@@ -722,10 +724,11 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     return () => clearTimeout(t);
   }, [moneyNotice]);
   const startStroke = useCallback(() => {
+    beginPlacementStroke();
     setStrokeSpent(0);
     setStrokeOutOfMoney(false);
     strokeNoMoneyRef.current = false;
-  }, []);
+  }, [beginPlacementStroke]);
   /** Desktop placement: one tile of the current stroke; tracks spending and says when money runs out. */
   const placeInStroke = useCallback((x: number, y: number, inDrag: boolean) => {
     const result = placeAtTile(x, y);
@@ -3201,7 +3204,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
             const circleColor = OVERLAY_CIRCLE_COLORS[overlayMode];
             const circleFillColor = OVERLAY_CIRCLE_FILL_COLORS[overlayMode];
             const highlightColor = OVERLAY_HIGHLIGHT_COLORS[overlayMode];
-            const rangePath = new Path2D(); // one union path, filled once (see the canvas path above)
+            // Pixi cannot read a native Path2D. Replay the circles through its draw API after the highlights.
+            const ranges: { x: number; y: number; rx: number; ry: number }[] = [];
             for (let yy = 0; yy < gridSize; yy++) {
               for (let xx = 0; xx < gridSize; xx++) {
                 const tile = grid[yy][xx];
@@ -3215,8 +3219,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 const { screenX: bldgScreenX, screenY: bldgScreenY } = gridToScreen(xx, yy, 0, 0);
                 const centerX = bldgScreenX + halfTileWidth;
                 const centerY = bldgScreenY + halfTileHeight;
-                rangePath.moveTo(centerX + range * halfTileWidth, centerY);
-                rangePath.ellipse(centerX, centerY, range * halfTileWidth, range * halfTileHeight, 0, 0, Math.PI * 2);
+                ranges.push({ x: centerX, y: centerY, rx: range * halfTileWidth, ry: range * halfTileHeight });
                 gpuMain.strokeStyle = highlightColor;
                 gpuMain.lineWidth = 3 / zoom;
                 gpuMain.beginPath();
@@ -3232,11 +3235,16 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
                 gpuMain.fill();
               }
             }
+            gpuMain.beginPath();
+            for (const r of ranges) {
+              gpuMain.moveTo(r.x + r.rx, r.y);
+              gpuMain.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+            }
             gpuMain.fillStyle = circleFillColor;
-            gpuMain.fill(rangePath);
+            gpuMain.fill();
             gpuMain.strokeStyle = circleColor;
             gpuMain.lineWidth = 2 / zoom;
-            gpuMain.stroke(rangePath);
+            gpuMain.stroke();
           }
           if (waterBodies && waterBodies.length > 0) {
             gpuMain.font = `${Math.max(10, 12 / zoom)}px sans-serif`;
@@ -4099,6 +4107,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
     if (!isMobile && e.button === 2) {
       e.preventDefault();
+      endPlacementStroke();
       panCandidateRef.current = null;
       setIsPanning(false);
       setIsDragging(false);
@@ -4148,6 +4157,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
           };
           return;
         } else if (showsDragGrid) {
+          startStroke();
           panCandidateRef.current = null;
           pressWasValidRef.current = !!placementPreviewRef.current?.ok;
           // Start drag rectangle selection for zoning tools
@@ -4179,7 +4189,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         }
       }
     }
-  }, [offset, gridSize, selectedTool, placeInStroke, startStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
+  }, [offset, gridSize, selectedTool, placeInStroke, startStroke, endPlacementStroke, zoom, showsDragGrid, supportsDragPlace, placesOnRelease, grid, setTool, isDragging, isMobile, controlsRef, smoothCamera]);
   
   // Calculate camera bounds based on grid size
   const getMapBounds = useCallback((currentZoom: number, canvasW: number, canvasH: number) => {
@@ -4457,7 +4467,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       const minY = Math.min(dragStartTile.y, dragEndTile.y);
       const maxY = Math.max(dragStartTile.y, dragEndTile.y);
 
-      startStroke(); // the whole rectangle is one stroke (one spend total)
       placeBatch(() => {
         for (let x = minX; x <= maxX; x++) {
           for (let y = minY; y <= maxY; y++) {
@@ -4511,6 +4520,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     }
 
     // Clear drag state
+    endPlacementStroke();
     setIsDragging(false);
     setDragStartTile(null);
     setDragEndTile(null);
@@ -4522,11 +4532,12 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     if (!containerRef.current) {
       setHoveredTile(null);
     }
-  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, placeBatch, startStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
+  }, [isDragging, showsDragGrid, dragStartTile, placeInStroke, placeBatch, endPlacementStroke, placesOnRelease, gridSize, finishTrackDrag, selectedTool, dragEndTile, checkAndDiscoverCities, findBuildingOrigin, setSelectedTile, isPanning, setTool, smoothCamera]);
 
   // Abandon a press without committing it (no rectangle fill, no bridges, no held building):
   // the window lost focus mid-drag (Alt+Tab, a system dialog).
   const cancelMapPress = useCallback(() => {
+    endPlacementStroke();
     releasePlaceRef.current = null;
     panCandidateRef.current = null;
     rightClickRef.current = null;
@@ -4537,7 +4548,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
     setRoadDrawDirection(null);
     placedRoadTilesRef.current.clear();
     setIsPanning(false);
-  }, []);
+  }, [endPlacementStroke]);
 
   // A mouse press on the map (zone rectangle, road stroke, pan, held building) is followed on the
   // window until its button is released (mapPointerSession), so it survives the pointer crossing a
@@ -4965,6 +4976,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
         width={canvasSize.width}
         height={canvasSize.height}
         className="absolute top-0 left-0 pointer-events-none"
+        style={{ zIndex: gpuEnabled ? 1 : undefined }}
       />
       <canvas
         ref={carsCanvasRef}

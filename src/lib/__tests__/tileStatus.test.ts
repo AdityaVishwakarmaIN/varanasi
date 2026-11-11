@@ -97,6 +97,12 @@ function expectWellFormed(s: TileStatus) {
 }
 
 describe('status definitions', () => {
+  it('does not warn about collapse with crises off', () => {
+    const tile = makeTile('house_small', 'residential', { age: 200_000 });
+    const input = { tile, flooded: false, infected: false, hasRoadAccess: true, powerCut: false };
+    expect(getTileStatuses(ctxFor(input, { crisesEnabled: false })).map((s) => s.kind)).not.toContain('collapse_risk');
+    expect(getTileStatuses(ctxFor(input)).map((s) => s.kind)).toContain('collapse_risk');
+  });
   it('every status kind, including every map icon kind, has a title, advice and severity', () => {
     for (const kind of STATUS_KINDS) {
       const def = STATUS_DEFINITIONS[kind];

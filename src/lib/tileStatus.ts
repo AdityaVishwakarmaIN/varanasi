@@ -32,6 +32,7 @@ import { INFORMAL_CONFIG } from '@/lib/informal';
 import { SCORCH_TICKS, getBurnStageName, getFireFuelFactor } from '@/lib/fireConfig';
 import { isLandmarkType } from '@/lib/landmarks';
 import { buildingLabel } from '@/games/isocity/maps/varanasiCatalog';
+import { absoluteDay } from '@/lib/seasons';
 
 /**
  * Rules of `evolveBuilding` / the zone growth loop in simulation.ts that the explanations quote. simulation.ts
@@ -202,6 +203,9 @@ export interface TileStatus {
 /** Everything the explanations read about one tile. Build it with `getTileStatusContext` for a GameState. */
 export interface TileStatusContext {
   tile: Tile;
+  /** Missing means enabled, as in old saves. */
+  crisesEnabled?: boolean;
+  daysSinceUpgrade?: number;
   mapId?: MapId;
   /** The same per-tile inputs as the icon layer (see ProblemTileInput). */
   flooded: boolean;
@@ -335,7 +339,7 @@ function describeNoRoad(ctx: TileStatusContext): TileStatus {
     ? msg('No road within {n} tiles through this zone, so nothing will be built on this lot.', { n: PROBLEM_ICON_CONFIG.roadAccessDistance })
     : b.type === 'informal_housing'
       ? msg('No road within {n} tiles through this zone, so it cannot become proper homes.', { n: PROBLEM_ICON_CONFIG.roadAccessDistance })
-      : msg('No road within {n} tiles through this zone. New lots here will not be built on.', { n: PROBLEM_ICON_CONFIG.roadAccessDistance });
+      : msg('No road within {n} tiles through this zone: output is reduced, and construction and upgrades stop. After {days} disconnected days it may be abandoned.', { n: PROBLEM_ICON_CONFIG.roadAccessDistance, days: SIM_RULES.unservedAbandonDays });
   return entry('no_road', cause, msg('Draw a road next to it, or next to the zone it is part of.'));
 }
 
@@ -419,8 +423,8 @@ function describeAbandoned(ctx: TileStatusContext): TileStatus {
           : msg('Industrial demand is {d}: more factories than the city needs. Below {limit}, factories close.', { d, limit: SIM_RULES.abandonBelowDemand })
     );
   }
-  if (!isStarter(b.type) && (b.unservedDays ?? 0) > SIM_RULES.unservedAbandonDays) {
-    reasons.push(msg('It has had no power or water for {days} days; after {limit} days people give up.', {
+  if ((b.unservedDays ?? 0) > SIM_RULES.unservedAbandonDays) {
+    reasons.push(msg('It lacked road access or required utilities for {days} days; after {limit} days people may give up.', {
       days: b.unservedDays ?? 0,
       limit: SIM_RULES.unservedAbandonDays,
     }));
@@ -482,6 +486,7 @@ function describeConstruction(ctx: TileStatusContext): TileStatus | null {
   if (tile.zone !== 'none') {
     if (ctx.flooded) stalled = msg('Building has stopped: the lot is under flood water.');
     else if (ctx.infected) stalled = msg('Building has stopped: the block has a disease outbreak.');
+    else if (!ctx.hasRoadAccess) stalled = msg('Building has stopped: there is no road access.');
     else if (!isStarter(b.type)) {
       // The simulation checks supply before rolling cuts here (a cut block keeps building)
       const noPower = !b.powered && !ctx.powerCut;
@@ -498,7 +503,10 @@ function describeConstruction(ctx: TileStatusContext): TileStatus | null {
     else if (!b.watered) stalled = msg('Building has stopped: it needs water.');
   }
   if (stalled) {
-    return entry('under_construction', stalled, msg('{pct}% built. Bring the missing supply here and building carries on.', { pct }), [], 'warning');
+    const fix = tile.zone !== 'none' && !ctx.hasRoadAccess
+      ? msg('{pct}% built. Restore road access to continue building.', { pct })
+      : msg('{pct}% built. Bring the missing supply here and building carries on.', { pct });
+    return entry('under_construction', stalled, fix, [], 'warning');
   }
   return entry('under_construction', msg('{pct}% built. Nobody lives or works here until it is finished.', { pct }), '');
 }
@@ -580,11 +588,14 @@ function describeExodus(ctx: TileStatusContext): TileStatus | null {
 function describeCollapseRisk(ctx: TileStatusContext): TileStatus | null {
   const { tile } = ctx;
   const b = tile.building;
-  if (isLandmarkType(b.type)) return null;
+  if (ctx.crisesEnabled === false || isLandmarkType(b.type)) return null;
   if (!isCollapseEligible({ zone: tile.zone, age: b.age ?? 0, abandoned: !!b.abandoned, constructionComplete: isComplete(tile) })) return null;
   const cause = msg('Over {years} years old: it can collapse, most often in the monsoon and after a flood.', { years: COLLAPSE_CONFIG.minAgeYears });
   const station = nameOf('fire_station', ctx.mapId, 'fire station');
-  const fix = ctx.fireCoverage > 0
+  const recentlyUpgraded = ctx.daysSinceUpgrade !== undefined && ctx.daysSinceUpgrade >= 0 && ctx.daysSinceUpgrade <= COLLAPSE_CONFIG.recentUpgradeDays;
+  const fix = recentlyUpgraded
+    ? msg('Its recent upgrade cuts the collapse risk by {cut}%.', { cut: Math.round((1 - COLLAPSE_CONFIG.protectionMultiplier) * 100) })
+    : ctx.fireCoverage > 0
     ? msg('A {station} covers it, which cuts the risk by {cut}%.', { station, cut: Math.round((1 - COLLAPSE_CONFIG.protectionMultiplier) * 100) })
     : msg('Put it in reach of a {station}: inspections cut the risk by {cut}%.', { station, cut: Math.round((1 - COLLAPSE_CONFIG.protectionMultiplier) * 100) });
   return entry('collapse_risk', cause, fix);
@@ -660,6 +671,7 @@ export type TileStatusState = Pick<
   GameState,
   | 'grid' | 'gridSize' | 'mapId' | 'riverLevel' | 'structureVersion' | 'id' | 'outbreaks' | 'stats' | 'disastersEnabled'
   | 'services' | 'failure' | 'informal'
+  | 'year' | 'month' | 'day'
 >;
 
 /** The context for tile (x, y) of a state, read the same way the icon layer reads it (computeProblemIconsForState). */
@@ -680,6 +692,8 @@ export function getTileStatusContext(
   const feeder = getFeederIndex(x, y, size);
   return {
     tile,
+    crisesEnabled: crisesOn,
+    daysSinceUpgrade: tile.building.lastUpgradeDay === undefined ? undefined : absoluteDay(state.year, state.month, state.day) - tile.building.lastUpgradeDay,
     mapId: state.mapId,
     flooded: floodMask ? floodMask[i] === 1 : false,
     infected: outbreakMask ? outbreakMask[i] === 1 : false,

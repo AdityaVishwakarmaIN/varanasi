@@ -147,6 +147,14 @@ describe('informal settlements: formalisation (S3-T9)', () => {
     expect(dry.informal.formaliseDays).toEqual({});
   });
 
+  it('formalising an abandoned settlement restores occupied homes', () => {
+    const state = servicedSettlement();
+    state.grid[6][4].building.abandoned = true;
+    runDays(state, INFORMAL_CONFIG.formaliseDays);
+    expect(state.grid[6][4].building.type).toBe(INFORMAL_CONFIG.formalisedBuilding);
+    expect(state.grid[6][4].building.abandoned).toBe(false);
+  });
+
   it('never formalise while unzoned or without road access', () => {
     const unzoned = servicedSettlement();
     unzoned.grid[6][4].zone = 'none';

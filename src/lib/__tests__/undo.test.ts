@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '@/lib/rng';
 import { bulldozeTile, createInitialGameState, placeBuilding } from '@/lib/simulation';
-import { applyUndo, createUndoEntry, pushUndoEntry, UNDO_LIMIT, UNDO_MERGE_MS, type UndoEntry } from '@/lib/undo';
+import { applyUndo, createUndoEntry, pushUndoEntry, UNDO_LIMIT, type UndoEntry } from '@/lib/undo';
 import type { BuildingType, GameState, Tool } from '@/types/game';
 
 const SIZE = 20;
@@ -55,14 +55,14 @@ describe('undo', () => {
     expect(createUndoEntry(state, state, 'road', 0)).toBeNull();
   });
 
-  it('merges a quick drag into one entry, keeping the oldest tile copies', () => {
+  it('keeps a whole drag together even after long pauses', () => {
     let state = flatState();
     let stack: UndoEntry[] = [];
     let seq = 0;
     for (let i = 0; i < 5; i++) {
       const r = build(state, 'road', i, 2, 25, i * 50);
       state = r.next;
-      stack = pushUndoEntry(stack, r.entry, ++seq);
+      stack = pushUndoEntry(stack, { ...r.entry, gestureId: 1, at: i * 10_000 }, ++seq);
     }
     expect(stack).toHaveLength(1);
     expect(stack[0].count).toBe(5);
@@ -72,15 +72,22 @@ describe('undo', () => {
     expect(undone.grid[2][3].building.type).toBe('grass');
   });
 
-  it('does not merge slow actions and keeps at most 10 entries', () => {
+  it('keeps separate rapid clicks separate and keeps at most 10 entries', () => {
     let state = flatState();
     let stack: UndoEntry[] = [];
     for (let i = 0; i < UNDO_LIMIT + 4; i++) {
-      const r = build(state, 'road', i, 3, 25, i * (UNDO_MERGE_MS + 1));
+      const r = build(state, 'road', i, 3, 25, i);
       state = r.next;
       stack = pushUndoEntry(stack, r.entry, i + 1);
     }
     expect(stack).toHaveLength(UNDO_LIMIT);
     expect(stack[UNDO_LIMIT - 1].seq).toBe(UNDO_LIMIT + 4);
+  });
+
+  it('does not merge two consecutive drags of the same tool', () => {
+    const a = build(flatState(), 'road', 1, 2, 25, 0);
+    const b = build(a.next, 'road', 2, 2, 25, 1);
+    const stack = pushUndoEntry([{ ...a.entry, gestureId: 1 }], { ...b.entry, gestureId: 2 }, 2);
+    expect(stack).toHaveLength(2);
   });
 });

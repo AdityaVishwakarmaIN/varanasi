@@ -188,6 +188,13 @@ describe('stepAutoQuality (sticky, evidence-gated drops)', () => {
 });
 
 describe('auto-quality hold (start-up, warm-up, tab visibility)', () => {
+  it('drops no queued decision during a hold or an invalid window', () => {
+    const pending = { ...armed('high'), pending: true };
+    expect(holdAutoQualityState(pending, 20_000).pending).toBe(false);
+    expect(armAutoQualityState(pending, Infinity).pending).toBe(false);
+    const next = stepAutoQuality(pending, { frameP95: 0, frameCount: 0, windowStart: 0, interacting: false }, SLOW);
+    expect(next.level).toBe('high');
+  });
   it('takes no evidence until armed (start-up / loading)', () => {
     const states = run(createAutoQualityState('high'), Array(100).fill(SLOW));
     expect(states.at(-1)).toEqual(createAutoQualityState('high'));

@@ -226,12 +226,12 @@ export function createAutoQualityState(level: QualityLevel, holdUntil = Number.P
 
 /** Ignore every window that starts before `untilMs` (never shortens an existing hold). */
 export function holdAutoQualityState(state: AutoQualityState, untilMs: number): AutoQualityState {
-  return { ...state, overCount: 0, holdUntil: Math.max(state.holdUntil, untilMs) };
+  return { ...state, overCount: 0, pending: false, holdUntil: Math.max(state.holdUntil, untilMs) };
 }
 
 /** Set the hold exactly (arm after start-up with `now + warmupMs`, disarm with Infinity). */
 export function armAutoQualityState(state: AutoQualityState, untilMs: number): AutoQualityState {
-  return { ...state, overCount: 0, holdUntil: untilMs };
+  return { ...state, overCount: 0, pending: false, holdUntil: untilMs };
 }
 
 /**
@@ -262,7 +262,7 @@ export function stepAutoQuality(
       next.pending = false;
     }
   }
-  if (next.pending && !sample.interacting) {
+  if (valid && next.pending && !sample.interacting) {
     next.level = lowerLevel(next.level);
     next.pending = false;
     next.overCount = 0;

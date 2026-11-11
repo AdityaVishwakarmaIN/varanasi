@@ -16,7 +16,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
+import { TileInfoPanel } from '@/components/game/panels/TileInfoPanel';
 import { LanguageSelector } from '@/components/ui/LanguageSelector';
 import { formatPopulation } from '@/lib/format';
 import { CalendarPanelBody, TopBarGroups, TopBarPanelShell, type TopBarPanelId } from '@/components/game/TopBarGroups';
@@ -291,6 +293,19 @@ export function MobileTopBar({
               )}
             </div>
 
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-11 shrink-0">
+                  {m(msg('Details'))}
+                </Button>
+              </DialogTrigger>
+              <DialogContent aria-describedby={undefined} className="max-w-[400px]">
+                <DialogTitle className="sr-only">{m(msg('Building details'))}</DialogTitle>
+                <div className="[&>*]:!static [&>*]:!max-h-none">
+                  <TileInfoPanel tile={selectedTile} services={services} isMobile onClose={onCloseTile} />
+                </div>
+              </DialogContent>
+            </Dialog>
             <button
               onClick={onCloseTile}
               aria-label="Close"

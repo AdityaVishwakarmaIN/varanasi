@@ -8,20 +8,14 @@ import type { GameState, Tile, Tool } from '@/types/game';
 import { TOOL_INFO } from '@/types/game';
 
 export const UNDO_LIMIT = 10;
-/** Placements of the same tool this close together are one action (a drag-paint is one undo). */
-export const UNDO_MERGE_MS = 500;
-
-/** Tools whose repeated placements form one drag gesture. */
-const MERGEABLE_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
-  'road', 'rail', 'subway', 'bulldoze', 'tree',
-  'zone_residential', 'zone_commercial', 'zone_industrial', 'zone_dezone', 'zone_water', 'zone_land',
-]);
 
 export type UndoKind = 'build' | 'demolish' | 'zone';
 
 export interface UndoEntry {
   /** Changes whenever the entry is added or merged into, so the UI can tell it is new. */
   seq: number;
+  /** Only placements within the same pointer press merge. Missing means a standalone action. */
+  gestureId?: number;
   tool: Tool;
   kind: UndoKind;
   /** Placements merged into this entry. */
@@ -64,7 +58,7 @@ export function kindForTool(tool: Tool): UndoKind {
 }
 
 /** The entry for a state change `prev` to `next`, or null when no tile changed. */
-export function createUndoEntry(prev: GameState, next: GameState, tool: Tool, now: number): UndoEntry | null {
+export function createUndoEntry(prev: GameState, next: GameState, tool: Tool, now: number, gestureId?: number): UndoEntry | null {
   const size = prev.gridSize;
   const tiles = new Map<number, Tile>();
   const kind = kindForTool(tool);
@@ -87,6 +81,7 @@ export function createUndoEntry(prev: GameState, next: GameState, tool: Tool, no
   if (tiles.size === 0) return null;
   return {
     seq: 0,
+    gestureId,
     tool,
     kind,
     count: 1,
@@ -102,7 +97,7 @@ export function createUndoEntry(prev: GameState, next: GameState, tool: Tool, no
 /** Adds an entry to the ring: merges a drag into the previous entry, drops the oldest beyond the limit. */
 export function pushUndoEntry(stack: readonly UndoEntry[], entry: UndoEntry, seq: number): UndoEntry[] {
   const last = stack[stack.length - 1];
-  if (last && last.tool === entry.tool && MERGEABLE_TOOLS.has(entry.tool) && entry.at - last.at <= UNDO_MERGE_MS) {
+  if (last && entry.gestureId !== undefined && last.gestureId === entry.gestureId && last.tool === entry.tool) {
     const tiles = new Map(entry.tiles);
     for (const [k, t] of last.tiles) tiles.set(k, t); // the oldest copy of a tile wins
     const merged: UndoEntry = {

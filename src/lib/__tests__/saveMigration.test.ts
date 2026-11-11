@@ -10,6 +10,15 @@ function savedCity(): Record<string, unknown> & { grid: { building: Record<strin
 }
 
 describe('migrateAndValidateState', () => {
+  it('preserves known upgrade dates, accepts old saves without them, and drops invalid dates', () => {
+    const raw = savedCity();
+    raw.grid[0][0].building.lastUpgradeDay = 100;
+    raw.grid[0][1].building.lastUpgradeDay = NaN;
+    const state = migrateAndValidateState(raw)!;
+    expect(state.grid[0][0].building.lastUpgradeDay).toBe(100);
+    expect(state.grid[0][1].building.lastUpgradeDay).toBeUndefined();
+    expect(state.grid[0][2].building.lastUpgradeDay).toBeUndefined();
+  });
   it('keeps a current save as it is', () => {
     const raw = savedCity();
     const before = JSON.parse(JSON.stringify(raw));

@@ -88,6 +88,17 @@ describe('outbreak mask and health penalty', () => {
 });
 
 describe('runCollapseDay', () => {
+  it('uses the last level-up day for two years of protection; old saves get no invented protection', () => {
+    const state = cityWithHouse();
+    const b = state.grid[5][5].building;
+    b.age = COLLAPSE_MIN_AGE + 1;
+    const fire = { fire: grid(0) };
+    const roll = () => 0.00001; // above the protected winter chance, below the unprotected chance
+    expect(runCollapseDay(state.grid, SIZE, fire, 'winter', null, roll, 1000).collapsed).toHaveLength(1);
+    b.lastUpgradeDay = 900;
+    expect(runCollapseDay(state.grid, SIZE, fire, 'winter', null, roll, 1000).collapsed).toHaveLength(0);
+    expect(runCollapseDay(state.grid, SIZE, fire, 'winter', null, roll, 1621).collapsed).toHaveLength(1);
+  });
   it('collapses only old buildings, with a crisis notice at the tile', () => {
     const state = cityWithHouse();
     const fire = { fire: grid(0) };
