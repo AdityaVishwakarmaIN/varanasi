@@ -121,17 +121,30 @@ export function getDefaultGridSize(isMobile: boolean): number {
 /** Desktop default, used when a caller does not pass a size. UI code should use getDefaultGridSize(). */
 export const DEFAULT_GRID_SIZE: number = DEFAULT_GRID_SIZES.desktop;
 
-// Check if a building is a "starter" type that can operate without utilities
-// This includes all factory_small (farms AND small factories), small houses, and small shops
-// All starter buildings represent small-scale, self-sufficient operations that don't need
-// municipal power/water infrastructure to begin operating
-function isStarterBuilding(x: number, y: number, buildingType: string): boolean {
-  if (buildingType === 'house_small' || buildingType === 'shop_small') return true;
-  // ALL factory_small are starters - they can spawn without utilities
-  // Some will render as farms (~50%), others as small factories
-  // Both represent small-scale operations that can function off-grid
-  if (buildingType === 'factory_small') return true;
-  return false;
+// "Starter" buildings (small houses, small shops, and every factory_small, whether it renders as a
+// farm or a small factory) are small, self-sufficient operations: they run without municipal
+// power or water.
+function isStarterBuilding(buildingType: string): boolean {
+  return buildingType === 'house_small' || buildingType === 'shop_small' || buildingType === 'factory_small';
+}
+
+/** Demand for a zone type (0 when demand is unknown or the tile is unzoned). */
+function getZoneDemand(
+  demand: { residential: number; commercial: number; industrial: number } | undefined,
+  zone: ZoneType,
+): number {
+  if (!demand) return 0;
+  return zone === 'residential' ? demand.residential
+    : zone === 'commercial' ? demand.commercial
+    : zone === 'industrial' ? demand.industrial
+    : 0;
+}
+
+/** The occupants leave: the building stays but holds nobody. */
+function markAbandoned(building: Building): void {
+  building.abandoned = true;
+  building.population = 0;
+  building.jobs = 0;
 }
 
 const GREEN_POLLUTION_REDUCERS = new Set<BuildingType>([
@@ -1293,8 +1306,6 @@ export function createInitialStats(): Stats {
   };
 }
 
-// Environment scoring constants & functions moved to ./scoring (single source of truth).
-
 // PERF: Optimized service coverage grid creation
 // Uses typed arrays internally for faster operations
 export function createServiceCoverage(size: number): ServiceCoverage {
@@ -1427,7 +1438,6 @@ export function createInitialGameState(
 }
 
 // Service building configuration - defined once, reused across calls
-// Exported so overlay rendering can access radii
 const withRange = <R extends number, T extends Record<string, unknown>>(
   range: R,
   extra: T
@@ -1752,39 +1762,6 @@ export function upgradeServiceBuilding(state: GameState, x: number, y: number): 
   };
 }
 
-// Check if a multi-tile building can be SPAWNED at the given position
-// This is stricter than canPlaceMultiTileBuilding - it doesn't allow 'empty' tiles
-// because those are placeholders for existing multi-tile buildings
-function canSpawnMultiTileBuilding(
-  grid: Tile[][],
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  zone: ZoneType,
-  gridSize: number
-): boolean {
-  if (x + width > gridSize || y + height > gridSize) {
-    return false;
-  }
-  
-  for (let dy = 0; dy < height; dy++) {
-    for (let dx = 0; dx < width; dx++) {
-      const tile = grid[y + dy]?.[x + dx];
-      if (!tile) return false;
-      // Must be in the same zone
-      if (tile.zone !== zone) return false;
-      // Can only spawn on grass or trees
-      // NOT 'empty' - those are placeholders for existing multi-tile buildings
-      if (tile.building.type !== 'grass' && tile.building.type !== 'tree') {
-        return false;
-      }
-    }
-  }
-  
-  return true;
-}
-
 // PERF: Pre-allocated arrays for hasRoadAccess BFS to avoid GC pressure
 // Queue stores [x, y, dist] tuples as flat array (3 values per entry)
 const roadAccessQueue = new Int16Array(3 * 256); // Max 256 tiles to check (8*8*4 directions)
@@ -1934,7 +1911,7 @@ function evolveBuilding(
   const landValue = getEffectiveLandValue(grid, grid.length, x, y); // S4-T6: embankments lower nearby land value
   
   // Starter buildings (farms, house_small, shop_small) don't require power/water
-  const isStarter = isStarterBuilding(x, y, building.type);
+  const isStarter = isStarterBuilding(building.type);
 
   // Non-starter buildings without power or water keep living at reduced efficiency (see below):
   // no level-ups, and after UNSERVED_ABANDON_DAYS days without service they may be abandoned.
@@ -1968,11 +1945,7 @@ function evolveBuilding(
   }
 
   // Get zone demand for abandonment/recovery logic
-  const zoneDemandValue = demand ? (
-    zone === 'residential' ? demand.residential :
-    zone === 'commercial' ? demand.commercial :
-    zone === 'industrial' ? demand.industrial : 0
-  ) : 0;
+  const zoneDemandValue = getZoneDemand(demand, zone);
 
   // === ABANDONMENT MECHANIC ===
   // Buildings can become abandoned when demand is very negative (oversupply)
@@ -2036,18 +2009,14 @@ function evolveBuilding(
     const levelPenalty = building.level <= 2 ? 0.003 : 0;
 
     if (Math.random() < abandonmentChance + utilityPenalty + levelPenalty) {
-      building.abandoned = true;
-      building.population = 0;
-      building.jobs = 0;
+      markAbandoned(building);
       return building;
     }
   }
 
   // Long without power or water: a small chance per day that the occupants give up
   if (unserved && dayStart && (building.unservedDays ?? 0) > UNSERVED_ABANDON_DAYS && Math.random() < UNSERVED_ABANDON_CHANCE) {
-    building.abandoned = true;
-    building.population = 0;
-    building.jobs = 0;
+    markAbandoned(building);
     return building;
   }
 
@@ -2066,16 +2035,9 @@ function evolveBuilding(
     services.education[y][x]
   ) / 4;
 
-  // Get zone demand to factor into level calculation
-  const zoneDemandForLevel = demand ? (
-    zone === 'residential' ? demand.residential :
-    zone === 'commercial' ? demand.commercial :
-    zone === 'industrial' ? demand.industrial : 0
-  ) : 0;
-  
   // High demand increases target level, encouraging densification
   // At demand 60, adds ~0.5 level; at demand 100, adds ~1 level
-  const demandLevelBoost = Math.max(0, (zoneDemandForLevel - 30) / 70) * 0.7;
+  const demandLevelBoost = Math.max(0, (zoneDemandValue - 30) / 70) * 0.7;
 
   const targetLevel = Math.min(5, Math.max(1, Math.floor(
     (landValue / 24) + (serviceCoverage / 28) + (building.age / 60) + demandLevelBoost
@@ -2099,22 +2061,15 @@ function evolveBuilding(
   const isSmallIndustrial = zone === 'industrial' && 
     building.type === 'factory_small';
   
-  // Get relevant demand for this zone
-  const zoneDemand = demand ? (
-    zone === 'residential' ? demand.residential :
-    zone === 'commercial' ? demand.commercial :
-    zone === 'industrial' ? demand.industrial : 0
-  ) : 0;
-  
-  if (zoneDemand > 30) {
+  if (zoneDemandValue > 30) {
     if (isSmallResidential || isSmallCommercial || isSmallIndustrial) {
       // Gradual boost based on demand: at demand 60 adds ~10%, at demand 100 adds ~23%
-      const demandBoost = Math.min(0.25, (zoneDemand - 30) / 300);
+      const demandBoost = Math.min(0.25, (zoneDemandValue - 30) / 300);
       consolidationChance += demandBoost;
       
       // At very high demand (> 70), allow consolidating existing small buildings
       // but keep the probability increase modest
-      if (zoneDemand > 70) {
+      if (zoneDemandValue > 70) {
         consolidationChance += 0.05;
         // Allow consolidating existing small buildings (not just empty land)
         // This enables developed areas to densify
@@ -2527,7 +2482,7 @@ function calculateStats(
   taxRate: number,
   effectiveTaxRate: number,
   services: ServiceCoverage,
-  totals: GridTotals = scanGridTotals(grid, size),
+  totals: GridTotals,
   river?: RiverContext,
   cuts?: { power: number[]; water: number[] },
   /** Current season: scales power and water demand and tourism (S4-T3). */
@@ -2739,10 +2694,8 @@ function calculateStats(
   };
 }
 
-// calculateAverageCoverage moved to ./scoring (single source of truth).
-
 // Update budget costs based on buildings (counts come from scanGridTotals)
-function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals = scanGridTotals(grid, grid.length)): Budget {
+function updateBudgetCosts(grid: Tile[][], budget: Budget, totals: GridTotals): Budget {
   const newBudget = { ...budget };
   const {
     policeCount, fireCount, hospitalCount, schoolCount, universityCount, powerCount, waterCount,
@@ -2782,7 +2735,7 @@ function generateAdvisorMessages(
   stats: Stats,
   services: ServiceCoverage,
   grid: Tile[][],
-  totals: GridTotals = scanGridTotals(grid, grid.length)
+  totals: GridTotals
 ): AdvisorMessage[] {
   const messages: AdvisorMessage[] = [];
   const {
@@ -3157,7 +3110,8 @@ void _sameWeatherModes;
  * Advances the city by one tick.
  * Weather is owned by the simulation (S4-T2): it follows the season and is re-rolled when `weatherUntilDay` is reached.
  * `forcedWeather` (tests and benchmarks) uses that weather for this tick without touching or storing the schedule.
- * `rng` drives the weather pick only, so it can be seeded in tests.
+ * `rng` drives the weather pick and the event rolls (informal settlements, floods, heatwave, disease,
+ * collapse), so those can be seeded in tests. Growth and abandonment still draw from Math.random.
  */
 export function simulateTick(
   state: GameState,
@@ -3249,7 +3203,7 @@ export function simulateTick(
       if (originalTile.zone === 'none' && 
           (originalBuilding.type === 'grass' || originalBuilding.type === 'tree') &&
           !needsPowerWaterUpdate &&
-          originalTile.pollution < 0.01 &&
+          originalTile.pollution < POLLUTION_CONFIG.snapToZero &&
           (BUILDING_STATS[originalBuilding.type]?.pollution || 0) === 0) {
         continue;
       }
@@ -3263,7 +3217,7 @@ export function simulateTick(
           originalBuilding.type !== 'tree' &&
           originalBuilding.type !== 'empty' &&
           originalBuilding.type !== 'informal_housing'; // settlements can catch fire (S3-T9)
-      if (isCompletedServiceBuilding && !needsPowerWaterUpdate && originalTile.pollution < 0.01) {
+      if (isCompletedServiceBuilding && !needsPowerWaterUpdate && originalTile.pollution < POLLUTION_CONFIG.snapToZero) {
         continue;
       }
 
@@ -3362,11 +3316,7 @@ export function simulateTick(
         const hasWater = newWatered;
 
         // Get zone demand to factor into spawn probability
-        const zoneDemandForSpawn = state.stats.demand ? (
-          tile.zone === 'residential' ? state.stats.demand.residential :
-          tile.zone === 'commercial' ? state.stats.demand.commercial :
-          tile.zone === 'industrial' ? state.stats.demand.industrial : 0
-        ) : 0;
+        const zoneDemandForSpawn = getZoneDemand(state.stats.demand, tile.zone);
         
         // Spawn probability scales with demand:
         // - At demand >= 50: 5% base chance (normal)
@@ -3381,13 +3331,13 @@ export function simulateTick(
         const buildingList = tile.zone === 'residential' ? RESIDENTIAL_BUILDINGS :
           tile.zone === 'commercial' ? COMMERCIAL_BUILDINGS : INDUSTRIAL_BUILDINGS;
         const candidate = buildingList[0];
-        const wouldBeStarter = isStarterBuilding(x, y, candidate);
+        const wouldBeStarter = isStarterBuilding(candidate);
         const hasUtilities = hasPower && hasWater;
         
         const flooded = (floodMask !== null && floodMask[y * size + x] === 1) || (outbreakMask !== null && outbreakMask[y * size + x] === 1);
         if (roadAccess && !flooded && (hasUtilities || wouldBeStarter) && Math.random() < spawnChance) {
           const candidateSize = getBuildingSize(candidate);
-          if (canSpawnMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, tile.zone, size)) {
+          if (canPlaceMultiTileBuilding(newGrid, x, y, candidateSize.width, candidateSize.height, size, tile.zone)) {
           didStructureChange = true;
             // Touch all rows that will be modified by the building footprint (as the old row pre-clone did)
             for (let dy = 0; dy < candidateSize.height && y + dy < size; dy++) {
@@ -3762,10 +3712,7 @@ export function simulateTick(
         const step = count > 0 ? homes.length / count : 0;
         for (let i = 0; i < count; i++) {
           const home = homes[Math.floor(i * step + (newMonth % Math.max(1, Math.floor(step))))];
-          const b = writableTile(home.x, home.y).building;
-          b.abandoned = true;
-          b.population = 0;
-          b.jobs = 0;
+          markAbandoned(writableTile(home.x, home.y).building);
           didStructureChange = true;
         }
       } else if (e.type === 'gameOver') {
@@ -3811,10 +3758,7 @@ export function simulateTick(
       floodNotifications.push({ ...n, id: `flood-${today}-${floodNotifications.length}`, timestamp: Date.now() });
     }
     for (const { x, y } of flood.damaged) {
-      const b = writableTile(x, y).building;
-      b.abandoned = true;
-      b.population = 0;
-      b.jobs = 0;
+      markAbandoned(writableTile(x, y).building);
       didStructureChange = true;
     }
     for (const { x, y } of flood.flooded) writableTile(x, y).building.floodedThisSeason = true;
@@ -3896,10 +3840,7 @@ export function simulateTick(
     const collapse = runCollapseDay(newGrid, size, services, daySeason, floodedThisYear, rng, today);
     added.push(...collapse.notifications);
     for (const { x, y } of collapse.collapsed) {
-      const b = writableTile(x, y).building;
-      b.abandoned = true;
-      b.population = 0;
-      b.jobs = 0;
+      markAbandoned(writableTile(x, y).building);
       didStructureChange = true;
     }
 
@@ -4108,14 +4049,16 @@ function getConstructionSpeed(buildingType: BuildingType): number {
   return (baseSpeed / Math.sqrt(area)) / 1.3;
 }
 
-// Check if a multi-tile building can be placed at the given position
+// Check if a multi-tile building can be placed at the given position.
+// Zone growth passes `requiredZone`: every footprint tile must then be in that zone.
 function canPlaceMultiTileBuilding(
   grid: Tile[][],
   x: number,
   y: number,
   width: number,
   height: number,
-  gridSize: number
+  gridSize: number,
+  requiredZone?: ZoneType,
 ): boolean {
   // Check bounds
   if (x + width > gridSize || y + height > gridSize) {
@@ -4129,6 +4072,7 @@ function canPlaceMultiTileBuilding(
     for (let dx = 0; dx < width; dx++) {
       const tile = grid[y + dy]?.[x + dx];
       if (!tile) return false;
+      if (requiredZone !== undefined && tile.zone !== requiredZone) return false;
       // Can only build on grass or trees - roads must be bulldozed first
       if (tile.building.type !== 'grass' && tile.building.type !== 'tree') {
         return false;
@@ -5329,7 +5273,7 @@ export function getDevelopmentBlockers(
   
   // Starter buildings (house_small, shop_small, factory_small) don't require power/water
   // They represent small-scale, self-sufficient operations
-  const wouldBeStarter = isStarterBuilding(x, y, candidate);
+  const wouldBeStarter = isStarterBuilding(candidate);
   
   // Check power (not required for starter buildings)
   const hasPower = state.services.power[y][x];
@@ -5352,7 +5296,7 @@ export function getDevelopmentBlockers(
   
   if (candidateSize.width > 1 || candidateSize.height > 1) {
     // Check if the footprint is available
-    if (!canSpawnMultiTileBuilding(state.grid, x, y, candidateSize.width, candidateSize.height, tile.zone, state.gridSize)) {
+    if (!canPlaceMultiTileBuilding(state.grid, x, y, candidateSize.width, candidateSize.height, state.gridSize, tile.zone)) {
       // Find out specifically why
       const footprintBlockers: string[] = [];
       
