@@ -290,7 +290,10 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
   
   // Use a ref to always have the latest state without causing effect re-runs
   const stateRef = useRef(state);
-  stateRef.current = state;
+  // Declared before every effect that reads it, so those effects see the state of the same commit.
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   // Ganga tip context, refreshed once per in-game day (S2-T11).
   const tipContextRef = useRef<TipContext>({ gangaFallingDays: 0, sewageDominant: false });
@@ -321,10 +324,14 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
   // Shown tips are per city: a new city (new id) starts with every tip available again
   const cityId = state.id;
   const cityIdRef = useRef(cityId);
-  cityIdRef.current = cityId;
+  useEffect(() => {
+    cityIdRef.current = cityId;
+  });
   useEffect(() => {
     if (typeof window === 'undefined') return;
     hasLoadedRef.current = false;
+    // Loads from localStorage (an external store) when the city changes; it cannot run during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShownTips(loadShownTips(cityId));
     hasLoadedRef.current = true;
   }, [cityId]);
@@ -355,11 +362,10 @@ export function useTipSystem(state: GameState): UseTipSystemReturn {
     setTipsEnabledPref(enabled);
   }, []);
   // Turning tips off (here or in Settings) hides the current one
-  useEffect(() => {
-    if (tipsEnabled) return;
+  if (!tipsEnabled && (isVisible || currentTip !== null)) {
     setIsVisible(false);
     setCurrentTip(null);
-  }, [tipsEnabled]);
+  }
 
   // Track shown tips in a ref as well for synchronous access
   const shownTipsRef = useRef<Set<TipId>>(new Set());

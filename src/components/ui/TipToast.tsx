@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Lightbulb, SkipForward, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,9 +27,11 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
   const [shouldRender, setShouldRender] = useState(false);
   const inline = className !== undefined;
 
+  // Mount as soon as the tip becomes visible; the effect below only runs the animation.
+  if (isVisible && !shouldRender) setShouldRender(true);
+
   useEffect(() => {
     if (isVisible) {
-      setShouldRender(true);
       // Small delay to trigger animation
       const frame = requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -38,10 +40,10 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
       });
       return () => cancelAnimationFrame(frame);
     } else {
-      setIsAnimating(false);
       // Wait for exit animation before unmounting
       const timer = setTimeout(() => {
         setShouldRender(false);
+        setIsAnimating(false);
       }, 300);
       return () => clearTimeout(timer);
     }
@@ -64,7 +66,7 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
               // Desktop: top right, under the top bar and stats row
               'md:top-[108px] md:left-auto md:right-4 md:w-[22rem]'
             ),
-        isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'
+        isVisible && isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'
       )}
     >
       <div className="hud-glass gold-hairline relative rounded-none overflow-hidden w-full">
@@ -119,12 +121,11 @@ function TipToastContent({ message, isVisible, onContinue, onSkipAll, className 
   );
 }
 
-export function TipToast(props: TipToastProps) {
-  const [mounted, setMounted] = useState(false);
+const subscribeNever = () => () => {};
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+export function TipToast(props: TipToastProps) {
+  // False during server rendering and hydration, true afterwards (document.body exists for the portal).
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
 
   if (props.className !== undefined) {
     return <TipToastContent {...props} />;

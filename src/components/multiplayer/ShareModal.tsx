@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ interface ShareModalProps {
 
 export function ShareModal({ open, onOpenChange }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const isCreatingRef = useRef(false);
   
   const { roomCode, createRoom } = useMultiplayer();
   const { state, isStateReady } = useGame();
@@ -28,8 +28,8 @@ export function ShareModal({ open, onOpenChange }: ShareModalProps) {
   // Create room when modal opens (if not already in a room)
   // IMPORTANT: Wait for isStateReady to ensure we have the loaded state, not the default empty state
   useEffect(() => {
-    if (open && !roomCode && !isCreating && isStateReady) {
-      setIsCreating(true);
+    if (open && !roomCode && !isCreatingRef.current && isStateReady) {
+      isCreatingRef.current = true;
       createRoom(state.cityName, state)
         .then((code) => {
           // Update URL to show room code
@@ -39,17 +39,17 @@ export function ShareModal({ open, onOpenChange }: ShareModalProps) {
           console.error('[ShareModal] Failed to create room:', err);
         })
         .finally(() => {
-          setIsCreating(false);
+          isCreatingRef.current = false;
         });
     }
-  }, [open, roomCode, isCreating, isStateReady, createRoom, state]);
+  }, [open, roomCode, isStateReady, createRoom, state]);
 
   // Reset copied state when modal closes
-  useEffect(() => {
-    if (!open) {
-      setCopied(false);
-    }
-  }, [open]);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setCopied(false);
+  }
 
   const handleCopyLink = () => {
     if (!roomCode) return;
@@ -75,7 +75,7 @@ export function ShareModal({ open, onOpenChange }: ShareModalProps) {
         </DialogHeader>
 
         <div className="space-y-6 py-4 overflow-hidden">
-          {isCreating || !roomCode ? (
+          {!roomCode ? (
             <div className="flex items-center justify-center gap-2 py-8">
               <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
               <span className="text-slate-400">Creating co-op session...</span>

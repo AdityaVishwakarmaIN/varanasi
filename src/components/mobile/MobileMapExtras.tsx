@@ -87,13 +87,16 @@ function markGestureHintSeen() {
 /** Shows once, the first time a tool other than Select is chosen. */
 export function TouchGestureHint({ selectedTool }: { selectedTool: Tool }) {
   const gt = useGT();
-  const [visible, setVisible] = useState(false);
+  // Read once: the hint marks itself as seen as soon as it shows.
+  const [seenBefore] = useState(hasSeenGestureHint);
+  const [toolChosen, setToolChosen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  if (selectedTool !== 'select' && !toolChosen) setToolChosen(true);
+  const visible = toolChosen && !seenBefore && !dismissed;
 
   useEffect(() => {
-    if (selectedTool === 'select' || visible || hasSeenGestureHint()) return;
-    markGestureHintSeen();
-    setVisible(true);
-  }, [selectedTool, visible]);
+    if (visible) markGestureHintSeen();
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -115,7 +118,7 @@ export function TouchGestureHint({ selectedTool }: { selectedTool: Tool }) {
       <ul className="space-y-1 mb-2 list-disc pl-4">
         {lines.map((line) => <li key={line}>{line}</li>)}
       </ul>
-      <Button className="w-full h-11 rounded-none" onClick={() => setVisible(false)}>
+      <Button className="w-full h-11 rounded-none" onClick={() => setDismissed(true)}>
         {gt('Got it')}
       </Button>
     </div>

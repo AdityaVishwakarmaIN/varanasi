@@ -578,17 +578,15 @@ export const Sidebar = React.memo(function Sidebar({ onExit }: { onExit?: () => 
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const multiplayer = useMultiplayerOptional();
-  const hasShownShareModalRef = useRef(false);
-  
+  const [shareModalAutoShown, setShareModalAutoShown] = useState(false);
+
   // Auto-show share modal when first connecting as host (not guest)
   // Guests have initialState set (received from host), hosts don't
-  useEffect(() => {
-    const isHost = multiplayer?.connectionState === 'connected' && multiplayer?.roomCode && !multiplayer?.initialState;
-    if (isHost && !hasShownShareModalRef.current) {
-      hasShownShareModalRef.current = true;
-      setShowShareModal(true);
-    }
-  }, [multiplayer?.connectionState, multiplayer?.roomCode, multiplayer?.initialState]);
+  const isHost = multiplayer?.connectionState === 'connected' && !!multiplayer?.roomCode && !multiplayer?.initialState;
+  if (isHost && !shareModalAutoShown) {
+    setShareModalAutoShown(true);
+    setShowShareModal(true);
+  }
   const m = useMessages();
   
   const handleSaveAndExit = useCallback(() => {

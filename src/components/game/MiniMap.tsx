@@ -94,15 +94,13 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
   const parkBuildings = useMemo(() => PARK_BUILDINGS, []);
 
   useEffect(() => {
-    if (!onViewportSubscribe) {
-      setSubscribedViewport(viewport || null);
-      return;
-    }
-
+    if (!onViewportSubscribe) return;
     return onViewportSubscribe((nextViewport) => {
       setSubscribedViewport(nextViewport);
     });
-  }, [onViewportSubscribe, viewport]);
+  }, [onViewportSubscribe]);
+  // Without a subscription the viewport comes straight from the prop.
+  const activeViewport = onViewportSubscribe ? subscribedViewport : viewport || null;
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -165,8 +163,8 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
     }
     
     // Draw viewport rectangle (always updated)
-    if (subscribedViewport) {
-      const { offset, zoom, canvasSize } = subscribedViewport;
+    if (activeViewport) {
+      const { offset, zoom, canvasSize } = activeViewport;
       
       const screenToGridForMinimap = (screenX: number, screenY: number) => {
         const adjustedX = (screenX - offset.x) / zoom;
@@ -191,7 +189,7 @@ export const MiniMap = React.memo(function MiniMap({ onNavigate, onViewportSubsc
       ctx.closePath();
       ctx.stroke();
     }
-  }, [grid, gridSize, tick, subscribedViewport, serviceBuildings, parkBuildings]);
+  }, [grid, gridSize, tick, activeViewport, serviceBuildings, parkBuildings]);
 
   const [isDragging, setIsDragging] = useState(false);
   
