@@ -17,8 +17,6 @@ export type CloudWeatherConfig = {
 export const CLOUD_MIN_ZOOM = 0.2; // Lowest zoom where clouds should still appear.
 export const CLOUD_MAX_ZOOM = 1.0; // Zoom level where clouds start fading out.
 export const CLOUD_FADE_ZOOM = 1.6; // Zoom level where clouds are fully hidden.
-export const CLOUD_MAX_COVERAGE = 0.35; // Coverage level where clouds start fading.
-export const CLOUD_COVERAGE_FADE_END = 0.7; // Coverage level where clouds are fully faded.
 export const CLOUD_WIDTH = 150; // Approximate cloud width used for spawn placement.
 export const CLOUD_DESPAWN_MARGIN = 300; // Extra distance past the viewport before despawn.
 export const CLOUD_WIND_ANGLE = -Math.PI / 8; // Direction clouds drift across the map (-22.5 degrees).
@@ -32,12 +30,6 @@ export const CLOUD_MAX_COUNT_MOBILE = 20; // Maximum number of clouds on mobile.
 export const CLOUD_SPAWN_INTERVAL = 1.0; // Seconds between cloud spawn attempts.
 export const CLOUD_SPAWN_INTERVAL_MOBILE = 1.8; // Slower spawn pacing on mobile.
 export const CLOUD_SPEED_BASE = 40; // Fixed cloud drift speed before weather scaling.
-export const CLOUD_SCALE_MIN = 0.5; // Smallest base cloud scale.
-export const CLOUD_SCALE_MAX = 1.8; // Largest base cloud scale.
-export const CLOUD_PUFF_COUNT_MIN = 4; // Fewest puffs used to build a cloud.
-export const CLOUD_PUFF_COUNT_MAX = 10; // Most puffs used to build a cloud.
-export const CLOUD_PUFF_SIZE_MIN = 20; // Smallest puff radius.
-export const CLOUD_PUFF_SIZE_MAX = 55; // Largest puff radius.
 
 export const DEFAULT_CLOUD_WEATHER_MODE: CloudWeatherMode = 'clear'; // Weather used when the game starts or resets.
 // Which weather is active is decided by the simulation from the season (SEASON_WEATHER in src/lib/seasons.ts, S4-T2).

@@ -21,7 +21,6 @@ import {
   ROAD_COLORS,
   drawRoadArrow,
 } from './trafficSystem';
-import { Tile } from '@/types/game';
 import type { IsoRenderer } from '@/components/game/gpu/IsoRenderer';
 
 // ============================================================================
@@ -666,29 +665,3 @@ export function drawRoad(
 // Road Merge Analysis Cache Helper
 // ============================================================================
 
-/**
- * Create a cached merge info getter with proper invalidation
- */
-export function createMergeInfoCache(
-  grid: Tile[][],
-  gridSize: number,
-  cacheRef: React.MutableRefObject<Map<string, MergedRoadInfo>>,
-  cacheVersionRef: React.MutableRefObject<number>,
-  roadNetworkVersionRef: React.MutableRefObject<number>
-): (gx: number, gy: number) => MergedRoadInfo {
-  return (gx: number, gy: number): MergedRoadInfo => {
-    const currentVersion = roadNetworkVersionRef.current;
-    if (cacheVersionRef.current !== currentVersion) {
-      cacheRef.current.clear();
-      cacheVersionRef.current = currentVersion;
-    }
-    
-    const key = `${gx},${gy}`;
-    let info = cacheRef.current.get(key);
-    if (!info) {
-      info = analyzeMergedRoad(grid, gridSize, gx, gy);
-      cacheRef.current.set(key, info);
-    }
-    return info;
-  };
-}

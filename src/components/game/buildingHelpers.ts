@@ -30,7 +30,7 @@ const PARK_BUILDINGS_SET = new Set<BuildingType>([
 ]);
 
 // All park types for checking isPark (includes single-tile parks)
-const ALL_PARK_TYPES = new Set<BuildingType>([
+export const ALL_PARK_TYPES = new Set<BuildingType>([
   'park', 'park_large', 'tennis', 'basketball_courts', 'playground_small',
   'playground_large', 'baseball_field_small', 'soccer_field_small', 'football_field',
   'skate_park', 'mini_golf_course', 'bleachers_field', 'go_kart_track', 'amphitheater', 
@@ -266,17 +266,7 @@ export function useBuildingHelpers(grid: Tile[][], gridSize: number) {
   // stable so the map canvas does not redraw for ticks that changed nothing visible.
   const tileMetadataMap = getTileMetadataMap(grid, gridSize);
 
-  // O(1) lookup functions that use the pre-computed map
-  // PERF: Use numeric key calculation (gridY * gridSize + gridX)
-  const isPartOfMultiTileBuilding = useCallback((gridX: number, gridY: number): boolean => {
-    return tileMetadataMap.get(gridY * gridSize + gridX)?.isPartOfMultiTileBuilding ?? false;
-  }, [tileMetadataMap, gridSize]);
-
-  const isPartOfParkBuilding = useCallback((gridX: number, gridY: number): boolean => {
-    return tileMetadataMap.get(gridY * gridSize + gridX)?.isPartOfParkBuilding ?? false;
-  }, [tileMetadataMap, gridSize]);
-  
-  // Get full tile metadata for a position (O(1) lookup)
+  // Get full tile metadata for a position (O(1) lookup, numeric key gridY * gridSize + gridX)
   const getTileMetadata = useCallback((gridX: number, gridY: number): TileMetadata | null => {
     return tileMetadataMap.get(gridY * gridSize + gridX) ?? null;
   }, [tileMetadataMap, gridSize]);
@@ -331,11 +321,5 @@ export function useBuildingHelpers(grid: Tile[][], gridSize: number) {
     return null;
   }, [grid, gridSize]);
 
-  return {
-    isPartOfMultiTileBuilding,
-    findBuildingOrigin,
-    isPartOfParkBuilding,
-    getTileMetadata,
-    tileMetadataMap,
-  };
+  return { findBuildingOrigin, getTileMetadata };
 }

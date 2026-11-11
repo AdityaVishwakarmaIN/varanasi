@@ -39,13 +39,10 @@ export const PEDESTRIAN_HAT_CHANCE = 0.15;          // Chance of wearing a hat
 export const PEDESTRIAN_IDLE_CHANCE = 0.01;         // Chance to stop and idle briefly (reduced for perf)
 
 // Beach/swimming pedestrian constants
-export const PEDESTRIAN_BEACH_CHANCE = 0.15;        // Chance a park-bound pedestrian goes to beach instead
 export const PEDESTRIAN_BEACH_MIN_TIME = 30.0;      // Minimum time at beach
 export const PEDESTRIAN_BEACH_MAX_TIME = 180.0;     // Maximum time at beach
 export const PEDESTRIAN_BEACH_SWIM_CHANCE = 0.6;    // Chance of swimming vs lying on mat
 export const PEDESTRIAN_MAT_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#ff69b4'];
-export const MAX_BEACH_SWIMMERS_PER_TILE = 3;       // Max swimmers per water tile
-export const MAX_BEACH_MATS_PER_EDGE = 2;           // Max mats per beach edge
 
 // Pedestrian performance limits
 export const PEDESTRIAN_MAX_COUNT = 560;            // Maximum pedestrians (hard cap) - reduced ~30%
@@ -56,7 +53,6 @@ export const PEDESTRIAN_SPAWN_BATCH_SIZE = 25;      // How many to try spawning 
 export const PEDESTRIAN_SPAWN_BATCH_SIZE_MOBILE = 5; // Mobile: smaller batches
 export const PEDESTRIAN_SPAWN_INTERVAL = 0.03;      // Seconds between spawn batches
 export const PEDESTRIAN_SPAWN_INTERVAL_MOBILE = 0.15; // Mobile: slower spawning
-export const PEDESTRIAN_UPDATE_SKIP_DISTANCE = 30;  // Skip detailed updates for pedestrians this far from view
 
 // Zoom limits for camera
 export const ZOOM_MIN = 0.3;                      // Minimum zoom level (most zoomed out - for large maps/multiple cities)
@@ -71,7 +67,6 @@ export const PEDESTRIAN_MIN_ZOOM_MOBILE = 0.55;   // Mobile pedestrian threshold
 
 // Vehicle rendering thresholds - hide at very zoomed out levels for performance
 export const VEHICLE_FAR_ZOOM_THRESHOLD = 0.25;   // Below this zoom: hide ALL vehicles/pedestrians on desktop too
-export const TRAIN_MIN_ZOOM_FAR = 0.20;           // Trains visible slightly further out than cars
 export const BOAT_MIN_ZOOM_FAR = 0.20;            // Boats visible at moderate zoom
 export const HELICOPTER_MIN_ZOOM_FAR = 0.20;      // Helicopters visible at moderate zoom
 export const AIRPLANE_MIN_ZOOM_FAR = 0;           // Airplanes always visible at all zoom levels
@@ -203,7 +198,6 @@ export const BARGE_CARGO_VALUE_MAX = 350; // Maximum cargo value (makes ocean ma
 export const BARGE_WAKE_SPAWN_INTERVAL = 0.05; // Slower wake spawn than boats (larger vessel)
 
 // Factory smog system constants
-export const SMOG_BUILDINGS: BuildingType[] = ['factory_medium', 'factory_large'];
 export const SMOG_PARTICLE_MAX_AGE = 8.0; // seconds - how long smog particles last
 export const SMOG_PARTICLE_MAX_AGE_MOBILE = 5.0; // seconds - shorter on mobile for performance
 export const SMOG_SPAWN_INTERVAL_MEDIUM = 0.4; // seconds between particles for medium factory
@@ -278,11 +272,6 @@ export const OPPOSITE_DIRECTION: Record<CarDirection, CarDirection> = {
   south: 'north',
   west: 'east',
 };
-
-// Traffic light timing constants (faster cycle)
-export const TRAFFIC_LIGHT_GREEN_DURATION = 3.0;   // Seconds
-export const TRAFFIC_LIGHT_YELLOW_DURATION = 0.8;  // Seconds
-export const TRAFFIC_LIGHT_CYCLE = 7.6;            // Full cycle time
 
 // Train system constants
 export const TRAIN_MIN_ZOOM = 0.35;               // Minimum zoom to show trains (normal)

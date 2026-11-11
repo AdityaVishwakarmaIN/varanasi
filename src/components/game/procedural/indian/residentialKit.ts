@@ -442,12 +442,6 @@ export function downpipeU(iso: Iso, u: number, v: number, z0: number, z1: number
   iso.line([u + 0.006, v, z0], [u + 0.006, v, z1], '#9da3a6', 1.5);
 }
 
-/** Downpipe running along a +v face. */
-export function downpipeV(iso: Iso, v: number, u: number, z0: number, z1: number): void {
-  iso.line([u, v + 0.006, z0], [u, v + 0.006, z1], alpha('#3a3a3a', 0.6), 2.4);
-  iso.line([u, v + 0.006, z0], [u, v + 0.006, z1], '#a8aeb1', 1.5);
-}
-
 /** Sagging bundle of electric / cable wires between two points. */
 export function wires(iso: Iso, a: P3, b: P3, n = 3): void {
   for (let k = 0; k < n; k++) {

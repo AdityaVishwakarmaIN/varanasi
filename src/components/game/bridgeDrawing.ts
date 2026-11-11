@@ -234,35 +234,6 @@ export function drawPillar(
 // Suspension Tower Drawing  
 // ============================================================================
 
-/**
- * Draw a 3D isometric suspension bridge tower
- */
-export function drawSuspensionTower(
-  ctx: IsoRenderer,
-  px: number,
-  py: number,
-  towerW: number,
-  towerH: number,
-  color: string
-): void {
-  // Draw back column (left)
-  ctx.fillStyle = color;
-  ctx.fillRect(px - towerW * 0.6, py - towerH, towerW * 0.4, towerH);
-  
-  // Draw front column (right)
-  ctx.fillRect(px + towerW * 0.2, py - towerH, towerW * 0.4, towerH);
-  
-  // Draw crossbeam at top
-  ctx.fillRect(px - towerW * 0.6, py - towerH, towerW * 1.2, towerW * 0.4);
-  
-  // Add 3D shading to front column
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.fillRect(px + towerW * 0.2, py - towerH, towerW * 0.15, towerH);
-  
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-  ctx.fillRect(px + towerW * 0.45, py - towerH, towerW * 0.15, towerH);
-}
-
 // ============================================================================
 // Bridge Tile Drawing Functions
 // Extracted from CanvasIsometricGrid for better maintainability

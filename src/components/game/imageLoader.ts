@@ -11,7 +11,6 @@ import type { SpriteFilterRequest, SpriteFilterResponse } from '@/workers/sprite
 const COLOR_THRESHOLD = SPRITE_KEY_THRESHOLD;
 // Image cache for building sprites
 const imageCache = new Map<string, HTMLImageElement>();
-const bitmapCache = new Map<string, ImageBitmap>();
 
 // Track WebP support (detected once on first use)
 let webpSupported: boolean | null = null;
@@ -45,16 +44,7 @@ type ProcessingSurface = {
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 };
 
-function createProcessingSurface(width: number, height: number, preferOffscreen: boolean = false): ProcessingSurface {
-  if (preferOffscreen && typeof OffscreenCanvas !== 'undefined') {
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('Could not get offscreen canvas context');
-    }
-    return { canvas, ctx };
-  }
-
+function createProcessingSurface(width: number, height: number): ProcessingSurface {
   if (typeof document !== 'undefined') {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -81,10 +71,9 @@ function createProcessingSurface(width: number, height: number, preferOffscreen:
 function applyBackgroundFilter(
   image: CanvasImageSource,
   threshold: number,
-  preferOffscreen: boolean = false
 ): ProcessingSurface {
   const { width, height } = getCanvasImageDimensions(image as CachedCanvasImage);
-  const surface = createProcessingSurface(width, height, preferOffscreen);
+  const surface = createProcessingSurface(width, height);
   const { ctx } = surface;
 
   ctx.drawImage(image, 0, 0);
@@ -188,19 +177,6 @@ function imageFromBlob(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
-async function loadBitmapDirect(src: string): Promise<ImageBitmap> {
-  const response = await fetch(src);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${src}`);
-  }
-
-  const blob = await response.blob();
-  const bitmap = await createImageBitmap(blob);
-  bitmapCache.set(src, bitmap);
-  notifyImageLoaded();
-  return bitmap;
-}
-
 /**
  * Load an image from a source URL, preferring WebP if available
  * @param src The image source path (PNG)
@@ -235,25 +211,6 @@ export async function loadImage(src: string): Promise<HTMLImageElement> {
   return loadImageDirect(src);
 }
 
-export async function loadImageBitmap(src: string): Promise<ImageBitmap> {
-  if (bitmapCache.has(src)) {
-    return bitmapCache.get(src)!;
-  }
-
-  const webpPath = getWebPPath(src);
-  if (webpPath) {
-    try {
-      const bitmap = await loadBitmapDirect(webpPath);
-      bitmapCache.set(src, bitmap);
-      return bitmap;
-    } catch {
-      console.debug(`WebP bitmap not available for ${src}, using source asset`);
-    }
-  }
-
-  return loadBitmapDirect(src);
-}
-
 /**
  * Filters colors close to the background color from an image, making them transparent
  * @param img The source image to process
@@ -268,7 +225,7 @@ export function filterBackgroundColor(img: HTMLImageElement, threshold: number =
         return;
       }
 
-      const surface = applyBackgroundFilter(img, threshold, false);
+      const surface = applyBackgroundFilter(img, threshold);
       if (!(surface.canvas instanceof HTMLCanvasElement)) {
         reject(new Error('Expected an HTMLCanvasElement processing surface'));
         return;
@@ -286,19 +243,6 @@ export function filterBackgroundColor(img: HTMLImageElement, threshold: number =
       reject(error);
     }
   });
-}
-
-export async function filterBackgroundColorToBitmap(
-  image: CanvasImageSource,
-  threshold: number = COLOR_THRESHOLD
-): Promise<ImageBitmap> {
-  const surface = applyBackgroundFilter(image, threshold, true);
-
-  if ('transferToImageBitmap' in surface.canvas) {
-    return surface.canvas.transferToImageBitmap();
-  }
-
-  return createImageBitmap(surface.canvas);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -459,33 +403,6 @@ export function loadSpriteImage(src: string, applyFilter: boolean = true): Promi
   return load;
 }
 
-export async function loadSpriteImageBitmap(src: string, applyFilter: boolean = true): Promise<ImageBitmap> {
-  const cacheKey = applyFilter ? `${src}_filtered` : src;
-  if (bitmapCache.has(cacheKey)) {
-    return bitmapCache.get(cacheKey)!;
-  }
-
-  const bitmap = await loadImageBitmap(src);
-  if (!applyFilter) {
-    bitmapCache.set(cacheKey, bitmap);
-    return bitmap;
-  }
-
-  const filtered = await filterBackgroundColorToBitmap(bitmap);
-  bitmapCache.set(cacheKey, filtered);
-  return filtered;
-}
-
-/**
- * Check if an image is cached
- * @param src The image source path
- * @param filtered Whether to check for the filtered version
- */
-export function isImageCached(src: string, filtered: boolean = false): boolean {
-  const cacheKey = filtered ? `${src}_filtered` : src;
-  return imageCache.has(cacheKey);
-}
-
 /**
  * Get a cached image if available
  * @param src The image source path
@@ -496,18 +413,3 @@ export function getCachedImage(src: string, filtered: boolean = false): HTMLImag
   return imageCache.get(cacheKey);
 }
 
-export function getCachedBitmap(src: string, filtered: boolean = false): ImageBitmap | undefined {
-  const cacheKey = filtered ? `${src}_filtered` : src;
-  return bitmapCache.get(cacheKey);
-}
-
-/**
- * Clear the image cache
- */
-export function clearImageCache(): void {
-  bitmapCache.forEach((bitmap) => {
-    bitmap.close();
-  });
-  bitmapCache.clear();
-  imageCache.clear();
-}

@@ -31,7 +31,6 @@ import {
   EmergencyVehicle,
   Boat,
   Barge,
-  TourWaypoint,
   FactorySmog,
   OverlayMode,
   Pedestrian,
@@ -89,15 +88,9 @@ import { loadImage, loadSpriteImage, onImageLoaded, getCachedImage } from '@/com
 import { createPortal } from 'react-dom';
 import { useOverlaySlot } from '@/components/game/MapOverlayLayer';
 import { startMapPointerSession } from '@/lib/mapPointerSession';
-import {
-  findMarinasAndPiers,
-  findAdjacentWaterTile,
-  isOverWater,
-  generateTourWaypoints,
-} from '@/components/game/gridFinders';
 import { drawAirplanes as drawAirplanesUtil, drawHelicopters as drawHelicoptersUtil, drawSeaplanes as drawSeaplanesUtil } from '@/components/game/drawAircraft';
 import { createVehicleSystems, invalidateVehicleSystemCaches, VehicleSystemRefs, VehicleSystemState } from '@/components/game/vehicleSystems';
-import { useBuildingHelpers } from '@/components/game/buildingHelpers';
+import { ALL_PARK_TYPES, useBuildingHelpers } from '@/components/game/buildingHelpers';
 import { countRailTilesCached } from '@/components/game/gridScanCache';
 import { createAircraftSystems, AircraftSystemRefs, AircraftSystemState } from '@/components/game/aircraftSystems';
 import { createBargeSystem, BargeSystemRefs, BargeSystemState } from '@/components/game/bargeSystem';
@@ -671,8 +664,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   });
   const [roadDrawDirection, setRoadDrawDirection] = useState<'h' | 'v' | null>(null);
   const placedRoadTilesRef = useRef<Set<string>>(new Set());
-  // Track progressive image loading - start true to render immediately with placeholders
-  const [imagesLoaded, setImagesLoaded] = useState(true);
   // Counter to trigger re-renders when new images become available
   const [imageLoadVersion, setImageLoadVersion] = useState(0);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
@@ -751,7 +742,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   const CLICK_SELECTION_MAX_MS = 500;
 
   // Use extracted building helpers (with pre-computed tile metadata for O(1) lookups)
-  const { isPartOfMultiTileBuilding, findBuildingOrigin, isPartOfParkBuilding, getTileMetadata } = useBuildingHelpers(
+  const { findBuildingOrigin, getTileMetadata } = useBuildingHelpers(
     grid,
     gridSize
   );
@@ -801,13 +792,8 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   };
 
   const {
-    spawnRandomCar,
-    spawnPedestrian,
     spawnCrimeIncidents,
     updateCrimeIncidents,
-    findCrimeIncidents,
-    dispatchEmergencyVehicle,
-    updateEmergencyDispatch,
     updateEmergencyVehicles,
     updateCars,
     updateBuses,
@@ -1151,30 +1137,6 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       cancelAnimationFrame(animationFrameId);
     };
   }, [controlsRef]);
-
-  // Find marinas and piers (uses imported utility)
-  const findMarinasAndPiersCallback = useCallback(() => {
-    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findMarinasAndPiers(currentGrid, currentGridSize);
-  }, []);
-
-  // Find adjacent water tile (uses imported utility)
-  const findAdjacentWaterTileCallback = useCallback((dockX: number, dockY: number) => {
-    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return findAdjacentWaterTile(currentGrid, currentGridSize, dockX, dockY);
-  }, []);
-
-  // Check if screen position is over water (uses imported utility)
-  const isOverWaterCallback = useCallback((screenX: number, screenY: number): boolean => {
-    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return isOverWater(currentGrid, currentGridSize, screenX, screenY);
-  }, []);
-
-  // Generate tour waypoints (uses imported utility)
-  const generateTourWaypointsCallback = useCallback((startTileX: number, startTileY: number): TourWaypoint[] => {
-    const { grid: currentGrid, gridSize: currentGridSize } = worldStateRef.current;
-    return generateTourWaypoints(currentGrid, currentGridSize, startTileX, startTileY);
-  }, []);
 
   // Draw airplanes with contrails (uses extracted utility)
   const drawAirplanes = useCallback((ctx: IsoRenderer) => {
@@ -1550,7 +1512,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
   // Main render function - PERF: Uses requestAnimationFrame throttling to batch multiple state updates
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !imagesLoaded) return;
+    if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -1915,13 +1877,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
 
       // PERF: Use pre-computed tile metadata for grey base check (O(1) lookup)
       const tileRenderMetadata = getTileMetadata(tile.x, tile.y);
-      const isPark = tileRenderMetadata?.isPartOfParkBuilding || 
-                     ['park', 'park_large', 'tennis', 'basketball_courts', 'playground_small',
-                      'playground_large', 'baseball_field_small', 'soccer_field_small', 'football_field',
-                      'skate_park', 'mini_golf_course', 'bleachers_field', 'go_kart_track', 'amphitheater', 
-                      'greenhouse_garden', 'animal_pens_farm', 'cabin_house', 'campground', 'marina_docks_small', 
-                      'pier_large', 'roller_coaster_small', 'community_garden', 'pond_park', 'park_gate', 
-                      'mountain_lodge', 'mountain_trailhead'].includes(tile.building.type);
+      const isPark = tileRenderMetadata?.isPartOfParkBuilding || ALL_PARK_TYPES.has(tile.building.type);
       const hasGreyBase = tileRenderMetadata?.needsGreyBase ?? false;
       
       if (tile.building.type === 'water') {
@@ -3295,7 +3251,7 @@ export function CanvasIsometricGrid({ overlayMode, selectedTile, setSelectedTile
       }
     };
   // PERF: hoveredTile and selectedTile removed from deps - now rendered on separate hover canvas layer
-  }, [grid, gridSize, offset, zoom, overlayMode, imagesLoaded, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning, staticOverscanDev, simRunning]);
+  }, [grid, gridSize, offset, zoom, overlayMode, imageLoadVersion, canvasSize, dragStartTile, dragEndTile, state.services, currentSpritePack, waterBodies, getTileMetadata, showsDragGrid, isMobile, state.mapId, state.stats.gangaHealth, qualityPreset, floodMask, siltMask, isPanning, staticOverscanDev, simRunning]);
   
   // S1-T10: placement preview. Dry-runs the real placement rules for the hovered tile.
   // The tile a placement just succeeded on (mouse-up or tap). The hovered tile is now built, so the

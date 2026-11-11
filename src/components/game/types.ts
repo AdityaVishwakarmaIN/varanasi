@@ -261,19 +261,6 @@ export type PedestrianActivity =
   | 'working'
   | 'studying';
 
-// Recreation area types with their associated activities
-export type RecreationAreaType =
-  | 'basketball_court'
-  | 'tennis_court'
-  | 'soccer_field'
-  | 'baseball_field'
-  | 'swimming_pool'
-  | 'skate_park'
-  | 'park_bench'
-  | 'playground'
-  | 'stadium_seating'
-  | 'generic_park';
-
 export type Pedestrian = {
   id: number;
   tileX: number;

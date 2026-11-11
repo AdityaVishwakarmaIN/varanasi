@@ -1,7 +1,6 @@
 import type { Building } from '@/types/game';
 import { getActiveSpritePack, type SpritePack } from '@/lib/renderConfig';
 import {
-  getCachedBitmap,
   getCachedImage,
   getCanvasImageDimensions,
   type CachedCanvasImage,
@@ -141,9 +140,7 @@ export function buildWindTreeRenderItem(
   const source = selectSpriteSource('tree', building, tileX, tileY, activePack);
   const spriteSheet =
     getCachedImage(source.source, true) ||
-    getCachedBitmap(source.source, true) ||
-    getCachedImage(source.source) ||
-    getCachedBitmap(source.source);
+    getCachedImage(source.source);
 
   if (!spriteSheet) {
     return null;
