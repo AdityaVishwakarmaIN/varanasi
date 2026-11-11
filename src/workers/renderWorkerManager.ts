@@ -14,6 +14,8 @@ export class RenderWorkerManager {
   private worker: Worker | null = null;
   private ready = false;
   private pendingMessages: RenderWorkerMessage[] = [];
+  /** Set by terminate() (also on a worker crash): this instance drops later messages instead of queueing them. */
+  private disposed = false;
   readonly support = detectRenderWorkerSupport();
 
   prepare(): boolean {
@@ -21,7 +23,7 @@ export class RenderWorkerManager {
       return true;
     }
 
-    if (!this.support.supported) {
+    if (this.disposed || !this.support.supported) {
       return false;
     }
 
@@ -125,9 +127,11 @@ export class RenderWorkerManager {
     this.worker = null;
     this.ready = false;
     this.pendingMessages = [];
+    this.disposed = true;
   }
 
   private postMessage(message: RenderWorkerMessage): void {
+    if (this.disposed) return;
     if (!this.worker) {
       this.pendingMessages.push(message);
       return;

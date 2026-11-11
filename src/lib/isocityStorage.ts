@@ -70,12 +70,11 @@ export function loadIsocityUiPreferences(): IsocityUiPreferences {
     return DEFAULT_UI_PREFERENCES;
   }
 
-  const saved = localStorage.getItem(ISOCITY_UI_PREFERENCES_STORAGE_KEY);
-  if (!saved) {
-    return DEFAULT_UI_PREFERENCES;
-  }
-
   try {
+    const saved = localStorage.getItem(ISOCITY_UI_PREFERENCES_STORAGE_KEY);
+    if (!saved) {
+      return DEFAULT_UI_PREFERENCES;
+    }
     const parsed = JSON.parse(saved);
     return {
       showOverlayPanel: typeof parsed?.showOverlayPanel === 'boolean' ? parsed.showOverlayPanel : DEFAULT_UI_PREFERENCES.showOverlayPanel,

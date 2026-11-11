@@ -95,6 +95,7 @@ export function createIdbStore(
     const tx = db.transaction(storeName, mode);
     const request = fn(tx.objectStore(storeName));
     const done = transactionDone(tx);
+    done.catch(() => {}); // still awaited below; this only covers the request failing first
     const result = request ? await requestToPromise(request) : undefined;
     await done;
     return result;

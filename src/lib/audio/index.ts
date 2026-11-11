@@ -76,6 +76,9 @@ export function unlockAudio(): Promise<void> {
       })
       .catch((e) => {
         console.warn('Audio unavailable:', e);
+        // Stop queueing cues; the next user gesture tries the load again.
+        loading = null;
+        pending = [];
       });
   }
   return loading;
